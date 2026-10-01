@@ -9,20 +9,12 @@ import DragonDice from "@/components/games/DragonDice";
 import LanternSlots from "@/components/games/LanternSlots";
 import SkyWheel from "@/components/games/SkyWheel";
 import Roulette from "@/components/games/Roulette";
-import ChatBox from "@/components/chat/ChatBox";
-import SlotSymbol from "@/components/games/SlotSymbol";
+import { GAME_ICONS } from "@/lib/gameIcons";
 import { GAMES } from "@/lib/games";
 import { cn } from "@/lib/utils";
 
 const COMPONENTS = { coinflip: CoinFlip, dragondice: DragonDice, lanternslots: LanternSlots, skywheel: SkyWheel, roulette: Roulette };
-const ICONS = {
-  coinflip: <span className="whitespace-nowrap font-heading text-sm font-extrabold text-gold" lang="zh-Hant">陰陽</span>,
-  dragondice: <span className="font-heading text-xl font-extrabold text-jade" lang="zh-Hant">龍</span>,
-  lanternslots: <SlotSymbol id="lantern" size={30} />,
-  skywheel: <span className="font-heading text-xl font-extrabold text-azure" lang="zh-Hant">天</span>,
-  roulette: <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-gold bg-[#2E7F5E] font-heading text-xs font-extrabold text-[hsl(43_60%_92%)]">0</span>,
-  poker: <span className="font-heading text-xl font-extrabold text-ember" aria-hidden="true">♠</span>
-};
+const ICONS = GAME_ICONS;
 
 export default function Games() {
   const { account, settings, loading } = useGuild();
@@ -57,7 +49,7 @@ export default function Games() {
 
   return (
     <div className="space-y-5">
-      <div role="tablist" aria-label="Choose a game" className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1 sm:mx-0 sm:grid sm:grid-cols-3 sm:px-0 lg:grid-cols-6">
+      <div role="tablist" aria-label="Choose a game" className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1 sm:mx-0 sm:grid sm:grid-cols-3 sm:px-0 lg:hidden">
         {enabled.map((g) => {
           const on = current && g.id === current.id;
           if (g.href) {
@@ -98,7 +90,7 @@ export default function Games() {
         })}
       </div>
 
-      <div className="mx-auto grid max-w-[56rem] gap-5 md:grid-cols-[minmax(0,1fr)_300px] md:items-start">
+      <div className="mx-auto grid max-w-[56rem] gap-5 md:grid-cols-[minmax(0,1fr)_260px] md:items-start">
         <div className="mx-auto w-full max-w-lg md:max-w-none">
           {Game ? (
             <Game key={current.id} settings={settings} balance={member.points} />
@@ -129,7 +121,6 @@ export default function Games() {
             </p>
           </dl>
         </Panel>
-        <ChatBox height="h-72" />
         </div>
       </div>
     </div>

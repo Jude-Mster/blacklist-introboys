@@ -71,22 +71,30 @@ export default function PokerTableView({ tableId }) {
               boxShadow: "inset 0 0 0 2px hsl(40 58% 63% / 0.35), inset 0 0 50px rgba(0,0,0,0.6), 0 20px 50px -20px rgba(0,0,0,0.9)"
             }}
           >
-            <span className="absolute inset-0 flex items-center justify-center font-heading text-[11px] uppercase tracking-[0.3em] text-mist/40">
-              {PHASE_LABEL[t.phase] || t.phase}
+            <span className="absolute inset-0 flex items-center justify-center font-heading text-6xl font-extrabold text-black/15" aria-hidden="true">
+              黑
             </span>
-            {/* pot in the centre */}
-            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
-              <span className="block text-[10px] uppercase tracking-widest text-mist/60">Pot</span>
-              <span className="flex items-center justify-center gap-1 font-heading text-xl font-extrabold text-gold tabular-nums">
-                <Ingot size={14} /> {pot.toLocaleString()}
-              </span>
-            </span>
-            {/* community cards */}
-            {t.board && t.board.length > 0 && (
-              <span className="absolute left-1/2 top-[58%] flex -translate-x-1/2 gap-1">
-                {t.board.map((c) => <PlayingCard key={c} card={c} size="sm" highlight={winningCards.has(c)} />)}
-              </span>
-            )}
+          </div>
+
+          {/* centre: pot, board, status */}
+          <div className="absolute inset-x-[16%] top-1/2 flex -translate-y-1/2 flex-col items-center gap-2">
+            <p className="flex items-center gap-1.5 rounded-full bg-black/40 px-3 py-0.5 text-sm font-bold text-gold">
+              <Ingot size={14} /> {pot.toLocaleString()}
+            </p>
+            <div className="flex gap-1" aria-label="Community cards">
+              {[0, 1, 2, 3, 4].map((i) =>
+                t.board && t.board[i] ? (
+                  <PlayingCard key={i} card={t.board[i]} size="sm" highlight={winningCards.has(t.board[i])} />
+                ) : (
+                  <div key={i} className="h-12 w-[34px] rounded-[5px] border border-dashed border-[hsl(43_60%_80%/0.18)]" />
+                )
+              )}
+            </div>
+            <p className="text-center text-xs text-[hsl(43_60%_88%/0.85)]" aria-live="polite">
+              {winners.length
+                ? winners.map((w) => `${t.seats[w.seat]?.name || "Someone"} wins ${w.amount.toLocaleString()}${w.hand ? ` · ${w.hand}` : ""}`).join(" · ")
+                : PHASE_LABEL[t.phase]}
+            </p>
           </div>
 
           {/* seats */}

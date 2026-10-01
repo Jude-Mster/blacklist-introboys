@@ -60,7 +60,7 @@ export default function Dashboard() {
             {GAMES.filter((g) => !settings || (settings.games_enabled || []).includes(g.id)).map((g) => (
               <li key={g.id}>
                 <Link
-                  to={`/games?game=${g.id}`}
+                  to={g.href || `/games?game=${g.id}`}
                   className="flex items-center justify-between gap-3 rounded-md border border-bronze/40 bg-black/20 px-3 py-2.5 transition-colors hover:border-gold/70"
                 >
                   <span>

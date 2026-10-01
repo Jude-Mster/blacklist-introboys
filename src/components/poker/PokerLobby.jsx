@@ -4,7 +4,6 @@ import { Loader2, Users } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import LanternSpinner from "@/components/LanternSpinner";
-import ChatBox from "@/components/chat/ChatBox";
 import { useGuild, errorText } from "@/lib/GuildContext";
 import BuyIn from "./BuyIn";
 
@@ -41,7 +40,7 @@ export default function PokerLobby() {
   if (!tables) return <LanternSpinner label="Shuffling the decks" className="py-24" />;
 
   return (
-    <div className="mx-auto grid max-w-[60rem] gap-5 md:grid-cols-[minmax(0,1fr)_300px] md:items-start">
+    <div className="mx-auto max-w-3xl">
       <div className="space-y-5">
         <header>
           <h1 className="font-heading text-3xl font-extrabold gilt-text">Poker room</h1>
@@ -100,9 +99,6 @@ export default function PokerLobby() {
         {isLeader && <NewTable onCreated={load} />}
       </div>
 
-      <div className="md:sticky md:top-24">
-        <ChatBox height="h-96" />
-      </div>
     </div>
   );
 }
