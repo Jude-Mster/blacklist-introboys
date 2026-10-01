@@ -44,6 +44,12 @@ module.exports = {
   			border: 'hsl(var(--border))',
   			input: 'hsl(var(--input))',
   			ring: 'hsl(var(--ring))',
+  			ink: 'hsl(var(--ink))',
+  			panel: 'hsl(var(--panel))',
+  			gold: 'hsl(var(--gold))',
+  			crimson: 'hsl(var(--crimson))',
+  			ember: 'hsl(var(--ember))',
+  			jade: 'hsl(var(--jade))',
   			chart: {
   				'1': 'hsl(var(--chart-1))',
   				'2': 'hsl(var(--chart-2))',
@@ -69,22 +75,8 @@ module.exports = {
   			mono: ['var(--font-mono)']
   		},
   		keyframes: {
-  			'accordion-down': {
-  				from: {
-  					height: '0'
-  				},
-  				to: {
-  					height: 'var(--radix-accordion-content-height)'
-  				}
-  			},
-  			'accordion-up': {
-  				from: {
-  					height: 'var(--radix-accordion-content-height)'
-  				},
-  				to: {
-  					height: '0'
-  				}
-  			}
+  			'accordion-down': { from: { height: '0' }, to: { height: 'var(--radix-accordion-content-height)' } },
+  			'accordion-up': { from: { height: 'var(--radix-accordion-content-height)' }, to: { height: '0' } }
   		},
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',

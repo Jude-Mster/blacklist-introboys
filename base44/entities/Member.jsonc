@@ -1,0 +1,55 @@
+{
+  "name": "Member",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "Base44 app user id once the member has logged in; empty until then"
+    },
+    "discord_id": {
+      "type": "string",
+      "description": "Discord user id, unique"
+    },
+    "discord_name": {
+      "type": "string"
+    },
+    "avatar_url": {
+      "type": "string"
+    },
+    "points": {
+      "type": "integer",
+      "default": 0
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "member",
+        "officer",
+        "leader"
+      ],
+      "default": "member"
+    },
+    "daily_claimed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "daily_bet_total": {
+      "type": "integer",
+      "default": 0
+    },
+    "daily_bet_date": {
+      "type": "string",
+      "description": "ISO date (YYYY-MM-DD) the daily bet cap applies to"
+    },
+    "banned": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

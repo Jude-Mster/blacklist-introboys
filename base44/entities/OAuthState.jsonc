@@ -1,0 +1,24 @@
+{
+  "name": "OAuthState",
+  "type": "object",
+  "properties": {
+    "state": {
+      "type": "string",
+      "description": "Random opaque token sent to Discord and verified on callback"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "The Base44 app user id that initiated the link"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

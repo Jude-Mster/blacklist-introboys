@@ -1,0 +1,68 @@
+{
+  "name": "Settings",
+  "type": "object",
+  "properties": {
+    "guild_id": {
+      "type": "string"
+    },
+    "officer_role_id": {
+      "type": "string"
+    },
+    "min_bet": {
+      "type": "integer",
+      "default": 10
+    },
+    "max_bet": {
+      "type": "integer",
+      "default": 5000
+    },
+    "daily_bet_cap": {
+      "type": "integer",
+      "default": 50000
+    },
+    "house_edge_pct": {
+      "type": "integer",
+      "default": 3
+    },
+    "daily_wheel_prizes": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      },
+      "default": [
+        50,
+        100,
+        150,
+        250,
+        500,
+        1000
+      ]
+    },
+    "award_cap_per_day": {
+      "type": "integer",
+      "default": 10000
+    },
+    "games_enabled": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "coinflip",
+          "dragondice",
+          "lanternslots"
+        ]
+      },
+      "default": [
+        "coinflip",
+        "dragondice",
+        "lanternslots"
+      ]
+    }
+  },
+  "rls": {
+    "read": true,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

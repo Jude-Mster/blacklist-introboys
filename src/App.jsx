@@ -6,6 +6,20 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
+import { Navigate } from 'react-router-dom';
+import ProtectedRoute from '@/components/ProtectedRoute';
+import GuildLayout from '@/components/GuildLayout';
+import Login from '@/pages/Login';
+import Register from '@/pages/Register';
+import ForgotPassword from '@/pages/ForgotPassword';
+import ResetPassword from '@/pages/ResetPassword';
+import Landing from '@/pages/Landing';
+import LinkDiscord from '@/pages/LinkDiscord';
+import Dashboard from '@/pages/Dashboard';
+import Games from '@/pages/Games';
+import Leaderboard from '@/pages/Leaderboard';
+import Profile from '@/pages/Profile';
+import Admin from '@/pages/Admin';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -34,7 +48,21 @@ const AuthenticatedApp = () => {
   // Render the main app
   return (
     <Routes>
-      {/* Add your page Route elements here */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/" element={<Landing />} />
+      <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
+        <Route element={<GuildLayout />}>
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/link-discord" element={<LinkDiscord />} />
+          <Route path="/games" element={<Games />} />
+          <Route path="/leaderboard" element={<Leaderboard />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/admin" element={<Admin />} />
+        </Route>
+      </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

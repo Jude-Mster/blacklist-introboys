@@ -1,0 +1,40 @@
+{
+  "name": "Bet",
+  "type": "object",
+  "properties": {
+    "member_id": {
+      "type": "string"
+    },
+    "discord_id": {
+      "type": "string"
+    },
+    "game": {
+      "type": "string",
+      "enum": [
+        "coinflip",
+        "dragondice",
+        "lanternslots"
+      ]
+    },
+    "wager": {
+      "type": "integer"
+    },
+    "payout": {
+      "type": "integer",
+      "description": "Total returned to the member (0 on a loss, wager*multiplier on a win)"
+    },
+    "won": {
+      "type": "boolean"
+    },
+    "outcome": {
+      "type": "object",
+      "description": "Game-specific result detail (e.g. coin side, dice roll, slot reels)"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "name": "PointLog",
+  "type": "object",
+  "properties": {
+    "member_id": {
+      "type": "string",
+      "description": "Member row id this log entry belongs to"
+    },
+    "discord_id": {
+      "type": "string"
+    },
+    "amount": {
+      "type": "integer",
+      "description": "Points added (positive) or removed (negative)"
+    },
+    "balance_after": {
+      "type": "integer"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "award",
+        "game",
+        "daily",
+        "admin",
+        "import"
+      ]
+    },
+    "reason": {
+      "type": "string"
+    },
+    "by_member_id": {
+      "type": "string",
+      "description": "Member id of the officer/leader who awarded, if applicable"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}
