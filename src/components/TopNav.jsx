@@ -35,7 +35,7 @@ export default function TopNav() {
 
         <nav className="hidden items-center gap-1 md:flex" aria-label="Main">
           {NAV.map((n) => (
-            <NavLink key={n.to} {...n} active={location.pathname.startsWith(n.to)} />
+            <NavLink key={n.to} {...n} active={location.pathname.startsWith(n.to) || (n.to === "/games" && location.pathname.startsWith("/poker"))} />
           ))}
           {isAdmin && <NavLink to="/admin" label="Admin" icon={Shield} active={location.pathname === "/admin"} />}
         </nav>

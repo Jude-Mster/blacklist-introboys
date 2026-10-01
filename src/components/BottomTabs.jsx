@@ -20,7 +20,7 @@ export default function BottomTabs() {
     >
       <div className="mx-auto flex max-w-md items-stretch justify-around gap-1.5 px-2 py-2">
         {tabs.map((t) => {
-          const active = location.pathname.startsWith(t.to);
+          const active = location.pathname.startsWith(t.to) || (t.to === "/games" && location.pathname.startsWith("/poker"));
           return (
             <Link
               key={t.to}

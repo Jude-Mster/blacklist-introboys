@@ -44,7 +44,8 @@ export default function SettingsSection() {
           house_edge_pct: s.house_edge_pct,
           award_cap_per_day: s.award_cap_per_day,
           daily_wheel_prizes: Array.isArray(s.daily_wheel_prizes) ? s.daily_wheel_prizes : String(s.daily_wheel_prizes).split(","),
-          games_enabled: s.games_enabled || []
+          games_enabled: s.games_enabled || [],
+          chat_enabled: s.chat_enabled !== false
         }
       });
       setForm(null);
@@ -123,6 +124,16 @@ export default function SettingsSection() {
               );
             })}
           </div>
+          <p className="label mt-4">Chat</p>
+          <button
+            type="button"
+            data-on={s.chat_enabled !== false}
+            aria-pressed={s.chat_enabled !== false}
+            onClick={() => set("chat_enabled", s.chat_enabled === false)}
+            className="btn-bronze h-9 px-3 text-sm"
+          >
+            {s.chat_enabled === false ? "Chat is off" : "Chat is on"}
+          </button>
         </fieldset>
 
         {msg && <p role="status" className="text-sm text-jade">{msg}</p>}

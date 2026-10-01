@@ -1,122 +1,123 @@
 import React, { useState } from "react";
+import Avatar from "@/components/Avatar";
 import { Navigate, Link } from "react-router-dom";
 import Panel from "@/components/Panel";
 import LanternSpinner from "@/components/LanternSpinner";
-import { Image } from "@/components/ui/image";
-import { Button } from "@/components/ui/button";
+import ActivityList from "@/components/ActivityList";
 import { useGuild } from "@/lib/GuildContext";
-import { Shield } from "lucide-react";
+import { Points, ROLE_TITLE } from "@/components/SealLogo";
+import { GAME_NAME, FACTIONS } from "@/lib/games";
 import { cn } from "@/lib/utils";
 
-const SOURCE_LABEL = { award: "Award", game: "Game", daily: "Daily", admin: "Admin", import: "Import" };
-const SOURCES = ["all", "award", "game", "daily", "admin", "import"];
+const SOURCES = [
+  { id: "all", label: "All" },
+  { id: "award", label: "Awards" },
+  { id: "game", label: "Games" },
+  { id: "daily", label: "Daily" },
+  { id: "poker", label: "Poker" },
+  { id: "import", label: "Starting" }
+];
+
+function describe(b) {
+  const o = b.outcome || {};
+  switch (b.game) {
+    case "coinflip":
+      return `Called ${o.choice === "tails" ? "Yin" : "Yang"}, landed ${o.side === "tails" ? "Yin" : "Yang"}`;
+    case "dragondice":
+      return `Rolled ${o.roll} · needed ${o.direction} ${o.target}`;
+    case "lanternslots":
+      return (o.reels || []).join(" · ");
+    case "roulette":
+      return `Ball on ${o.number} · ${(o.bets || []).length} bet${(o.bets || []).length === 1 ? "" : "s"}`;
+    case "skywheel":
+      return `Backed ${FACTIONS[o.pick]?.name || o.pick}, landed ${FACTIONS[o.landed]?.name || o.landed}`;
+    default:
+      return "";
+  }
+}
 
 export default function Profile() {
   const { account, loading } = useGuild();
   const [logFilter, setLogFilter] = useState("all");
-  const [betFilter, setBetFilter] = useState("all");
 
   if (loading) return <LanternSpinner label="Opening your scroll" className="py-24" />;
   if (!account || !account.linked) return <Navigate to="/link-discord" replace />;
 
   const m = account.member;
   const logs = (account.recentLogs || []).filter((l) => logFilter === "all" || l.source === logFilter);
-  const bets = (account.recentBets || []).filter((b) => betFilter === "all" || b.game === betFilter);
+  const bets = account.recentBets || [];
 
   return (
-    <div className="space-y-6">
-      <Panel className="p-6">
-        <div className="flex items-center gap-4">
-          {m.avatar_url ? (
-            <Image src={m.avatar_url} fittingType="fill" className="w-16 h-16 rounded-full border border-gold/40" />
-          ) : (
-            <div className="w-16 h-16 rounded-full bg-crimson text-gold font-heading flex items-center justify-center text-xl border border-gold/40">
-              {(m.discord_name || "?").charAt(0).toUpperCase()}
-            </div>
-          )}
-          <div className="flex-1 min-w-0">
-            <h1 className="font-heading text-2xl text-gold font-bold truncate">{m.discord_name || m.discord_id}</h1>
-            <p className="text-sm text-muted-foreground flex items-center gap-2 capitalize">
-              <Shield className="w-4 h-4" /> {m.role}
+    <div className="space-y-5">
+      <Panel>
+        <div className="flex items-center gap-4 p-5">
+          <Avatar url={m.avatar_url} name={m.discord_name} size={64} className="border-2 border-gold/70" />
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate font-heading text-2xl font-bold">{m.discord_name || m.discord_id}</h1>
+            <p className="text-sm">
+              <span className="text-gold">{ROLE_TITLE[m.role] || m.role}</span>
+              <span className="text-mist"> · rank #{account.rank}</span>
             </p>
+            {m.discord_username && <p className="truncate text-xs text-mist">@{m.discord_username}</p>}
           </div>
-          <div className="text-right">
-            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Balance</p>
-            <p className="font-heading text-2xl text-gold tabular-nums">{m.points.toLocaleString()}</p>
-          </div>
+          <Points value={m.points} className="hidden font-heading text-2xl font-extrabold text-gold sm:inline-flex" iconSize={22} />
         </div>
         {(m.role === "officer" || m.role === "leader") && (
-          <div className="mt-4 md:hidden">
-            <Link to="/admin">
-              <Button variant="outline" className="border-gold/40 text-gold hover:bg-gold/10 w-full">Open Admin</Button>
-            </Link>
+          <div className="border-t border-bronze/40 p-3 md:hidden">
+            <Link to="/admin" className="btn-bronze h-10 w-full text-sm">Open the admin hall</Link>
           </div>
         )}
       </Panel>
 
-      <Panel className="p-6">
-        <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-          <h2 className="font-heading text-lg text-gold font-bold">Point history</h2>
-          <FilterTabs value={logFilter} setValue={setLogFilter} options={SOURCES} />
-        </div>
-        <ul className="space-y-2">
-          {logs.length === 0 && <li className="text-sm text-muted-foreground">No entries.</li>}
-          {logs.map((l) => (
-            <li key={l.id} className="flex items-center justify-between gap-3 text-sm border-b border-gold/10 pb-2 last:border-0">
-              <div className="min-w-0">
-                <p className="truncate">
-                  <span className={cn("font-medium", l.amount >= 0 ? "text-jade" : "text-ember")}>
-                    {l.amount >= 0 ? "+" : ""}{l.amount.toLocaleString()}
-                  </span>{" "}
-                  <span className="text-muted-foreground">{SOURCE_LABEL[l.source] || l.source}</span>
-                </p>
-                <p className="text-xs text-muted-foreground/70 truncate">{l.reason || "—"}</p>
-              </div>
-              <span className="text-xs text-muted-foreground/70 tabular-nums shrink-0">{new Date(l.created_date).toLocaleString()}</span>
-            </li>
+      <Panel title="Point history">
+        <div className="-mx-1 mb-3 flex gap-1.5 overflow-x-auto px-1" role="tablist" aria-label="Filter history">
+          {SOURCES.map((s) => (
+            <button
+              key={s.id}
+              role="tab"
+              aria-selected={logFilter === s.id}
+              data-on={logFilter === s.id}
+              onClick={() => setLogFilter(s.id)}
+              className="btn-bronze h-8 shrink-0 px-3 text-xs"
+            >
+              {s.label}
+            </button>
           ))}
-        </ul>
+        </div>
+        <ActivityList logs={logs} />
+        <p className="mt-2 text-center text-xs text-mist/70">Showing your latest 50 changes.</p>
       </Panel>
 
-      <Panel className="p-6">
-        <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-          <h2 className="font-heading text-lg text-gold font-bold">Bet history</h2>
-          <FilterTabs value={betFilter} setValue={setBetFilter} options={["all", "coinflip", "dragondice", "lanternslots"]} />
-        </div>
-        <ul className="space-y-2">
-          {bets.length === 0 && <li className="text-sm text-muted-foreground">No bets yet.</li>}
-          {bets.map((b) => (
-            <li key={b.id} className="flex items-center justify-between gap-3 text-sm border-b border-gold/10 pb-2 last:border-0">
-              <div>
-                <p className="capitalize">{b.game} · wager {b.wager.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground/70">{new Date(b.created_date).toLocaleString()}</p>
-              </div>
-              <span className={cn("font-medium tabular-nums", b.won ? "text-jade" : "text-ember")}>
-                {b.won ? `+${(b.payout - b.wager).toLocaleString()}` : `-${b.wager.toLocaleString()}`}
-              </span>
-            </li>
-          ))}
-        </ul>
+      <Panel title="Games played">
+        {bets.length === 0 ? (
+          <p className="py-4 text-center text-sm text-mist">
+            No games yet. <Link to="/games" className="text-gold hover:underline">Try your luck</Link>.
+          </p>
+        ) : (
+          <ul className="divide-y divide-bronze/25">
+            {bets.map((b) => {
+              const net = b.payout - b.wager;
+              return (
+                <li key={b.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                  <div className="min-w-0">
+                    <p className="truncate">
+                      <span className="font-medium">{GAME_NAME[b.game] || b.game}</span>
+                      <span className="text-mist"> · wager {b.wager.toLocaleString()}</span>
+                    </p>
+                    <p className="truncate text-xs text-mist">
+                      {describe(b)} · {new Date(b.created_date).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                    </p>
+                  </div>
+                  <span className={cn("shrink-0 font-heading font-bold tabular-nums", b.won ? "text-jade" : "text-ember")}>
+                    {net >= 0 ? "+" : "−"}
+                    {Math.abs(net).toLocaleString()}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </Panel>
-    </div>
-  );
-}
-
-function FilterTabs({ value, setValue, options }) {
-  return (
-    <div className="flex gap-1 overflow-x-auto">
-      {options.map((o) => (
-        <button
-          key={o}
-          onClick={() => setValue(o)}
-          className={cn(
-            "px-3 py-1 rounded-md text-xs font-medium capitalize transition-colors whitespace-nowrap",
-            value === o ? "bg-gold/15 text-gold" : "text-muted-foreground hover:text-gold"
-          )}
-        >
-          {o}
-        </button>
-      ))}
     </div>
   );
 }

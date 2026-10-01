@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import {
   getSettings, getMemberByUserId, changePoints, withMemberLock, houseEdge, todayStr,
-  resolveCoinFlip, resolveDragonDice, resolveLanternSlots, resolveSkyWheel,
+  resolveCoinFlip, resolveDragonDice, resolveLanternSlots, resolveSkyWheel, resolveRoulette, validRouletteBet,
   WHEEL_SEGMENTS, UserError, errorResponse
 } from '../../shared/points.ts';
 
@@ -9,7 +9,8 @@ const GAME_LABEL = {
   coinflip: 'Yin Yang Toss',
   dragondice: 'Dragon Dice',
   lanternslots: 'Lantern Slots',
-  skywheel: 'Twelve Skies Wheel'
+  skywheel: 'Twelve Skies Wheel',
+  roulette: 'Jade Roulette'
 };
 
 export default async function(req) {
@@ -28,10 +29,24 @@ export default async function(req) {
       throw new UserError('This game is closed right now.');
     const edge = houseEdge(settings);
 
-    const w = Math.floor(Number(wager));
+    if (game === 'poker') throw new UserError('Poker is played at the tables.');
+
+    // Roulette: the wager is the total of every chip on the board.
+    let rouletteBets = null;
+    if (game === 'roulette') {
+      const raw = Array.isArray(choice && choice.bets) ? choice.bets : [];
+      if (raw.length === 0) throw new UserError('Place at least one chip.');
+      if (raw.length > 40) throw new UserError('Too many separate bets. Use bigger chips.');
+      rouletteBets = raw.map((x) => ({ type: x.type, value: x.value, amount: Math.floor(Number(x.amount)) }));
+      if (!rouletteBets.every((x) => validRouletteBet(x) && Number.isInteger(x.amount) && x.amount > 0)) {
+        throw new UserError('One of those bets is not valid.');
+      }
+    }
+
+    const w = rouletteBets ? rouletteBets.reduce((t, x) => t + x.amount, 0) : Math.floor(Number(wager));
     if (!Number.isInteger(w) || w < 1) throw new UserError('Enter a wager.');
-    if (w < settings.min_bet) throw new UserError(`The minimum wager is ${settings.min_bet}.`);
-    if (w > settings.max_bet) throw new UserError(`The maximum wager is ${settings.max_bet}.`);
+    if (w < settings.min_bet) throw new UserError(`The minimum wager is ${settings.min_bet}${rouletteBets ? ' in total' : ''}.`);
+    if (w > settings.max_bet) throw new UserError(`The maximum wager is ${settings.max_bet}${rouletteBets ? ' in total' : ''}.`);
 
     // Validate the pick before taking the lock.
     let resolve;
@@ -49,6 +64,8 @@ export default async function(req) {
     } else if (game === 'skywheel') {
       if (!WHEEL_SEGMENTS.includes(choice)) throw new UserError('Pick a faction.');
       resolve = () => resolveSkyWheel(w, choice, edge);
+    } else if (game === 'roulette') {
+      resolve = () => resolveRoulette(rouletteBets);
     } else {
       throw new UserError('Unknown game.');
     }

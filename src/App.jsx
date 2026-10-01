@@ -21,6 +21,7 @@ import Games from '@/pages/Games';
 import Leaderboard from '@/pages/Leaderboard';
 import Profile from '@/pages/Profile';
 import Admin from '@/pages/Admin';
+import Poker from '@/pages/Poker';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -59,6 +60,8 @@ const AuthenticatedApp = () => {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/link-discord" element={<LinkDiscord />} />
           <Route path="/games" element={<Games />} />
+          <Route path="/poker" element={<Poker />} />
+          <Route path="/poker/:tableId" element={<Poker />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/admin" element={<Admin />} />

@@ -8,7 +8,9 @@ export const GAMES = [
   { id: "coinflip", name: "Yin Yang Toss", blurb: "Call Yin or Yang. Even odds." },
   { id: "dragondice", name: "Dragon Dice", blurb: "Set your own odds on a roll of 1 to 100." },
   { id: "lanternslots", name: "Lantern Slots", blurb: "Three reels. Three seals pays 50×." },
-  { id: "skywheel", name: "Twelve Skies Wheel", blurb: "Back a faction and spin the wheel." }
+  { id: "skywheel", name: "Twelve Skies Wheel", blurb: "Back a faction and spin the wheel." },
+  { id: "roulette", name: "Jade Roulette", blurb: "Single-zero roulette. Spread your chips." },
+  { id: "poker", name: "Poker Room", blurb: "Texas Hold'em against other members.", href: "/poker" }
 ];
 
 export const coinMultiplier = (edge) => round2(2 * (1 - edge));
@@ -42,3 +44,23 @@ export const wheelMultiplier = (pick, edge) => {
 };
 
 export const GAME_NAME = Object.fromEntries(GAMES.map((g) => [g.id, g.name]));
+// ---------- Roulette ----------
+export const ROULETTE_ORDER = [
+  0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10,
+  5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26
+];
+export const ROULETTE_RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
+export const rouletteColor = (n) => (n === 0 ? "green" : ROULETTE_RED.has(n) ? "red" : "black");
+export const ROULETTE_PAYS = { straight: 35, color: 1, parity: 1, half: 1, dozen: 2, column: 2 };
+export const betKey = (b) => `${b.type}:${b.value}`;
+export function betLabel(b) {
+  switch (b.type) {
+    case "straight": return String(b.value);
+    case "color": return b.value === "red" ? "Red" : "Black";
+    case "parity": return b.value === "odd" ? "Odd" : "Even";
+    case "half": return b.value === "low" ? "1–18" : "19–36";
+    case "dozen": return ["1st 12", "2nd 12", "3rd 12"][b.value - 1];
+    case "column": return `Column ${b.value}`;
+    default: return "";
+  }
+}
