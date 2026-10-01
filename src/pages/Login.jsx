@@ -1,10 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { LogIn, Mail, Lock, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
 import { safeReturnTo } from "@/lib/authReturnTo";
@@ -14,9 +11,10 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  // Post-login destination (e.g. the MCP OAuth consent page sends users here
-  // with returnTo so the grant flow can resume). Same-origin paths only.
+  const [showEmail, setShowEmail] = useState(false);
+  // Same-origin path to return to after login (defaults to "/").
   const returnTo = safeReturnTo();
+  const afterLogin = returnTo === "/" ? "/dashboard" : returnTo;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -24,109 +22,86 @@ export default function Login() {
     setLoading(true);
     try {
       await base44.auth.loginViaEmailPassword(email, password);
-      window.location.href = returnTo;
+      window.location.href = afterLogin;
     } catch (err) {
-      setError(err.message || "Invalid email or password");
-    } finally {
+      setError(err.message || "That email and password don't match. Try again or reset your password.");
       setLoading(false);
     }
   };
 
   const handleGoogle = () => {
-    base44.auth.loginWithProvider("google", returnTo);
+    base44.auth.loginWithProvider("google", afterLogin);
   };
 
   return (
     <AuthLayout
-      icon={LogIn}
-      title="Welcome back"
-      subtitle="Log in to your account"
+      title="Enter the guild hall"
+      subtitle="Log in, then link your Discord to see your points."
       footer={
         <>
-          Don't have an account?{" "}
+          New here?{" "}
           <Link
             to={"/register" + (returnTo !== "/" ? "?returnTo=" + encodeURIComponent(returnTo) : "")}
-            className="text-primary font-medium hover:underline"
+            className="font-medium text-gold underline-offset-4 hover:underline"
           >
-            Create one
+            Create an account
           </Link>
         </>
       }
     >
-      <Button
-        variant="outline"
-        className="w-full h-12 text-sm font-medium mb-6"
-        onClick={handleGoogle}
-      >
-        <GoogleIcon className="w-5 h-5 mr-2" />
+      <button type="button" onClick={handleGoogle} className="btn-bronze h-12 w-full text-[15px]">
+        <GoogleIcon className="h-5 w-5" />
         Continue with Google
-      </Button>
+      </button>
 
-      <div className="relative mb-6">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-border" />
-        </div>
-        <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-card px-3 text-muted-foreground">or</span>
-        </div>
-      </div>
+      <div className="divider-knot my-5 text-xs">or</div>
 
-      {error && (
-        <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-          {error}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
-          <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
-            <Input
+      {!showEmail ? (
+        <button type="button" onClick={() => setShowEmail(true)} className="w-full text-center text-sm text-mist hover:text-gold">
+          Log in with email instead
+        </button>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <p role="alert" className="rounded-md border border-ember/40 bg-ember/10 p-3 text-sm text-ember">
+              {error}
+            </p>
+          )}
+          <div>
+            <label htmlFor="email" className="label">Email</label>
+            <input
               id="email"
               type="email"
               autoComplete="email"
               autoFocus
-              placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="pl-10 h-12"
+              className="field"
               required
             />
           </div>
-        </div>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="password">Password</Label>
-            <Link to="/forgot-password" className="text-xs text-primary hover:underline">
-              Forgot password?
-            </Link>
-          </div>
-          <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
-            <Input
+          <div>
+            <div className="flex items-center justify-between">
+              <label htmlFor="password" className="label">Password</label>
+              <Link to="/forgot-password" className="mb-1.5 text-xs text-gold hover:underline">
+                Forgot password?
+              </Link>
+            </div>
+            <input
               id="password"
               type="password"
               autoComplete="current-password"
-              placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="pl-10 h-12"
+              className="field"
               required
             />
           </div>
-        </div>
-        <Button type="submit" className="w-full h-12 font-medium" disabled={loading}>
-          {loading ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Logging in...
-            </>
-          ) : (
-            "Log in"
-          )}
-        </Button>
-      </form>
+          <button type="submit" className="btn-seal h-12 w-full text-base" disabled={loading}>
+            {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Logging in</> : "Log in"}
+          </button>
+        </form>
+      )}
     </AuthLayout>
   );
 }

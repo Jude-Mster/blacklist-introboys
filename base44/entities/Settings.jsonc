@@ -49,14 +49,20 @@
         "enum": [
           "coinflip",
           "dragondice",
-          "lanternslots"
+          "lanternslots",
+          "skywheel"
         ]
       },
       "default": [
         "coinflip",
         "dragondice",
-        "lanternslots"
+        "lanternslots",
+        "skywheel"
       ]
+    },
+    "discord_invite_url": {
+      "type": "string",
+      "description": "Invite link shown to people who aren't in the server yet"
     }
   },
   "rls": {

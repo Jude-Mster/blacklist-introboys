@@ -1,14 +1,12 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import Panel from "@/components/Panel";
-import MemberSearch from "./MemberSearch";
-import { useGuild } from "@/lib/GuildContext";
+import MemberSearch, { SelectedMember } from "./MemberSearch";
+import { useGuild, errorText } from "@/lib/GuildContext";
 
 export default function AwardSection() {
-  const { reload } = useGuild();
+  const { reload, account, settings } = useGuild();
+  const isLeader = account?.member?.role === "leader";
   const [target, setTarget] = useState(null);
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
@@ -16,57 +14,71 @@ export default function AwardSection() {
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
 
-  const submit = async () => {
-    if (!target) { setError("Select a member first."); return; }
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!target) return setError("Choose a member first.");
     setBusy(true);
     setError("");
     setMsg("");
     try {
-      const res = await base44.functions.invoke("awardPoints", {
-        discordId: target.discord_id,
-        amount: Number(amount),
-        reason
-      });
-      setMsg(`Done. New balance: ${res.data.balance.toLocaleString()}`);
+      const amt = Number(amount);
+      const res = await base44.functions.invoke("awardPoints", { discordId: target.discord_id, amount: amt, reason });
+      setMsg(`${amt > 0 ? "Awarded" : "Took"} ${Math.abs(amt).toLocaleString()} points ${amt > 0 ? "to" : "from"} ${res.data.name}. New balance: ${res.data.balance.toLocaleString()}.`);
       setAmount("");
       setReason("");
       setTarget(null);
-      await reload();
-    } catch (e) {
-      const data = e && e.response && e.response.data;
-      setError(data && data.error ? data.error : e.message || "Award failed.");
+      reload();
+    } catch (err) {
+      setError(errorText(err, "The award didn't go through."));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <Panel className="p-6">
-      <h2 className="font-heading text-xl text-gold font-bold mb-1">Award points</h2>
-      <p className="text-sm text-muted-foreground mb-4">Search a member, set an amount and a required reason.</p>
-
-      <div className="space-y-3">
+    <Panel title="Award points">
+      <form onSubmit={submit} className="space-y-4">
         <div>
-          <Label className="text-muted-foreground">Member</Label>
-          <div className="mt-1"><MemberSearch onSelect={setTarget} /></div>
-          {target && <p className="text-xs text-gold mt-1">Selected: {target.discord_name || target.discord_id}</p>}
+          <p className="label">Member</p>
+          {target ? <SelectedMember m={target} onClear={() => setTarget(null)} /> : <MemberSearch onSelect={setTarget} />}
         </div>
-        <div>
-          <Label htmlFor="amt" className="text-muted-foreground">Amount</Label>
-          <Input id="amt" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="mt-1 bg-ink/60 border-gold/30 text-gold tabular-nums" />
+        <div className="grid gap-4 sm:grid-cols-[140px_1fr]">
+          <div>
+            <label htmlFor="award-amount" className="label">Points</label>
+            <input
+              id="award-amount"
+              type="number"
+              inputMode="numeric"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="field font-bold text-gold"
+              required
+            />
+          </div>
+          <div>
+            <label htmlFor="award-reason" className="label">Reason</label>
+            <input
+              id="award-reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Guild war MVP, boss raid, helping a new member"
+              className="field"
+              maxLength={120}
+              required
+            />
+          </div>
         </div>
-        <div>
-          <Label htmlFor="rsn" className="text-muted-foreground">Reason</Label>
-          <Input id="rsn" value={reason} onChange={(e) => setReason(e.target.value)} className="mt-1 bg-ink/60 border-gold/30 text-gold" />
-        </div>
-      </div>
-
-      {msg && <p className="text-jade text-sm mt-3">{msg}</p>}
-      {error && <p className="text-ember text-sm mt-3">{error}</p>}
-
-      <Button onClick={submit} disabled={busy} className="mt-4 bg-crimson hover:bg-ember text-gold font-heading tracking-wider border border-gold/40">
-        {busy ? "Awarding…" : "Award"}
-      </Button>
+        <p className="text-xs text-mist">
+          {isLeader
+            ? "As Guild Master you can also enter a negative number to take points away."
+            : `Elders can give up to ${(settings?.award_cap_per_day || 0).toLocaleString()} points per 24 hours.`}
+        </p>
+        {msg && <p role="status" className="text-sm text-jade">{msg}</p>}
+        {error && <p role="alert" className="text-sm text-ember">{error}</p>}
+        <button type="submit" disabled={busy} className="btn-seal h-11 px-6">
+          {busy ? "Awarding" : "Award points"}
+        </button>
+      </form>
     </Panel>
   );
 }

@@ -13,7 +13,8 @@
       "enum": [
         "coinflip",
         "dragondice",
-        "lanternslots"
+        "lanternslots",
+        "skywheel"
       ]
     },
     "wager": {

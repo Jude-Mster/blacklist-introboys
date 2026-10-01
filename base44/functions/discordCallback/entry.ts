@@ -2,89 +2,137 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { secrets } from 'base44:runtime';
 import { getSettings } from '../../shared/points.ts';
 
+const DISCORD_API = 'https://discord.com/api/v10';
+
+function secret(name: string) {
+  try {
+    const v = secrets.get(name);
+    return v ? String(v).trim() : '';
+  } catch {
+    return '';
+  }
+}
+
 function avatarUrl(me) {
-  if (!me.avatar) return '';
+  if (!me.avatar) {
+    // Discord's default avatar for accounts without one.
+    const idx = Number((BigInt(me.id) >> 22n) % 6n);
+    return `https://cdn.discordapp.com/embed/avatars/${idx}.png`;
+  }
   const ext = me.avatar.startsWith('a_') ? 'gif' : 'png';
-  return `https://cdn.discordapp.com/avatars/${me.id}/${me.avatar}.${ext}`;
+  return `https://cdn.discordapp.com/avatars/${me.id}/${me.avatar}.${ext}?size=128`;
+}
+
+// Is this Base44 user the app owner/admin? The owner always gets in as leader,
+// so a wrong or missing guild ID can never lock them out of the admin page.
+async function isAppAdmin(b, userId) {
+  try {
+    const u = await b.asServiceRole.entities.User.get(userId);
+    return u && u.role === 'admin';
+  } catch {
+    return false;
+  }
 }
 
 export default async function(req) {
+  const appUrl = (secret('APP_URL') || new URL(req.url).origin).replace(/\/$/, '');
+  const back = (path: string) => Response.redirect(appUrl + path, 302);
+  const fail = (code: string) => back(`/link-discord?error=${code}`);
+
   try {
     const b = createClientFromRequest(req);
     const u = new URL(req.url);
+    if (u.searchParams.get('error')) return fail('cancelled'); // user pressed Cancel on Discord
     const code = u.searchParams.get('code');
     const state = u.searchParams.get('state');
-    if (!code || !state) return new Response('Missing code or state.', { status: 400 });
+    if (!code || !state) return fail('state');
 
     const { items } = await b.asServiceRole.entities.OAuthState.filter({ state }, { limit: 1 });
-    if (items.length === 0) return new Response('Invalid or expired state.', { status: 400 });
+    if (items.length === 0) return fail('state');
     const st = items[0];
     await b.asServiceRole.entities.OAuthState.delete(st.id);
-    if (new Date(st.expires_at) < new Date()) return new Response('State expired. Please try again.', { status: 400 });
+    if (new Date(st.expires_at) < new Date()) return fail('state');
 
-    const clientId = secrets.get('DISCORD_CLIENT_ID');
-    const clientSecret = secrets.get('DISCORD_CLIENT_SECRET');
-    const redirectUri = secrets.get('DISCORD_REDIRECT_URI');
-    const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
+    const tokenRes = await fetch(`${DISCORD_API}/oauth2/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
+        client_id: secret('DISCORD_CLIENT_ID'),
+        client_secret: secret('DISCORD_CLIENT_SECRET'),
         grant_type: 'authorization_code',
         code,
-        redirect_uri: redirectUri
+        redirect_uri: secret('DISCORD_REDIRECT_URI')
       })
     });
     if (!tokenRes.ok) {
-      const t = await tokenRes.text();
-      return new Response('Discord token exchange failed: ' + t, { status: 400 });
+      console.log('Token exchange failed', tokenRes.status, await tokenRes.text());
+      return fail('token');
     }
-    const token = await tokenRes.json();
-    const accessToken = token.access_token;
+    const { access_token: accessToken } = await tokenRes.json();
+    const auth = { headers: { Authorization: `Bearer ${accessToken}` } };
 
-    const meRes = await fetch('https://discord.com/api/users/@me', { headers: { Authorization: `Bearer ${accessToken}` } });
+    const [meRes, guildsRes] = await Promise.all([
+      fetch(`${DISCORD_API}/users/@me`, auth),
+      fetch(`${DISCORD_API}/users/@me/guilds?limit=200`, auth)
+    ]);
+    if (!meRes.ok) return fail('token');
     const me = await meRes.json();
-    const guildsRes = await fetch('https://discord.com/api/users/@me/guilds', { headers: { Authorization: `Bearer ${accessToken}` } });
-    const guilds = await guildsRes.json();
+    if (guildsRes.status === 429) return fail('busy');
+    const guilds = guildsRes.ok ? await guildsRes.json() : [];
 
     const settings = await getSettings(b);
-    const settingsGuildId = String(settings.guild_id ?? '').trim();
-    const userGuildIds = Array.isArray(guilds) ? guilds.map(g => String(g.id)) : [];
-    const inGuild = settingsGuildId !== '' && userGuildIds.includes(settingsGuildId);
-    if (!inGuild) {
+    // Discord IDs are 17-20 digit strings. Always compare them as text.
+    const guildId = String(settings.guild_id || secret('DISCORD_GUILD_ID') || '').trim();
+    const myGuild = Array.isArray(guilds) ? guilds.find((g) => String(g.id) === guildId) : null;
+    const admin = await isAppAdmin(b, st.user_id);
+
+    if (!myGuild && !admin) {
       console.log('Guild check failed', JSON.stringify({
-        settings_guild_id: settingsGuildId,
-        settings_guild_id_type: typeof settings.guild_id,
-        user_guild_ids: userGuildIds,
-        discord_user: me.id,
-        guilds_response_is_array: Array.isArray(guilds)
+        configured_guild_id: guildId || '(not set)',
+        user_guild_ids: Array.isArray(guilds) ? guilds.map((g) => String(g.id)) : guilds,
+        discord_user: me.id
       }));
-      return new Response('You are not a member of the BLACKLIST INTROBOYS guild.', { status: 403 });
+      return fail(guildId ? 'not_in_guild' : 'guild_not_set');
     }
 
-    const { items: existing } = await b.asServiceRole.entities.Member.filter({ discord_id: me.id }, { limit: 1 });
+    const isGuildOwner = !!(myGuild && myGuild.owner);
+    const profile = {
+      user_id: st.user_id,
+      discord_name: me.global_name || me.username,
+      discord_username: me.username,
+      avatar_url: avatarUrl(me)
+    };
+
+    // Unlink this Base44 user from any other Discord account they linked before.
+    const { items: previous } = await b.asServiceRole.entities.Member.filter({ user_id: st.user_id }, { limit: 5 });
+    for (const p of previous) {
+      if (p.discord_id !== String(me.id)) await b.asServiceRole.entities.Member.update(p.id, { user_id: '' });
+    }
+
+    const { items: existing } = await b.asServiceRole.entities.Member.filter({ discord_id: String(me.id) }, { limit: 1 });
     if (existing.length > 0) {
-      await b.asServiceRole.entities.Member.update(existing[0].id, {
-        user_id: st.user_id,
-        discord_name: me.username,
-        avatar_url: avatarUrl(me)
-      });
+      const m = existing[0];
+      const promote = (admin || isGuildOwner) && m.role !== 'leader';
+      await b.asServiceRole.entities.Member.update(m.id, { ...profile, ...(promote ? { role: 'leader' } : {}) });
     } else {
       await b.asServiceRole.entities.Member.create({
-        user_id: st.user_id,
-        discord_id: me.id,
-        discord_name: me.username,
-        avatar_url: avatarUrl(me),
+        ...profile,
+        discord_id: String(me.id),
         points: 0,
-        role: 'member',
+        role: admin || isGuildOwner ? 'leader' : 'member',
         banned: false
       });
     }
 
-    const origin = new URL(req.url).origin;
-    return Response.redirect(origin + '/', 302);
+    // First leader to log in fills in the guild ID automatically when it's blank
+    // and they came through a guild they own.
+    if (!settings.guild_id && isGuildOwner) {
+      await b.asServiceRole.entities.Settings.update(settings.id, { guild_id: guildId });
+    }
+
+    return back('/dashboard?linked=1');
   } catch (e) {
-    return new Response('Callback error: ' + e.message, { status: 500 });
+    console.error('Callback error', e);
+    return fail('server');
   }
 }

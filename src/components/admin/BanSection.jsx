@@ -1,47 +1,72 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { Button } from "@/components/ui/button";
 import Panel from "@/components/Panel";
-import MemberSearch from "./MemberSearch";
-import { useGuild } from "@/lib/GuildContext";
+import MemberSearch, { SelectedMember } from "./MemberSearch";
+import { useGuild, errorText } from "@/lib/GuildContext";
 
+// Ban or unban a member; the leader can also promote Elders (officers).
 export default function BanSection() {
-  const { reload } = useGuild();
+  const { account } = useGuild();
+  const isLeader = account?.member?.role === "leader";
   const [target, setTarget] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
 
-  const act = async (ban) => {
-    if (!target) { setError("Select a member first."); return; }
+  const act = async (action, extra = {}, done) => {
     setBusy(true);
     setError("");
     setMsg("");
     try {
-      await base44.functions.invoke("adminAction", { action: ban ? "ban" : "unban", discordId: target.discord_id });
-      setMsg(`${ban ? "Banned" : "Unbanned"} ${target.discord_name || target.discord_id}.`);
-      setTarget(null);
-      await reload();
+      await base44.functions.invoke("adminAction", { action, discordId: target.discord_id, ...extra });
+      setMsg(done);
+      setTarget((t) => ({
+        ...t,
+        ...(action === "ban" ? { banned: true } : action === "unban" ? { banned: false } : { role: extra.role })
+      }));
     } catch (e) {
-      const data = e && e.response && e.response.data;
-      setError(data && data.error ? data.error : e.message || "Action failed.");
+      setError(errorText(e, "That didn't work."));
     } finally {
       setBusy(false);
     }
   };
 
+  const name = target ? target.discord_name || target.discord_id : "";
+
   return (
-    <Panel className="p-6">
-      <h2 className="font-heading text-xl text-gold font-bold mb-1">Ban / unban</h2>
-      <p className="text-sm text-muted-foreground mb-4">Banned members cannot play games or claim daily rewards.</p>
-      <MemberSearch onSelect={setTarget} />
-      {target && <p className="text-xs text-gold mt-2">Selected: {target.discord_name || target.discord_id}{target.banned ? " (banned)" : ""}</p>}
-      {msg && <p className="text-jade text-sm mt-3">{msg}</p>}
-      {error && <p className="text-ember text-sm mt-3">{error}</p>}
-      <div className="mt-4 flex gap-3">
-        <Button onClick={() => act(true)} disabled={busy} variant="outline" className="border-ember/50 text-ember hover:bg-ember/10">Ban</Button>
-        <Button onClick={() => act(false)} disabled={busy} variant="outline" className="border-jade/50 text-jade hover:bg-jade/10">Unban</Button>
-      </div>
+    <Panel title="Manage members">
+      <p className="mb-3 text-sm text-mist">Banned members can't play games or spin the daily wheel. Their points stay.</p>
+      {target ? <SelectedMember m={target} onClear={() => { setTarget(null); setMsg(""); }} /> : <MemberSearch onSelect={setTarget} />}
+
+      {target && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {target.banned ? (
+            <button disabled={busy} onClick={() => act("unban", {}, `${name} can play again.`)} className="btn-bronze h-10 px-4 text-sm">
+              Lift ban
+            </button>
+          ) : (
+            <button
+              disabled={busy || target.role === "leader"}
+              onClick={() => act("ban", {}, `${name} is banned from games.`)}
+              className="btn-bronze h-10 px-4 text-sm !text-ember"
+            >
+              Ban from games
+            </button>
+          )}
+          {isLeader && target.role === "member" && (
+            <button disabled={busy} onClick={() => act("setRole", { role: "officer" }, `${name} is now an Elder.`)} className="btn-bronze h-10 px-4 text-sm">
+              Make Elder
+            </button>
+          )}
+          {isLeader && target.role === "officer" && (
+            <button disabled={busy} onClick={() => act("setRole", { role: "member" }, `${name} is a Disciple again.`)} className="btn-bronze h-10 px-4 text-sm">
+              Remove Elder rank
+            </button>
+          )}
+        </div>
+      )}
+      {msg && <p role="status" className="mt-3 text-sm text-jade">{msg}</p>}
+      {error && <p role="alert" className="mt-3 text-sm text-ember">{error}</p>}
     </Panel>
   );
 }

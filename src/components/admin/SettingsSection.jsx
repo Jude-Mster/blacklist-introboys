@@ -1,20 +1,11 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import Panel from "@/components/Panel";
-import { useGuild } from "@/lib/GuildContext";
-import { cn } from "@/lib/utils";
-
-const GAMES = [
-  { id: "coinflip", label: "Coin Flip" },
-  { id: "dragondice", label: "Dragon Dice" },
-  { id: "lanternslots", label: "Lantern Slots" }
-];
+import { useGuild, errorText } from "@/lib/GuildContext";
+import { GAMES } from "@/lib/games";
 
 export default function SettingsSection() {
-  const { settings, loadSettings } = useGuild();
+  const { settings, loadSettings, reload } = useGuild();
   const [form, setForm] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -24,102 +15,138 @@ export default function SettingsSection() {
   const s = form || settings;
   const set = (k, v) => setForm({ ...s, [k]: v });
 
-  const save = async () => {
+  const call = async (fn, done) => {
     setBusy(true);
     setError("");
     setMsg("");
     try {
-      const payload = {
-        ...s,
-        min_bet: Number(s.min_bet),
-        max_bet: Number(s.max_bet),
-        daily_bet_cap: Number(s.daily_bet_cap),
-        house_edge_pct: Number(s.house_edge_pct),
-        award_cap_per_day: Number(s.award_cap_per_day),
-        daily_wheel_prizes: String(s.daily_wheel_prizes).split(",").map((x) => Number(x.trim())).filter((n) => !isNaN(n))
-      };
-      await base44.functions.invoke("adminAction", { action: "updateSettings", settings: payload });
-      setMsg("Settings saved.");
-      setForm(null);
-      await loadSettings();
+      const text = await fn();
+      setMsg(text || done);
     } catch (e) {
-      const data = e && e.response && e.response.data;
-      setError(data && data.error ? data.error : e.message || "Save failed.");
+      setError(errorText(e, "That didn't save."));
     } finally {
       setBusy(false);
     }
   };
 
-  const register = async () => {
-    setBusy(true);
-    setError("");
-    setMsg("");
-    try {
-      const res = await base44.functions.invoke("registerCommands");
-      setMsg(`Registered ${res.data.registered} slash commands.`);
-    } catch (e) {
-      const data = e && e.response && e.response.data;
-      setError(data && data.error ? data.error : e.message || "Registration failed.");
-    } finally {
-      setBusy(false);
-    }
+  const save = (e) => {
+    e.preventDefault();
+    call(async () => {
+      await base44.functions.invoke("adminAction", {
+        action: "updateSettings",
+        settings: {
+          guild_id: s.guild_id,
+          officer_role_id: s.officer_role_id,
+          discord_invite_url: s.discord_invite_url,
+          min_bet: s.min_bet,
+          max_bet: s.max_bet,
+          daily_bet_cap: s.daily_bet_cap,
+          house_edge_pct: s.house_edge_pct,
+          award_cap_per_day: s.award_cap_per_day,
+          daily_wheel_prizes: Array.isArray(s.daily_wheel_prizes) ? s.daily_wheel_prizes : String(s.daily_wheel_prizes).split(","),
+          games_enabled: s.games_enabled || []
+        }
+      });
+      setForm(null);
+      await Promise.all([loadSettings(), reload()]);
+    }, "Settings saved.");
   };
+
+  const register = () =>
+    call(async () => {
+      const res = await base44.functions.invoke("registerCommands");
+      return `Registered ${res.data.registered} slash commands. They can take a minute to show in Discord.`;
+    });
 
   return (
-    <Panel className="p-6">
-      <h2 className="font-heading text-xl text-gold font-bold mb-1">Settings</h2>
-      <p className="text-sm text-muted-foreground mb-4">Leader only. Configure the guild and game rules.</p>
+    <Panel title="Guild settings">
+      <form onSubmit={save} className="space-y-6">
+        <fieldset className="space-y-4">
+          <legend className="mb-2 font-heading font-bold text-gold">Discord</legend>
+          <Field
+            id="guild_id"
+            label="Server ID"
+            hint="In Discord: Settings → Advanced → Developer Mode on, then long-press your server → Copy Server ID."
+            value={s.guild_id}
+            onChange={(v) => set("guild_id", v.trim())}
+            inputMode="numeric"
+          />
+          <Field
+            id="officer_role_id"
+            label="Officer role ID"
+            hint="Members with this Discord role can use /award. Server Settings → Roles → long-press the role → Copy Role ID."
+            value={s.officer_role_id}
+            onChange={(v) => set("officer_role_id", v.trim())}
+            inputMode="numeric"
+          />
+          <Field
+            id="discord_invite_url"
+            label="Invite link"
+            hint="Shown to people who try to link but aren't in the server yet."
+            value={s.discord_invite_url}
+            onChange={(v) => set("discord_invite_url", v.trim())}
+            placeholder="https://discord.gg/…"
+          />
+        </fieldset>
 
-      <div className="grid sm:grid-cols-2 gap-4">
-        <Field label="Guild ID" value={s.guild_id} onChange={(v) => set("guild_id", v)} />
-        <Field label="Officer role ID" value={s.officer_role_id} onChange={(v) => set("officer_role_id", v)} />
-        <Field label="Min bet" type="number" value={s.min_bet} onChange={(v) => set("min_bet", v)} />
-        <Field label="Max bet" type="number" value={s.max_bet} onChange={(v) => set("max_bet", v)} />
-        <Field label="Daily bet cap" type="number" value={s.daily_bet_cap} onChange={(v) => set("daily_bet_cap", v)} />
-        <Field label="House edge %" type="number" value={s.house_edge_pct} onChange={(v) => set("house_edge_pct", v)} />
-        <Field label="Award cap / day" type="number" value={s.award_cap_per_day} onChange={(v) => set("award_cap_per_day", v)} />
-        <Field label="Daily wheel prizes (comma)" value={Array.isArray(s.daily_wheel_prizes) ? s.daily_wheel_prizes.join(",") : s.daily_wheel_prizes} onChange={(v) => set("daily_wheel_prizes", v)} />
-      </div>
+        <fieldset>
+          <legend className="mb-3 font-heading font-bold text-gold">Games</legend>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <Field id="min_bet" label="Minimum wager" type="number" value={s.min_bet} onChange={(v) => set("min_bet", v)} />
+            <Field id="max_bet" label="Maximum wager" type="number" value={s.max_bet} onChange={(v) => set("max_bet", v)} />
+            <Field id="daily_bet_cap" label="Daily wager limit" type="number" value={s.daily_bet_cap} onChange={(v) => set("daily_bet_cap", v)} />
+            <Field id="house_edge_pct" label="House edge %" type="number" value={s.house_edge_pct} onChange={(v) => set("house_edge_pct", v)} hint="0 to 20. At 3, games return 97% over time." />
+            <Field id="award_cap_per_day" label="Elder award cap / 24h" type="number" value={s.award_cap_per_day} onChange={(v) => set("award_cap_per_day", v)} />
+            <Field
+              id="daily_wheel_prizes"
+              label="Daily wheel prizes"
+              value={Array.isArray(s.daily_wheel_prizes) ? s.daily_wheel_prizes.join(", ") : s.daily_wheel_prizes}
+              onChange={(v) => set("daily_wheel_prizes", v)}
+              hint="2 to 12 amounts, separated by commas."
+            />
+          </div>
+          <p className="label mt-4">Open games</p>
+          <div className="flex flex-wrap gap-2">
+            {GAMES.map((g) => {
+              const on = (s.games_enabled || []).includes(g.id);
+              return (
+                <button
+                  key={g.id}
+                  type="button"
+                  data-on={on}
+                  aria-pressed={on}
+                  onClick={() => set("games_enabled", on ? s.games_enabled.filter((x) => x !== g.id) : [...(s.games_enabled || []), g.id])}
+                  className="btn-bronze h-9 px-3 text-sm"
+                >
+                  {g.name}
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
 
-      <div className="mt-4">
-        <Label className="text-muted-foreground">Enabled games</Label>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {GAMES.map((g) => {
-            const on = (s.games_enabled || []).includes(g.id);
-            return (
-              <button
-                key={g.id}
-                type="button"
-                onClick={() => set("games_enabled", on ? s.games_enabled.filter((x) => x !== g.id) : [...(s.games_enabled || []), g.id])}
-                className={cn("px-3 py-1.5 rounded-md text-sm border", on ? "bg-crimson text-gold border-gold/50" : "border-gold/30 text-muted-foreground")}
-              >
-                {g.label}
-              </button>
-            );
-          })}
+        {msg && <p role="status" className="text-sm text-jade">{msg}</p>}
+        {error && <p role="alert" className="text-sm text-ember">{error}</p>}
+
+        <div className="flex flex-wrap gap-3">
+          <button type="submit" disabled={busy || !form} className="btn-seal h-11 px-6">
+            {busy ? "Saving" : "Save settings"}
+          </button>
+          <button type="button" onClick={register} disabled={busy} className="btn-bronze h-11 px-4 text-sm">
+            Register Discord slash commands
+          </button>
         </div>
-      </div>
-
-      {msg && <p className="text-jade text-sm mt-4">{msg}</p>}
-      {error && <p className="text-ember text-sm mt-4">{error}</p>}
-
-      <div className="mt-4 flex flex-wrap gap-3">
-        <Button onClick={save} disabled={busy} className="bg-crimson hover:bg-ember text-gold font-heading tracking-wider border border-gold/40">
-          {busy ? "Saving…" : "Save settings"}
-        </Button>
-        <Button onClick={register} disabled={busy} variant="outline" className="border-gold/40 text-gold hover:bg-gold/10">
-          Register Discord slash commands
-        </Button>
-      </div>
+      </form>
     </Panel>
   );
 }
 
-function Field({ label, value, onChange, type = "text" }) {
+function Field({ id, label, hint, value, onChange, type = "text", ...rest }) {
   return (
     <div>
-      <Label className="text-muted-foreground">{label}</Label>
-      <Input type={type} value={value} onChange={(e) => onChange(e.target.value)} className="mt-1 bg-ink/60 border-gold/30 text-gold tabular-nums" />
+      <label htmlFor={id} className="label">{label}</label>
+      <input id={id} type={type} value={value ?? ""} onChange={(e) => onChange(e.target.value)} className="field" {...rest} />
+      {hint && <p className="mt-1 text-xs text-mist/80">{hint}</p>}
     </div>
   );
 }

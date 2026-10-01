@@ -2,45 +2,61 @@ import React, { useEffect, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import LanternSpinner from "@/components/LanternSpinner";
+import { cn } from "@/lib/utils";
 
 export default function TotalsSection() {
   const [totals, setTotals] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const res = await base44.functions.invoke("adminAction", { action: "totals" });
-      setTotals(res.data.totals);
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await base44.functions.invoke("adminAction", { action: "totals" });
+        setTotals(res.data.totals);
+      } catch {
+        setFailed(true);
+      }
+    })();
+  }, []);
 
-  useEffect(() => { load(); }, []);
-
-  if (loading || !totals) return <Panel className="p-6"><LanternSpinner label="Tallying" /></Panel>;
+  if (failed) return null;
+  if (!totals) {
+    return (
+      <Panel title="Last 7 days">
+        <LanternSpinner label="Tallying the ledger" className="py-6" />
+      </Panel>
+    );
+  }
 
   const items = [
-    { label: "Awards", value: totals.award, color: "text-gold" },
-    { label: "Games (net)", value: totals.game, color: "text-ember" },
-    { label: "Daily", value: totals.daily, color: "text-jade" },
-    { label: "Admin", value: totals.admin, color: "text-gold" },
-    { label: "Import", value: totals.import, color: "text-gold" }
+    { label: "Awarded", value: totals.award },
+    { label: "Daily wheel", value: totals.daily },
+    { label: "Games net", value: totals.game, signed: true },
+    { label: "Games played", value: totals.bets, plain: true },
+    { label: "Wagered", value: totals.wagered, plain: true }
   ];
 
   return (
-    <Panel className="p-6">
-      <h2 className="font-heading text-xl text-gold font-bold mb-1">Last 7 days</h2>
-      <p className="text-sm text-muted-foreground mb-4">{totals.count} point changes logged.</p>
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+    <Panel title="Last 7 days">
+      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         {items.map((it) => (
-          <div key={it.label} className="p-3 rounded-md border border-gold/20 bg-ink/40 text-center">
-            <p className="text-xs uppercase tracking-wider text-muted-foreground">{it.label}</p>
-            <p className={`mt-1 font-heading text-lg tabular-nums ${it.color}`}>{(it.value || 0).toLocaleString()}</p>
+          <div key={it.label} className="rounded-md border border-bronze/40 bg-black/20 px-3 py-2.5 text-center">
+            <dt className="text-xs text-mist">{it.label}</dt>
+            <dd
+              className={cn(
+                "mt-0.5 font-heading text-lg font-bold tabular-nums",
+                it.signed ? ((it.value || 0) >= 0 ? "text-jade" : "text-ember") : "text-gold"
+              )}
+            >
+              {it.signed && (it.value || 0) > 0 ? "+" : ""}
+              {(it.value || 0).toLocaleString()}
+            </dd>
           </div>
         ))}
-      </div>
+      </dl>
+      <p className="mt-3 text-xs text-mist">
+        {totals.count.toLocaleString()} point changes logged. Games net is what members won minus what they lost.
+      </p>
     </Panel>
   );
 }

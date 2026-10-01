@@ -1,19 +1,52 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-import { getMemberByUserId } from '../../shared/points.ts';
+import { getMemberByUserId, getSettings, errorResponse } from '../../shared/points.ts';
+
+const PUBLIC_MEMBER_FIELDS = [
+  'id', 'discord_id', 'discord_name', 'discord_username', 'avatar_url', 'points', 'role',
+  'daily_claimed_at', 'daily_bet_total', 'daily_bet_date', 'banned', 'created_date'
+];
 
 export default async function(req) {
   try {
     const b = createClientFromRequest(req);
     const user = await b.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    const member = await getMemberByUserId(b, user.id);
-    if (!member) return Response.json({ linked: false });
-    const [logs, bets] = await Promise.all([
-      b.asServiceRole.entities.PointLog.filter({ member_id: member.id }, { sort: '-created_date', limit: 20 }),
-      b.asServiceRole.entities.Bet.filter({ member_id: member.id }, { sort: '-created_date', limit: 10 })
+    if (!user) return Response.json({ error: 'Log in first.' }, { status: 401 });
+
+    const [member, settings] = await Promise.all([getMemberByUserId(b, user.id), getSettings(b)]);
+    const setup = { guild_configured: !!String(settings.guild_id || '').trim() };
+    if (!member) return Response.json({ linked: false, setup, invite_url: settings.discord_invite_url || '' });
+
+    const [logs, bets, above] = await Promise.all([
+      b.asServiceRole.entities.PointLog.filter({ member_id: member.id }, { sort: '-created_date', limit: 50 }),
+      b.asServiceRole.entities.Bet.filter({ member_id: member.id }, { sort: '-created_date', limit: 50 }),
+      b.asServiceRole.entities.Member.filter(
+        { banned: false, points: { $gt: member.points || 0 } },
+        { limit: 1000, fields: ['id'] }
+      )
     ]);
-    return Response.json({ linked: true, member, recentLogs: logs.items, recentBets: bets.items });
+
+    const safe = Object.fromEntries(PUBLIC_MEMBER_FIELDS.map((k) => [k, member[k]]));
+    const betItems = bets.items || [];
+    const stats = betItems.reduce(
+      (s, x) => ({
+        played: s.played + 1,
+        wins: s.wins + (x.won ? 1 : 0),
+        net: s.net + (x.payout - x.wager),
+        best: Math.max(s.best, x.payout - x.wager)
+      }),
+      { played: 0, wins: 0, net: 0, best: 0 }
+    );
+
+    return Response.json({
+      linked: true,
+      setup,
+      member: safe,
+      rank: (above.items || []).length + 1,
+      stats,
+      recentLogs: logs.items,
+      recentBets: betItems
+    });
   } catch (e) {
-    return Response.json({ error: e.message }, { status: 500 });
+    return errorResponse(e);
   }
 }

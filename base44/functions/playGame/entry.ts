@@ -1,65 +1,89 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import {
-  getSettings, getMemberByUserId, changePoints,
-  resolveCoinFlip, resolveDragonDice, resolveLanternSlots, todayStr
+  getSettings, getMemberByUserId, changePoints, withMemberLock, houseEdge, todayStr,
+  resolveCoinFlip, resolveDragonDice, resolveLanternSlots, resolveSkyWheel,
+  WHEEL_SEGMENTS, UserError, errorResponse
 } from '../../shared/points.ts';
+
+const GAME_LABEL = {
+  coinflip: 'Yin Yang Toss',
+  dragondice: 'Dragon Dice',
+  lanternslots: 'Lantern Slots',
+  skywheel: 'Twelve Skies Wheel'
+};
 
 export default async function(req) {
   try {
     const b = createClientFromRequest(req);
     const user = await b.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!user) throw new UserError('Log in first.', 401);
     let payload; try { payload = await req.json(); } catch { payload = {}; }
     const { game, wager, choice } = payload;
 
-    const member = await getMemberByUserId(b, user.id);
-    if (!member) return Response.json({ error: 'Discord account not linked.' }, { status: 400 });
-    if (member.banned) return Response.json({ error: 'You are banned from games.' }, { status: 403 });
+    const found = await getMemberByUserId(b, user.id);
+    if (!found) throw new UserError('Link your Discord account first.');
 
     const settings = await getSettings(b);
     if (!Array.isArray(settings.games_enabled) || !settings.games_enabled.includes(game))
-      return Response.json({ error: 'This game is not enabled.' }, { status: 400 });
+      throw new UserError('This game is closed right now.');
+    const edge = houseEdge(settings);
 
     const w = Math.floor(Number(wager));
-    if (!Number.isInteger(w) || w < 1) return Response.json({ error: 'Invalid wager.' }, { status: 400 });
-    if (w < settings.min_bet) return Response.json({ error: `Minimum bet is ${settings.min_bet}.` }, { status: 400 });
-    if (w > settings.max_bet) return Response.json({ error: `Maximum bet is ${settings.max_bet}.` }, { status: 400 });
-    if (w > member.points) return Response.json({ error: 'Not enough points.' }, { status: 400 });
+    if (!Number.isInteger(w) || w < 1) throw new UserError('Enter a wager.');
+    if (w < settings.min_bet) throw new UserError(`The minimum wager is ${settings.min_bet}.`);
+    if (w > settings.max_bet) throw new UserError(`The maximum wager is ${settings.max_bet}.`);
 
-    const today = todayStr();
-    const usedToday = member.daily_bet_date === today ? (member.daily_bet_total || 0) : 0;
-    if (usedToday + w > settings.daily_bet_cap) return Response.json({ error: 'Daily limit reached.' }, { status: 400 });
-
-    let result;
+    // Validate the pick before taking the lock.
+    let resolve;
     if (game === 'coinflip') {
-      if (!['heads', 'tails'].includes(choice)) return Response.json({ error: 'Choose heads or tails.' }, { status: 400 });
-      result = resolveCoinFlip(w, choice, settings.house_edge_pct);
+      if (!['heads', 'tails'].includes(choice)) throw new UserError('Pick Yang or Yin.');
+      resolve = () => resolveCoinFlip(w, choice, edge);
     } else if (game === 'dragondice') {
       const target = Math.floor(Number(choice && choice.target));
       const direction = choice && choice.direction;
-      if (!['over', 'under'].includes(direction)) return Response.json({ error: 'Invalid direction.' }, { status: 400 });
-      if (!Number.isInteger(target) || target < 2 || target > 98) return Response.json({ error: 'Target must be between 2 and 98.' }, { status: 400 });
-      result = resolveDragonDice(w, target, direction, settings.house_edge_pct);
+      if (!['over', 'under'].includes(direction)) throw new UserError('Pick over or under.');
+      if (!Number.isInteger(target) || target < 2 || target > 98) throw new UserError('The target must be between 2 and 98.');
+      resolve = () => resolveDragonDice(w, target, direction, edge);
     } else if (game === 'lanternslots') {
-      result = resolveLanternSlots(w, settings.house_edge_pct);
+      resolve = () => resolveLanternSlots(w, edge);
+    } else if (game === 'skywheel') {
+      if (!WHEEL_SEGMENTS.includes(choice)) throw new UserError('Pick a faction.');
+      resolve = () => resolveSkyWheel(w, choice, edge);
     } else {
-      return Response.json({ error: 'Unknown game.' }, { status: 400 });
+      throw new UserError('Unknown game.');
     }
 
-    const net = result.payout - w;
-    const { balance } = await changePoints(b, member.id, net, 'game', `${game} ${result.won ? 'win' : 'loss'}`, null);
-    await b.asServiceRole.entities.Member.update(member.id, { daily_bet_total: usedToday + w, daily_bet_date: today });
-    await b.asServiceRole.entities.Bet.create({
-      member_id: member.id,
-      discord_id: member.discord_id,
-      game,
-      wager: w,
-      payout: result.payout,
-      won: result.won,
-      outcome: result.outcome
+    const result = await withMemberLock(b, found.id, async () => {
+      // Re-read inside the lock so the checks use the latest balance.
+      const member = await b.asServiceRole.entities.Member.get(found.id);
+      if (member.banned) throw new UserError('You are banned from the games.', 403);
+      if (w > (member.points || 0)) throw new UserError('Not enough points for that wager.');
+
+      const today = todayStr();
+      const usedToday = member.daily_bet_date === today ? (member.daily_bet_total || 0) : 0;
+      if (usedToday + w > settings.daily_bet_cap) {
+        const left = Math.max(0, settings.daily_bet_cap - usedToday);
+        throw new UserError(left ? `Daily wager limit: ${left} left today.` : 'Daily wager limit reached. It resets at 00:00 UTC.');
+      }
+
+      const r = resolve();
+      const net = r.payout - w;
+      const { balance } = await changePoints(b, member.id, net, 'game', `${GAME_LABEL[game]} ${r.won ? 'win' : 'loss'}`, null);
+      await b.asServiceRole.entities.Member.update(member.id, { daily_bet_total: usedToday + w, daily_bet_date: today });
+      await b.asServiceRole.entities.Bet.create({
+        member_id: member.id,
+        discord_id: member.discord_id,
+        game,
+        wager: w,
+        payout: r.payout,
+        won: r.won,
+        outcome: r.outcome
+      });
+      return { ...r, balance, wager: w, net, wageredToday: usedToday + w };
     });
-    return Response.json({ won: result.won, payout: result.payout, outcome: result.outcome, balance });
+
+    return Response.json(result);
   } catch (e) {
-    return Response.json({ error: e.message }, { status: 500 });
+    return errorResponse(e);
   }
 }

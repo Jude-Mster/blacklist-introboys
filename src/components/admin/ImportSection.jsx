@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import Panel from "@/components/Panel";
+import { errorText } from "@/lib/GuildContext";
 
 export default function ImportSection() {
   const [text, setText] = useState("");
@@ -18,37 +17,47 @@ export default function ImportSection() {
       const res = await base44.functions.invoke("adminAction", { action: "import", text });
       setResults(res.data.results || []);
     } catch (e) {
-      const data = e && e.response && e.response.data;
-      setError(data && data.error ? data.error : e.message || "Import failed.");
+      setError(errorText(e, "The import didn't go through."));
     } finally {
       setBusy(false);
     }
   };
 
+  const ok = results ? results.filter((r) => r.ok).length : 0;
+
   return (
-    <Panel className="p-6">
-      <h2 className="font-heading text-xl text-gold font-bold mb-1">Import starting balances</h2>
-      <p className="text-sm text-muted-foreground mb-4">Paste one <code className="text-gold">discord_id,points</code> per line. Only members with 0 points are set.</p>
-      <Label className="text-muted-foreground">Lines</Label>
+    <Panel title="Import starting balances">
+      <p className="mb-3 text-sm text-mist">
+        One member per line: <code className="text-gold">discord_id,points</code>, optionally followed by <code className="text-gold">,name</code>.
+        Only members with 0 points are changed, so running it twice is safe.
+      </p>
+      <label htmlFor="import-lines" className="label">Lines</label>
       <textarea
+        id="import-lines"
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={6}
-        placeholder={"1234567890,500\n9876543210,1000"}
-        className="mt-1 w-full bg-ink/60 border border-gold/30 rounded-md p-3 text-gold font-mono text-sm"
+        placeholder={"123456789012345678,500,Mega\n987654321098765432,1000"}
+        className="field h-auto py-2 font-mono text-sm"
       />
-      {error && <p className="text-ember text-sm mt-3">{error}</p>}
-      <Button onClick={run} disabled={busy} className="mt-4 bg-crimson hover:bg-ember text-gold font-heading tracking-wider border border-gold/40">
-        {busy ? "Importing…" : "Import"}
-      </Button>
+      {error && <p role="alert" className="mt-3 text-sm text-ember">{error}</p>}
+      <button onClick={run} disabled={busy || !text.trim()} className="btn-seal mt-4 h-11 px-6">
+        {busy ? "Importing" : "Import balances"}
+      </button>
       {results && (
-        <ul className="mt-4 text-sm space-y-1">
-          {results.map((r, i) => (
-            <li key={i} className={r.ok ? "text-jade" : "text-ember"}>
-              {r.discordId}: {r.ok ? `+${r.balance}` : r.error}
-            </li>
-          ))}
-        </ul>
+        <div className="mt-4">
+          <p className="text-sm">
+            <span className="text-jade">{ok} imported</span>
+            {results.length - ok > 0 && <span className="text-ember"> · {results.length - ok} skipped</span>}
+          </p>
+          <ul className="mt-2 max-h-48 space-y-1 overflow-auto text-xs">
+            {results.filter((r) => !r.ok).map((r, i) => (
+              <li key={i} className="text-ember">
+                {r.discordId || "(blank)"}: {r.error}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </Panel>
   );

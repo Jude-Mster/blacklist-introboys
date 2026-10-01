@@ -1,95 +1,159 @@
-import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
-import { Button } from "@/components/ui/button";
+import React, { useEffect, useState } from "react";
+import { ArrowLeftRight } from "lucide-react";
 import Panel from "@/components/Panel";
-import WagerInput from "./WagerInput";
+import GameControls from "./GameControls";
+import useGame from "./useGame";
+import { diceChance, diceMultiplier, edgeOf } from "@/lib/games";
 import { cn } from "@/lib/utils";
 
-export default function DragonDice({ settings, balance, onPlayed }) {
+const ROLL_MS = 1100;
+
+export default function DragonDice({ settings, balance }) {
   const [target, setTarget] = useState(50);
   const [direction, setDirection] = useState("under");
   const [wager, setWager] = useState(settings.min_bet);
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState(null);
-  const [flash, setFlash] = useState(null);
-  const [error, setError] = useState("");
+  const [shown, setShown] = useState(null); // number counting up during the roll
+  const game = useGame("dragondice", { revealMs: ROLL_MS });
 
-  const chance = direction === "under" ? target - 1 : 100 - target;
-  const multiplier = chance > 0 ? ((100 - settings.house_edge_pct) / chance).toFixed(2) : "0";
+  const chance = diceChance(target, direction);
+  const mult = diceMultiplier(chance, edgeOf(settings));
 
-  const play = async () => {
-    setBusy(true);
-    setError("");
-    setResult(null);
-    try {
-      const res = await base44.functions.invoke("playGame", { game: "dragondice", wager, choice: { target, direction } });
-      setResult(res.data);
-      setFlash(res.data.won ? "win" : "loss");
-      setTimeout(() => setFlash(null), 800);
-      await onPlayed();
-    } catch (e) {
-      const data = e && e.response && e.response.data;
-      setError(data && data.error ? data.error : e.message || "Bet failed.");
-    } finally {
-      setBusy(false);
-    }
-  };
+  // Count the number up to the real roll while the pearl slides along the track.
+  useEffect(() => {
+    if (!game.landing) return;
+    const roll = game.landing.outcome.roll;
+    const start = performance.now();
+    let raf;
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / ROLL_MS);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setShown(t < 1 ? Math.max(1, Math.round(1 + (roll - 1) * eased + (Math.random() - 0.5) * 8 * (1 - t))) : roll);
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [game.landing]);
+
+  const roll = game.landing ? game.landing.outcome.roll : null;
+  const won = game.result ? game.result.won : null;
+  // Win zone on the 1-100 track.
+  const winFrom = direction === "under" ? 0 : target;
+  const winTo = direction === "under" ? target - 1 : 100;
 
   return (
-    <Panel className="p-6">
-      <h3 className="font-heading text-xl text-gold font-bold">Dragon Dice</h3>
-      <p className="text-sm text-muted-foreground mt-1">Roll 1–100. Win pays <span className="text-gold">{multiplier}×</span> ({chance}% chance).</p>
-
-      <div className="mt-4">
-        <label className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Target: {target}</label>
-        <input
-          type="range" min={2} max={98} value={target}
-          onChange={(e) => setTarget(Number(e.target.value))}
-          disabled={busy}
-          className="w-full mt-2 accent-[hsl(var(--crimson))]"
-        />
-      </div>
-
-      <div className="mt-3 grid grid-cols-2 gap-3">
-        {["under", "over"].map((d) => (
-          <Button
-            key={d}
-            variant={direction === d ? "default" : "outline"}
-            onClick={() => setDirection(d)}
-            disabled={busy}
-            className={cn(
-              "h-11 capitalize font-heading tracking-wider border",
-              direction === d ? "bg-crimson text-gold border-gold/50" : "border-gold/30 text-gold hover:bg-gold/10"
-            )}
-          >
-            Roll {d} {target}
-          </Button>
-        ))}
-      </div>
-
-      <div className="mt-4">
-        <WagerInput wager={wager} setWager={setWager} minBet={settings.min_bet} maxBet={settings.max_bet} balance={balance} disabled={busy} />
-      </div>
-
-      {error && <p className="text-ember text-sm mt-3">{error}</p>}
-
-      <Button
-        onClick={play}
-        disabled={busy}
-        className="mt-4 w-full h-12 bg-crimson hover:bg-ember text-gold font-heading tracking-wider border border-gold/40"
+    <Panel title="Dragon Dice">
+      <div
+        className={cn(
+          "mb-5 rounded-md border border-bronze/40 bg-[radial-gradient(circle_at_50%_0%,hsl(205_35%_16%),hsl(192_26%_6%))] px-4 pb-5 pt-4",
+          game.result && (won ? "win-glow" : "loss-shake")
+        )}
       >
-        {busy ? "Rolling…" : `Roll for ${wager.toLocaleString()}`}
-      </Button>
-
-      {result && (
-        <div className={cn("mt-4 p-4 rounded-md border border-gold/20 text-center", flash === "win" && "win-flash", flash === "loss" && "loss-flash")}>
-          <p className="font-heading text-3xl text-gold tabular-nums">{result.outcome.roll}</p>
-          <p className={cn("mt-1 font-medium", result.won ? "text-jade" : "text-ember")}>
-            {result.won ? `You win +${(result.payout - wager).toLocaleString()}` : `You lose ${wager.toLocaleString()}`}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">Balance: {result.balance.toLocaleString()}</p>
+        <div className="flex items-end justify-between">
+          <Stat label="Win chance" value={`${chance}%`} />
+          <div
+            className={cn(
+              "font-heading text-6xl font-extrabold tabular-nums leading-none",
+              won === null ? "text-gold" : won ? "text-jade" : "text-ember"
+            )}
+            aria-live="polite"
+          >
+            {shown ?? <span className="text-mist/50">?</span>}
+          </div>
+          <Stat label="Payout" value={`${mult}×`} align="right" />
         </div>
-      )}
+
+        {/* track */}
+        <div className="relative mt-6 h-3 rounded-full bg-ember/25">
+          <div
+            className="absolute inset-y-0 rounded-full bg-jade/70"
+            style={{ left: `${winFrom}%`, width: `${Math.max(0, winTo - winFrom)}%` }}
+          />
+          {/* target marker */}
+          <div className="absolute -top-1.5 h-6 w-0.5 bg-gold" style={{ left: `${target}%` }} />
+          {/* rolled pearl: waits at the middle until the first roll */}
+          <div
+            className="absolute -top-2 h-7 w-7 -translate-x-1/2 rounded-full border-2 border-gold"
+            style={{
+              left: `${roll ?? 50}%`,
+              opacity: roll === null ? 0.35 : 1,
+              background: "radial-gradient(circle at 35% 30%, #F4F1E4, #9FD8CC 50%, #2E7F72)",
+              boxShadow: roll === null ? "none" : "0 0 14px 2px hsl(170 45% 45% / 0.6)",
+              transition: `left ${ROLL_MS}ms cubic-bezier(0.2, 0.7, 0.2, 1), opacity 300ms`
+            }}
+            aria-hidden="true"
+          />
+        </div>
+        <div className="mt-2 flex justify-between text-xs text-mist/70 tabular-nums">
+          <span>1</span>
+          <span>50</span>
+          <span>100</span>
+        </div>
+      </div>
+
+      <GameControls
+        settings={settings}
+        balance={balance}
+        wager={wager}
+        setWager={setWager}
+        game={game}
+        onPlay={() => game.play(wager, { target, direction })}
+        playLabel="Roll the dice"
+        busyLabel="Rolling"
+        potential={Math.round(wager * mult)}
+      >
+        <div>
+          <label htmlFor="dice-target" className="label">
+            Roll {direction} <span className="font-bold text-gold">{target}</span> to win
+          </label>
+          <input
+            id="dice-target"
+            type="range"
+            min={2}
+            max={98}
+            value={target}
+            onChange={(e) => setTarget(Number(e.target.value))}
+            disabled={game.busy}
+            className="w-full accent-[hsl(var(--gold))]"
+          />
+          <div className="mt-2 grid grid-cols-[1fr_auto_1fr] gap-2">
+            {["under", "over"].map((d, i) => (
+              <React.Fragment key={d}>
+                {i === 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setDirection(direction === "under" ? "over" : "under")}
+                    disabled={game.busy}
+                    className="btn-bronze h-11 w-11"
+                    aria-label="Swap over and under"
+                    title="Swap over and under"
+                  >
+                    <ArrowLeftRight className="h-4 w-4" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  data-on={direction === d}
+                  aria-pressed={direction === d}
+                  onClick={() => setDirection(d)}
+                  disabled={game.busy}
+                  className="btn-bronze h-11 text-sm capitalize"
+                >
+                  Roll {d}
+                </button>
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+      </GameControls>
     </Panel>
+  );
+}
+
+function Stat({ label, value, align }) {
+  return (
+    <div className={cn("min-w-[4.5rem]", align === "right" && "text-right")}>
+      <p className="text-xs text-mist">{label}</p>
+      <p className="font-heading text-lg font-bold text-gold tabular-nums">{value}</p>
+    </div>
   );
 }

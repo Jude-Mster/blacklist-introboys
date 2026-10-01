@@ -1,33 +1,45 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Home, Gamepad2, Trophy, User } from "lucide-react";
+import { Shield } from "lucide-react";
+import { NAV } from "./TopNav";
+import { useGuild } from "@/lib/GuildContext";
 import { cn } from "@/lib/utils";
 
-const TABS = [
-  { to: "/dashboard", label: "Home", icon: Home },
-  { to: "/games", label: "Games", icon: Gamepad2 },
-  { to: "/leaderboard", label: "Ranks", icon: Trophy },
-  { to: "/profile", label: "Profile", icon: User }
-];
-
+// Mobile navigation styled as an MMO skill bar: a row of framed slots.
 export default function BottomTabs() {
   const location = useLocation();
+  const { account } = useGuild();
+  const member = account && account.linked ? account.member : null;
+  const isAdmin = member && (member.role === "officer" || member.role === "leader");
+  const tabs = isAdmin ? [...NAV, { to: "/admin", label: "Admin", icon: Shield }] : NAV;
+
   return (
-    <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-gold/25 bg-ink/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]">
-      <div className="grid grid-cols-4">
-        {TABS.map((t) => {
-          const active = location.pathname === t.to;
+    <nav
+      aria-label="Main"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-bronze/60 bg-[hsl(192_26%_5%/0.96)] pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden"
+    >
+      <div className="mx-auto flex max-w-md items-stretch justify-around gap-1.5 px-2 py-2">
+        {tabs.map((t) => {
+          const active = location.pathname.startsWith(t.to);
           return (
             <Link
               key={t.to}
               to={t.to}
-              className={cn(
-                "flex flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium transition-colors",
-                active ? "text-gold" : "text-muted-foreground"
-              )}
+              aria-current={active ? "page" : undefined}
+              className="flex flex-1 flex-col items-center gap-1"
             >
-              <t.icon className={cn("w-5 h-5", active && "drop-shadow-[0_0_6px_hsl(41_54%_54%/0.6)]")} />
-              {t.label}
+              <span
+                className={cn(
+                  "relative flex h-11 w-11 items-center justify-center rounded-[5px] border transition-colors",
+                  active
+                    ? "border-gold bg-gradient-to-b from-bronze/50 to-bronze/15 text-gold shadow-[0_0_14px_-2px_hsl(40_58%_63%/0.55)]"
+                    : "border-bronze/55 bg-black/40 text-mist"
+                )}
+              >
+                <span className="pointer-events-none absolute inset-[3px] rounded-[3px] border border-white/5" />
+                <t.icon className="h-5 w-5" />
+              </span>
+              <span className={cn("text-[11px] leading-none", active ? "text-gold" : "text-mist")}>{t.label}</span>
             </Link>
           );
         })}

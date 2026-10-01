@@ -1,40 +1,43 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-import { getSettings, getMemberByUserId, getMemberByDiscordId, changePoints } from '../../shared/points.ts';
+import {
+  getSettings, getMemberByUserId, getMemberByDiscordId, changePoints, withMemberLock,
+  awardedLast24h, UserError, errorResponse
+} from '../../shared/points.ts';
 
 export default async function(req) {
   try {
     const b = createClientFromRequest(req);
     const user = await b.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!user) throw new UserError('Log in first.', 401);
     const caller = await getMemberByUserId(b, user.id);
-    if (!caller) return Response.json({ error: 'Discord account not linked.' }, { status: 400 });
-    if (!['officer', 'leader'].includes(caller.role)) return Response.json({ error: 'Not authorized.' }, { status: 403 });
+    if (!caller) throw new UserError('Link your Discord account first.');
+    if (!['officer', 'leader'].includes(caller.role)) throw new UserError('Only officers and the leader can award points.', 403);
 
     let payload; try { payload = await req.json(); } catch { payload = {}; }
     const { discordId, amount, reason } = payload;
     const amt = Math.floor(Number(amount));
-    if (!Number.isInteger(amt) || amt === 0) return Response.json({ error: 'Amount must be a non-zero whole number.' }, { status: 400 });
-    if (!reason || !String(reason).trim()) return Response.json({ error: 'Reason is required.' }, { status: 400 });
-    if (caller.role === 'officer' && amt < 0) return Response.json({ error: 'Officers can only award points.' }, { status: 403 });
+    if (!Number.isInteger(amt) || amt === 0) throw new UserError('Enter a whole number other than 0.');
+    const why = String(reason || '').trim();
+    if (!why) throw new UserError('Add a reason so members know what the points were for.');
+    if (caller.role === 'officer' && amt < 0) throw new UserError('Only the leader can take points away.', 403);
 
     const target = await getMemberByDiscordId(b, String(discordId));
-    if (!target) return Response.json({ error: 'Member not found.' }, { status: 404 });
+    if (!target) throw new UserError('Member not found.', 404);
 
-    if (caller.role === 'officer' && amt > 0) {
-      const start = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const { items } = await b.asServiceRole.entities.PointLog.filter(
-        { by_member_id: caller.id, source: 'award', amount: { $gt: 0 }, created_date: { $gte: start } },
-        { limit: 500 }
-      );
-      const totalAwarded = items.reduce((s, l) => s + l.amount, 0);
+    if (caller.role === 'officer') {
       const settings = await getSettings(b);
-      if (totalAwarded + amt > settings.award_cap_per_day)
-        return Response.json({ error: 'Daily award cap reached.' }, { status: 400 });
+      const used = await awardedLast24h(b, caller.id);
+      if (used + amt > settings.award_cap_per_day) {
+        const left = Math.max(0, settings.award_cap_per_day - used);
+        throw new UserError(`Award cap reached. You can give ${left} more in the next 24 hours.`);
+      }
     }
 
-    const { balance } = await changePoints(b, target.id, amt, 'award', String(reason).trim(), caller.id);
-    return Response.json({ ok: true, balance });
+    const { balance } = await withMemberLock(b, target.id, () =>
+      changePoints(b, target.id, amt, 'award', why, caller.id)
+    );
+    return Response.json({ ok: true, balance, name: target.discord_name || target.discord_id });
   } catch (e) {
-    return Response.json({ error: e.message }, { status: 500 });
+    return errorResponse(e);
   }
 }

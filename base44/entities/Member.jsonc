@@ -11,7 +11,8 @@
       "description": "Discord user id, unique"
     },
     "discord_name": {
-      "type": "string"
+      "type": "string",
+      "description": "Display name shown on the site (Discord global name, else username)"
     },
     "avatar_url": {
       "type": "string"
@@ -44,6 +45,18 @@
     "banned": {
       "type": "boolean",
       "default": false
+    },
+    "lock_token": {
+      "type": "string",
+      "description": "Short-lived lock so two point changes can't run at once"
+    },
+    "lock_until": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "discord_username": {
+      "type": "string",
+      "description": "Discord @username"
     }
   },
   "rls": {

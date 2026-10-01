@@ -1,45 +1,55 @@
 import React from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Ingot } from "@/components/SealLogo";
 import { cn } from "@/lib/utils";
 
+// Wager entry: a number field plus quick-set chips.
 export default function WagerInput({ wager, setWager, minBet, maxBet, balance, disabled }) {
-  const set = (v) => setWager(Math.max(0, Math.floor(Number(v) || 0)));
-  const half = Math.max(minBet, Math.floor(balance / 2));
-  const max = Math.min(maxBet, balance);
-  const quick = [
+  const cap = Math.max(0, Math.min(maxBet, balance));
+  const clamp = (v) => Math.max(0, Math.floor(Number(v) || 0));
+  const chips = [
     { label: "Min", value: minBet },
-    { label: "Half", value: half },
-    { label: "Max", value: max }
+    { label: "½", value: Math.max(minBet, Math.floor(wager / 2)), aria: "Halve wager" },
+    { label: "×2", value: Math.min(cap, wager * 2), aria: "Double wager" },
+    { label: "Max", value: cap }
   ];
+  const tooHigh = wager > balance;
+  const outOfRange = wager < minBet || wager > maxBet;
 
   return (
     <div>
-      <label className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Wager</label>
-      <div className="mt-2 flex gap-2">
-        <Input
+      <label htmlFor="wager" className="label">Wager</label>
+      <div className="relative">
+        <Ingot size={18} className="absolute left-3 top-1/2 -translate-y-1/2" />
+        <input
+          id="wager"
           type="number"
           inputMode="numeric"
-          value={wager}
-          onChange={(e) => set(e.target.value)}
+          min={minBet}
+          max={maxBet}
+          value={wager || ""}
+          onChange={(e) => setWager(clamp(e.target.value))}
           disabled={disabled}
-          className="bg-ink/60 border-gold/30 text-gold tabular-nums h-11"
+          className={cn("field pl-10 text-lg font-bold text-gold", (tooHigh || outOfRange) && wager > 0 && "border-ember/80")}
         />
-        {quick.map((q) => (
-          <Button
-            key={q.label}
+      </div>
+      <div className="mt-2 grid grid-cols-4 gap-2">
+        {chips.map((c) => (
+          <button
+            key={c.label}
             type="button"
-            variant="outline"
-            disabled={disabled || q.value <= 0}
-            onClick={() => set(q.value)}
-            className="border-gold/30 text-gold hover:bg-gold/10 h-11 px-3"
+            aria-label={c.aria || `${c.label} wager`}
+            disabled={disabled || c.value <= 0}
+            onClick={() => setWager(c.value)}
+            className="btn-bronze h-9 text-sm"
           >
-            {q.label}
-          </Button>
+            {c.label}
+          </button>
         ))}
       </div>
-      <p className="mt-1 text-xs text-muted-foreground/70">
-        Range {minBet.toLocaleString()}–{maxBet.toLocaleString()}
+      <p className={cn("mt-1.5 text-xs", tooHigh ? "text-ember" : "text-mist/80")}>
+        {tooHigh
+          ? "That's more than your balance."
+          : `Wager ${minBet.toLocaleString()} to ${maxBet.toLocaleString()}.`}
       </p>
     </div>
   );
