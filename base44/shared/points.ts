@@ -25,7 +25,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- Settings + lookups ----------
 
-export const ALL_GAMES = ["coinflip", "dragondice", "lanternslots", "skywheel"];
+export const ALL_GAMES = ["coinflip", "dragondice", "lanternslots", "skywheel", "roulette", "poker"];
 
 export async function getSettings(b) {
   const { items } = await b.asServiceRole.entities.Settings.filter({}, { limit: 1 });
@@ -77,26 +77,32 @@ export function errorResponse(e) {
   return Response.json({ error: e && e.message ? e.message : "Something went wrong." }, { status: 500 });
 }
 
-// ---------- Per-member lock ----------
+// ---------- Record locks ----------
 // Base44 entities have no compare-and-set, so this is a best-effort mutex:
 // claim the lock, wait a beat, re-read, and only proceed if our token is still there.
 export async function withMemberLock(b, memberId: string, fn: () => Promise<any>) {
+  return withRecordLock(b, "Member", memberId, fn);
+}
+
+// Same lock on any entity that has lock_token + lock_until fields.
+export async function withRecordLock(b, entity: string, id: string, fn: () => Promise<any>) {
+  const E = b.asServiceRole.entities[entity];
   const token = crypto.randomUUID();
-  for (let attempt = 0; attempt < 20; attempt++) {
-    const m = await b.asServiceRole.entities.Member.get(memberId);
+  for (let attempt = 0; attempt < 25; attempt++) {
+    const m = await E.get(id);
     const lockFree = !m.lock_token || !m.lock_until || Date.parse(m.lock_until) < Date.now();
     if (lockFree) {
-      await b.asServiceRole.entities.Member.update(memberId, {
+      await E.update(id, {
         lock_token: token,
         lock_until: new Date(Date.now() + 8000).toISOString()
       });
       await sleep(35);
-      const check = await b.asServiceRole.entities.Member.get(memberId);
+      const check = await E.get(id);
       if (check.lock_token === token) {
         try {
           return await fn();
         } finally {
-          await b.asServiceRole.entities.Member.update(memberId, { lock_token: "", lock_until: new Date(0).toISOString() });
+          await E.update(id, { lock_token: "", lock_until: new Date(0).toISOString() });
         }
       }
     }
@@ -241,4 +247,57 @@ export function resolveSkyWheel(wager, pick, edge) {
   const multiplier = wheelMultiplier(pick, edge);
   const payout = won ? Math.round(multiplier * wager) : 0;
   return { won, payout, outcome: { index, landed, pick, multiplier } };
+}
+// European roulette: single zero. Bets is a list of { type, value, amount }.
+// Pays the true-odds minus the zero, so the edge is 1/37 (about 2.7%).
+export const ROULETTE_ORDER = [
+  0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10,
+  5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26
+];
+export const ROULETTE_RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
+const ROULETTE_PAYS = { straight: 35, color: 1, parity: 1, half: 1, dozen: 2, column: 2 };
+
+export function validRouletteBet(bet) {
+  if (!bet || !(bet.type in ROULETTE_PAYS)) return false;
+  const v = bet.value;
+  switch (bet.type) {
+    case "straight": return Number.isInteger(v) && v >= 0 && v <= 36;
+    case "color": return v === "red" || v === "black";
+    case "parity": return v === "odd" || v === "even";
+    case "half": return v === "low" || v === "high";
+    case "dozen":
+    case "column": return v === 1 || v === 2 || v === 3;
+  }
+  return false;
+}
+
+export function rouletteWins(bet, n) {
+  if (bet.type === "straight") return bet.value === n;
+  if (n === 0) return false;
+  switch (bet.type) {
+    case "color": return (bet.value === "red") === ROULETTE_RED.has(n);
+    case "parity": return (bet.value === "even") === (n % 2 === 0);
+    case "half": return (bet.value === "low") === (n <= 18);
+    case "dozen": return Math.ceil(n / 12) === bet.value;
+    case "column": return ((n - 1) % 3) + 1 === bet.value;
+  }
+  return false;
+}
+
+export function resolveRoulette(bets) {
+  const number = randInt(37);
+  let payout = 0;
+  const hits = [];
+  for (const bet of bets) {
+    if (rouletteWins(bet, number)) {
+      const back = bet.amount * (ROULETTE_PAYS[bet.type] + 1);
+      payout += back;
+      hits.push({ ...bet, back });
+    }
+  }
+  return {
+    won: payout > 0,
+    payout,
+    outcome: { number, index: ROULETTE_ORDER.indexOf(number), color: number === 0 ? "green" : ROULETTE_RED.has(number) ? "red" : "black", bets, hits }
+  };
 }

@@ -23,7 +23,8 @@
         "game",
         "daily",
         "admin",
-        "import"
+        "import",
+        "poker"
       ]
     },
     "reason": {

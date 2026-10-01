@@ -1,0 +1,105 @@
+{
+  "name": "PokerTable",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "active": {
+      "type": "boolean",
+      "default": true
+    },
+    "small_blind": {
+      "type": "integer"
+    },
+    "big_blind": {
+      "type": "integer"
+    },
+    "min_buyin": {
+      "type": "integer"
+    },
+    "max_buyin": {
+      "type": "integer"
+    },
+    "max_seats": {
+      "type": "integer",
+      "default": 6
+    },
+    "seats": {
+      "type": "array",
+      "description": "One object per seat; an empty object is an open seat. Never contains hole cards.",
+      "items": {
+        "type": "object"
+      }
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "waiting",
+        "preflop",
+        "flop",
+        "turn",
+        "river",
+        "showdown"
+      ],
+      "default": "waiting"
+    },
+    "hand_no": {
+      "type": "integer",
+      "default": 0
+    },
+    "dealer": {
+      "type": "integer",
+      "default": -1
+    },
+    "turn": {
+      "type": "integer",
+      "default": -1
+    },
+    "current_bet": {
+      "type": "integer",
+      "default": 0
+    },
+    "min_raise": {
+      "type": "integer",
+      "default": 0
+    },
+    "board": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "showdown": {
+      "type": "object",
+      "description": "Winners and the hands shown at showdown"
+    },
+    "deadline": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "next_hand_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "log": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "lock_token": {
+      "type": "string"
+    },
+    "lock_until": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "rls": {
+    "read": true,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

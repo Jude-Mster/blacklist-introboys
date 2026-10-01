@@ -1,0 +1,28 @@
+{
+  "name": "PokerHand",
+  "type": "object",
+  "description": "Secret deck and hole cards for the current hand at a table. Server only.",
+  "properties": {
+    "table_id": {
+      "type": "string"
+    },
+    "hand_no": {
+      "type": "integer"
+    },
+    "deck": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "holes": {
+      "type": "object"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

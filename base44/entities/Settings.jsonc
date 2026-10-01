@@ -50,19 +50,27 @@
           "coinflip",
           "dragondice",
           "lanternslots",
-          "skywheel"
+          "skywheel",
+          "roulette",
+          "poker"
         ]
       },
       "default": [
         "coinflip",
         "dragondice",
         "lanternslots",
-        "skywheel"
+        "skywheel",
+        "roulette",
+        "poker"
       ]
     },
     "discord_invite_url": {
       "type": "string",
       "description": "Invite link shown to people who aren't in the server yet"
+    },
+    "chat_enabled": {
+      "type": "boolean",
+      "default": true
     }
   },
   "rls": {

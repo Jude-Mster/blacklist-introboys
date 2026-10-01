@@ -14,7 +14,8 @@
         "coinflip",
         "dragondice",
         "lanternslots",
-        "skywheel"
+        "skywheel",
+        "roulette"
       ]
     },
     "wager": {

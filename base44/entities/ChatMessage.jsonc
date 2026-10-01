@@ -1,0 +1,46 @@
+{
+  "name": "ChatMessage",
+  "type": "object",
+  "properties": {
+    "channel": {
+      "type": "string",
+      "description": "'guild' or 'table:<PokerTable id>'"
+    },
+    "member_id": {
+      "type": "string"
+    },
+    "discord_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "avatar": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "user",
+        "system"
+      ],
+      "default": "user"
+    },
+    "deleted": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "rls": {
+    "read": true,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}
