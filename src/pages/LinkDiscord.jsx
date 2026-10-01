@@ -21,7 +21,7 @@ export default function LinkDiscord() {
     try {
       const res = await base44.functions.invoke("discordAuthStart");
       if (res.data && res.data.url) {
-        window.location.href = res.data.url;
+        window.top.location.href = res.data.url;
       } else {
         setError("Could not start Discord linking.");
         setBusy(false);
