@@ -49,8 +49,19 @@ export default async function(req) {
     const guilds = await guildsRes.json();
 
     const settings = await getSettings(b);
-    const inGuild = Array.isArray(guilds) && settings.guild_id && guilds.some(g => g.id === settings.guild_id);
-    if (!inGuild) return new Response('You are not a member of the BLACKLIST INTROBOYS guild.', { status: 403 });
+    const settingsGuildId = String(settings.guild_id ?? '').trim();
+    const userGuildIds = Array.isArray(guilds) ? guilds.map(g => String(g.id)) : [];
+    const inGuild = settingsGuildId !== '' && userGuildIds.includes(settingsGuildId);
+    if (!inGuild) {
+      console.log('Guild check failed', JSON.stringify({
+        settings_guild_id: settingsGuildId,
+        settings_guild_id_type: typeof settings.guild_id,
+        user_guild_ids: userGuildIds,
+        discord_user: me.id,
+        guilds_response_is_array: Array.isArray(guilds)
+      }));
+      return new Response('You are not a member of the BLACKLIST INTROBOYS guild.', { status: 403 });
+    }
 
     const { items: existing } = await b.asServiceRole.entities.Member.filter({ discord_id: me.id }, { limit: 1 });
     if (existing.length > 0) {

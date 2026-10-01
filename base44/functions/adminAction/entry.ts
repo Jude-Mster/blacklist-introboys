@@ -19,6 +19,7 @@ export default async function(req) {
       const allowed = ['guild_id', 'officer_role_id', 'min_bet', 'max_bet', 'daily_bet_cap', 'house_edge_pct', 'daily_wheel_prizes', 'award_cap_per_day', 'games_enabled'];
       const update = {};
       for (const k of allowed) if (payload.settings && k in payload.settings) update[k] = payload.settings[k];
+      for (const k of ['guild_id', 'officer_role_id']) if (k in update) update[k] = String(update[k] ?? '').trim();
       await b.asServiceRole.entities.Settings.update(s.id, update);
       return Response.json({ ok: true });
     }
