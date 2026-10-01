@@ -1,7 +1,7 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 
-export const SOURCE_LABEL = { award: "Award", game: "Game", daily: "Daily wheel", admin: "Admin", import: "Starting balance" };
+export const SOURCE_LABEL = { award: "Award", game: "Game", daily: "Daily wheel", admin: "Admin", import: "Starting balance", poker: "Poker" };
 
 export default function ActivityList({ logs }) {
   if (!logs.length) {

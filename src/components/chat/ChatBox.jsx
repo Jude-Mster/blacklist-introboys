@@ -14,7 +14,7 @@ const rows = (res) => (Array.isArray(res) ? res : (res && res.items) || []);
 const time = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 
 // Live chat. `channels` is a list of { id, label }; the first one opens by default.
-export default function ChatBox({ channels = [{ id: "guild", label: "Guild" }], className, height = "h-80" }) {
+export default function ChatBox({ channels = [{ id: "guild", label: "Guild" }], className, height = "h-80", frameless = false, onIncoming }) {
   const { account, settings } = useGuild();
   const me = account && account.member;
   const canModerate = me && (me.role === "officer" || me.role === "leader");
@@ -27,6 +27,8 @@ export default function ChatBox({ channels = [{ id: "guild", label: "Guild" }], 
   const listRef = useRef(null);
   const activeRef = useRef(active);
   activeRef.current = active;
+  const incomingRef = useRef(onIncoming);
+  incomingRef.current = onIncoming;
   const channelIds = channels.map((c) => c.id).join("|");
 
   // Keep the active channel valid if the list changes (e.g. leaving a table).
@@ -68,6 +70,7 @@ export default function ChatBox({ channels = [{ id: "guild", label: "Guild" }], 
         if (ev.type === "create" && msg.channel !== activeRef.current) {
           setUnread((u) => ({ ...u, [msg.channel]: (u[msg.channel] || 0) + 1 }));
         }
+        if (ev.type === "create" && incomingRef.current) incomingRef.current(msg);
       });
     } catch {
       /* realtime unavailable: polling covers it */
@@ -124,7 +127,7 @@ export default function ChatBox({ channels = [{ id: "guild", label: "Guild" }], 
   const off = settings && settings.chat_enabled === false;
 
   return (
-    <Panel title={channels.length === 1 ? `${channels[0].label} chat` : "Chat"} className={className}>
+    <Frame frameless={frameless} title={channels.length === 1 ? `${channels[0].label} chat` : "Chat"} className={className}>
       {channels.length > 1 && (
         <div className="-mt-1 mb-3 flex gap-1.5" role="tablist" aria-label="Chat channels">
           {channels.map((c) => (
@@ -200,6 +203,15 @@ export default function ChatBox({ channels = [{ id: "guild", label: "Guild" }], 
         </form>
       )}
       {error && <p role="alert" className="mt-2 text-xs text-ember">{error}</p>}
+    </Frame>
+  );
+}
+
+function Frame({ frameless, title, className, children }) {
+  if (frameless) return <div className={cn("flex min-h-0 flex-col", className)}>{children}</div>;
+  return (
+    <Panel title={title} className={className}>
+      {children}
     </Panel>
   );
 }
