@@ -6,7 +6,7 @@ import { FullLogo } from "./SealLogo";
 
 // Login, register and password pages share this frame: the sky scene behind a
 // single game window.
-export default function AuthLayout({ title, subtitle, footer, children }) {
+export default function AuthLayout({ title, subtitle, footer, compactTitle, children }) {
   return (
     <div className="relative flex min-h-[100svh] items-center justify-center px-4 py-10">
       <SkyScene dim />
@@ -14,7 +14,7 @@ export default function AuthLayout({ title, subtitle, footer, children }) {
         <Link to="/" className="mb-6 flex flex-col items-center gap-3 text-center" aria-label="Back to the guild hall">
           <FullLogo className="w-60" />
         </Link>
-        <Panel title={title}>
+        <Panel title={title} compactTitle={compactTitle}>
           {subtitle && <p className="-mt-1 mb-5 text-center text-sm text-mist">{subtitle}</p>}
           {children}
         </Panel>

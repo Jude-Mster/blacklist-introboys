@@ -165,6 +165,36 @@
     flex: none;
   }
 
+  /* Compact title: used only by auth pages so a long title like
+     "INTROBOYS MEMBERS ONLY" never truncates on phones. */
+  .gw-title-compact {
+    height: auto;
+    min-height: 2.6rem;
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+  }
+  .gw-title-compact h2 {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    text-align: center;
+    font-size: 0.9rem;
+  }
+  @media (max-width: 767px) {
+    .gw-title-compact {
+      min-height: 2.75rem;
+      padding: 0.35rem 0.5rem;
+    }
+    .gw-title-compact::before,
+    .gw-title-compact::after {
+      width: 10px;
+    }
+    .gw-title-compact h2 {
+      font-size: 0.8rem;
+      letter-spacing: 0.02em;
+    }
+  }
+
   /* bronze buttons */
   .btn-seal {
     @apply inline-flex items-center justify-center gap-2 rounded font-heading font-semibold uppercase tracking-wider transition-[filter,transform,box-shadow] disabled:opacity-50 disabled:pointer-events-none;

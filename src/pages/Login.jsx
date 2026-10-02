@@ -163,7 +163,7 @@ export default function Login() {
 
   if (finishing) {
     return (
-      <AuthLayout title="INTROBOYS MEMBERS ONLY">
+      <AuthLayout title="INTROBOYS MEMBERS ONLY" compactTitle>
         <LanternSpinner label="Checking your Discord" className="py-10" />
       </AuthLayout>
     );
@@ -172,7 +172,7 @@ export default function Login() {
   // Discord came back to a different browser/app than the one that started.
   if (confirm) {
     return (
-      <AuthLayout title="INTROBOYS MEMBERS ONLY">
+      <AuthLayout title="INTROBOYS MEMBERS ONLY" compactTitle>
         <div className="flex flex-col items-center text-center">
           {confirm.avatar && <img src={confirm.avatar} alt="" className="h-16 w-16 rounded-full border border-bronze/60" />}
           <p className="mt-3 font-heading text-lg font-bold text-gold">Link Discord as {confirm.name}?</p>
