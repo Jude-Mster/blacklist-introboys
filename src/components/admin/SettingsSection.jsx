@@ -38,6 +38,7 @@ export default function SettingsSection() {
           guild_id: s.guild_id,
           officer_role_id: s.officer_role_id,
           discord_invite_url: s.discord_invite_url,
+          app_download_url: s.app_download_url || "",
           min_bet: s.min_bet,
           max_bet: s.max_bet,
           daily_bet_cap: s.daily_bet_cap,
@@ -88,6 +89,18 @@ export default function SettingsSection() {
             value={s.discord_invite_url}
             onChange={(v) => set("discord_invite_url", v.trim())}
             placeholder="https://discord.gg/…"
+          />
+        </fieldset>
+
+        <fieldset>
+          <legend className="mb-3 font-heading font-bold text-gold">Android app</legend>
+          <Field
+            id="app_download_url"
+            label="App download link"
+            hint="Direct link to the Blacklist12Sky APK. Members on Android phones are invited to download it. Leave empty to turn the prompt off."
+            value={s.app_download_url || ""}
+            onChange={(v) => set("app_download_url", v.trim())}
+            placeholder="https://…/Blacklist12Sky.apk"
           />
         </fieldset>
 

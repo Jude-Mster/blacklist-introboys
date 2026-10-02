@@ -49,6 +49,11 @@ export default async function(req) {
         if (url && !/^https:\/\/(discord\.gg|discord\.com\/invite)\//.test(url)) throw new UserError('Invite link should start with https://discord.gg/');
         update.discord_invite_url = url;
       }
+      if ('app_download_url' in p) {
+        const url = String(p.app_download_url ?? '').trim();
+        if (url && !/^https:\/\/[^\s]{4,500}$/.test(url)) throw new UserError('The app download link should start with https://');
+        update.app_download_url = url;
+      }
       if ('min_bet' in p) update.min_bet = int(p.min_bet, { min: 1, name: 'Minimum wager' });
       if ('max_bet' in p) update.max_bet = int(p.max_bet, { min: 1, name: 'Maximum wager' });
       if ('daily_bet_cap' in p) update.daily_bet_cap = int(p.daily_bet_cap, { min: 1, name: 'Daily wager limit' });

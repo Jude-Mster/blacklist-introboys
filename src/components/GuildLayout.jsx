@@ -1,4 +1,5 @@
 import WarTimer from "@/components/WarTimer";
+import AppPrompt from "@/components/AppPrompt";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { GuildProvider, useGuild } from "@/lib/GuildContext";
@@ -86,6 +87,7 @@ function Shell() {
         </div>
       </main>
       <ChatDrawer open={chatOpen} onClose={closeChat} onIncoming={onIncoming} />
+      <AppPrompt />
       <MobileTabBar onChat={toggleChat} chatOpen={chatOpen} unread={unread} />
     </div>
   );
