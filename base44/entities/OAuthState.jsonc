@@ -13,6 +13,22 @@
     "expires_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "result": {
+      "type": "string",
+      "description": "Once the callback has run, the landing path it produced (e.g. /dashboard?linked=1 or /link-discord?error=not_in_guild). Replayed on any repeat hit so the callback is idempotent."
+    },
+    "consumed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "lock_token": {
+      "type": "string",
+      "description": "Short-lived lock so two concurrent callbacks can't both spend the single-use Discord code"
+    },
+    "lock_until": {
+      "type": "string",
+      "format": "date-time"
     }
   },
   "rls": {
