@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
+import { sessionUser } from '../../shared/session.ts';
 import {
   getSettings, getMemberByUserId, changePoints, withMemberLock, houseEdge, todayStr,
   resolveCoinFlip, resolveDragonDice, resolveLanternSlots, resolveSkyWheel, resolveRoulette, validRouletteBet,
@@ -13,14 +14,14 @@ const GAME_LABEL = GAME_NAMES;
 export default async function(req) {
   try {
     const b = createClientFromRequest(req);
-    const user = await b.auth.me();
-    if (!user) throw new UserError('Log in first.', 401);
+    const user = await sessionUser(b, req);
+    if (!user) throw new UserError('Sign in with Discord first.', 401);
     let payload; try { payload = await req.json(); } catch { payload = {}; }
     const { game, wager, choice } = payload;
     if (payload.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION });
 
     const found = await getMemberByUserId(b, user.id);
-    if (!found) throw new UserError('Link your Discord account first.');
+    if (!found) throw new UserError('Sign in with Discord first.');
 
     const settings = await getSettings(b);
     if (!Array.isArray(settings.games_enabled) || !settings.games_enabled.includes(game))

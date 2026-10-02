@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
+import { sessionUser } from '../../shared/session.ts';
 import {
   getMemberByUserId, changePoints, withMemberLock, withRecordLock, randInt, UserError, errorResponse
 } from '../../shared/points.ts';
@@ -71,13 +72,13 @@ async function refundAll(b, r) {
 export default async function(req) {
   try {
     const b = createClientFromRequest(req);
-    const user = await b.auth.me();
-    if (!user) throw new UserError('Log in first.', 401);
+    const user = await sessionUser(b, req);
+    if (!user) throw new UserError('Sign in with Discord first.', 401);
     let p; try { p = await req.json(); } catch { p = {}; }
     if (p.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION });
 
     const me = await getMemberByUserId(b, user.id);
-    if (!me) throw new UserError('Link your Discord account first.');
+    if (!me) throw new UserError('Sign in with Discord first.');
     const leader = me.role === 'leader';
 
     if (p.action === 'list') {

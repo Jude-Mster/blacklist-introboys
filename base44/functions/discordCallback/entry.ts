@@ -1,10 +1,8 @@
 import { secrets } from 'base44:runtime';
 
-// Dumb redirector. Discord redirects here with ?code&state (or ?error). We do NO
-// linking here — this endpoint has no browser session, so it can't safely bind the
-// Discord account to a site user. We just forward code+state to the Link Discord
-// page, whose authenticated discordLinkComplete call checks the browser session
-// (me.id === OAuthState.user_id) before linking anything.
+// Dumb redirector. Discord redirects here with ?code&state (or ?error). Nothing is
+// verified or signed in here. We just forward code+state to the /login page, which
+// calls discordLogin to verify guild membership and issue a session.
 
 function secret(name: string) {
   try {
@@ -35,12 +33,12 @@ export default async function(req) {
   const u = new URL(req.url);
 
   // User pressed Cancel on Discord, or Discord sent an error.
-  if (u.searchParams.get('error')) return back('/link-discord?error=cancelled');
+  if (u.searchParams.get('error')) return back('/login?error=cancelled');
 
   const code = u.searchParams.get('code');
   const state = u.searchParams.get('state');
-  if (!code || !state) return back('/link-discord?error=state');
+  if (!code || !state) return back('/login?error=state');
 
-  // Forward to the page; discordLinkComplete (authenticated) does the linking.
-  return back(`/link-discord?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`);
+  // Forward to the page; discordLogin does the verification and sign-in.
+  return back(`/login?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`);
 }

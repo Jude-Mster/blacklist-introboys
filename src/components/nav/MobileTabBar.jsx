@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Menu, LogOut, ChevronRight } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { useAuth } from "@/lib/AuthContext";
 import { Drawer, DrawerContent, DrawerTitle, DrawerDescription } from "@/components/ui/drawer";
 import Avatar from "@/components/Avatar";
 import RankBadge from "@/components/RankBadge";
@@ -19,6 +19,7 @@ export default function MobileTabBar({ onChat, chatOpen, unread }) {
   const { account, settings } = useGuild();
   const member = account && account.linked ? account.member : null;
   const [more, setMore] = useState(false);
+  const { logout: signOut } = useAuth();
 
   // Close the sheet after moving to another page.
   useEffect(() => setMore(false), [location.pathname, location.search]);
@@ -36,8 +37,7 @@ export default function MobileTabBar({ onChat, chatOpen, unread }) {
 
   const logout = async () => {
     setMore(false);
-    await base44.auth.logout();
-    navigate("/");
+    await signOut();
   };
 
   return (

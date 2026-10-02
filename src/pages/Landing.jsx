@@ -25,7 +25,7 @@ export default function Landing() {
         <Link to="/login" className="btn-seal mt-8 h-12 px-9 text-base">
           Enter the guild hall
         </Link>
-        <p className="mt-3 text-sm text-mist/80">Members only. You'll link your Discord after logging in.</p>
+        <p className="mt-3 text-sm text-mist/80">Members only. Sign in with your Discord account.</p>
 
         <ul className="mt-12 grid w-full max-w-lg grid-cols-3 gap-3 text-left text-[13px] text-mist sm:text-sm">
           <Feature icon={<Ingot size={20} />} text="Your points, live" />

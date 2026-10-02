@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-import { getMemberRecordByUserId, getSettings, errorResponse } from '../../shared/points.ts';
+import { getSettings, errorResponse } from '../../shared/points.ts';
 import { refreshAccess } from '../../shared/access.ts';
+import { sessionUser, destroyMemberSessions } from '../../shared/session.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
 
 const PUBLIC_MEMBER_FIELDS = [
@@ -11,19 +12,18 @@ const PUBLIC_MEMBER_FIELDS = [
 export default async function(req) {
   try {
     const b = createClientFromRequest(req);
-    const user = await b.auth.me();
-    if (!user) return Response.json({ error: 'Log in first.' }, { status: 401 });
+    const user = await sessionUser(b, req);
+    if (!user) return Response.json({ error: 'Sign in with Discord first.' }, { status: 401 });
 
-    let p; try { p = await req.json(); } catch { p = {}; }
-    const [found, settings] = await Promise.all([getMemberRecordByUserId(b, user.id), getSettings(b)]);
-    let member = found;
+    const settings = await getSettings(b);
     // Keep access in step with the member's Discord role.
-    if (member) member = await refreshAccess(b, settings, member, !!(p && p.recheck) && !!member.no_access);
-    if (member && member.no_access) {
-      return Response.json({ linked: false, denied: 'no_role', setup: { guild_configured: true }, invite_url: settings.discord_invite_url || '', version: BACKEND_VERSION });
+    const member = await refreshAccess(b, settings, user.member, false);
+    if (!member || member.no_access) {
+      // Lost the guild role or left the server: sign them out everywhere.
+      await destroyMemberSessions(b, user.id);
+      return Response.json({ linked: false, denied: 'no_role', invite_url: settings.discord_invite_url || '', version: BACKEND_VERSION });
     }
     const setup = { guild_configured: !!String(settings.guild_id || '').trim() };
-    if (!member) return Response.json({ linked: false, setup, invite_url: settings.discord_invite_url || '' });
 
     const [logs, bets, above] = await Promise.all([
       b.asServiceRole.entities.PointLog.filter({ member_id: member.id }, { sort: '-created_date', limit: 50 }),
@@ -54,6 +54,8 @@ export default async function(req) {
       stats,
       recentLogs: logs.items,
       recentBets: betItems,
+      // Settings are no longer readable directly; members get them here.
+      settings,
       version: BACKEND_VERSION
     });
   } catch (e) {

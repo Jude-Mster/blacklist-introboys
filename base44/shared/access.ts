@@ -1,4 +1,5 @@
 import { secrets } from 'base44:runtime';
+import { destroyMemberSessions } from './session.ts';
 
 // Only members holding this Discord role may use the site. An empty/cleared
 // member_role_id always falls back to this default — never "anyone in the server".
@@ -64,7 +65,7 @@ export async function refreshAccess(b, settings, member, force = false) {
 
 // Mark no_access on every non-leader Member row matching a Discord id OR a site user id.
 // Used when a relink ends in not_in_guild / no_role — they've lost (or never had) access.
-export async function markAccessDenied(b, { discordId, userId }) {
+export async function markAccessDenied(b, { discordId, userId }: { discordId?: string; userId?: string }) {
   const or: any[] = [];
   if (discordId) or.push({ discord_id: String(discordId) });
   if (userId) or.push({ user_id: String(userId) });
@@ -76,5 +77,6 @@ export async function markAccessDenied(b, { discordId, userId }) {
   const now = new Date().toISOString();
   for (const m of items) {
     await b.asServiceRole.entities.Member.update(m.id, { no_access: true, access_checked_at: now });
+    await destroyMemberSessions(b, m.id);
   }
 }

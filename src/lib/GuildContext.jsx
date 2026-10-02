@@ -1,13 +1,22 @@
 import React, { createContext, useContext, useCallback, useEffect, useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { clearSession, setInvite } from "@/lib/session";
 
 const GuildContext = createContext(null);
 
 // Pull the server's error text out of an SDK error.
 export function errorText(e, fallback = "Something went wrong. Try again.") {
-  const data = e && e.response && e.response.data;
-  if (data && data.error) return data.error;
+  const data = (e && e.data) || (e && e.response && e.response.data);
+  if (data && typeof data.error === "string") return data.error;
   return (e && e.message) || fallback;
+}
+
+const statusOf = (e) => (e && (e.status || (e.response && e.response.status))) || 0;
+
+// This device's session is no longer good: forget it and go back to the login page.
+function signOutTo(path) {
+  clearSession();
+  window.location.replace(path);
 }
 
 export function GuildProvider({ children }) {
@@ -19,29 +28,31 @@ export function GuildProvider({ children }) {
   const loadAccount = useCallback(async () => {
     try {
       const res = await base44.functions.invoke("getMyAccount");
-      setAccount(res.data);
+      const data = res.data || {};
+      if (!data.linked) {
+        // No longer a guild member (lost the role or left the server).
+        setInvite(data.invite_url);
+        signOutTo("/login?error=no_role");
+        return;
+      }
+      setAccount(data);
+      if (data.settings) setSettings(data.settings);
       setError(null);
     } catch (e) {
+      if (statusOf(e) === 401) {
+        signOutTo("/login");
+        return;
+      }
       setError(errorText(e, "Couldn't load your account."));
-    }
-  }, []);
-
-  const loadSettings = useCallback(async () => {
-    try {
-      const res = await base44.entities.Settings.filter({}, { limit: 1 });
-      const items = Array.isArray(res) ? res : res.items;
-      setSettings((items && items[0]) || null);
-    } catch {
-      setSettings(null);
     }
   }, []);
 
   useEffect(() => {
     (async () => {
-      await Promise.all([loadAccount(), loadSettings()]);
+      await loadAccount();
       setLoading(false);
     })();
-  }, [loadAccount, loadSettings]);
+  }, [loadAccount]);
 
   const reload = useCallback(async () => {
     await loadAccount();
@@ -52,7 +63,8 @@ export function GuildProvider({ children }) {
     setAccount((a) => (a && a.member ? { ...a, member: { ...a.member, points } } : a));
   }, []);
 
-  const value = { account, settings, loading, error, reload, loadSettings, setBalance };
+  // Settings arrive with the account, so reloading the account refreshes both.
+  const value = { account, settings, loading, error, reload, loadSettings: reload, setBalance };
   return <GuildContext.Provider value={value}>{children}</GuildContext.Provider>;
 }
 

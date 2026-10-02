@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
+import { sessionUser } from '../../shared/session.ts';
 import { getSettings, getMemberByUserId, UserError, errorResponse } from '../../shared/points.ts';
 import { GUILD_CHANNEL, postToDiscord } from '../../shared/chat.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
@@ -15,10 +16,10 @@ const MIN_GAP_MS = 1200;
 export default async function(req) {
   try {
     const b = createClientFromRequest(req);
-    const user = await b.auth.me();
-    if (!user) throw new UserError('Log in first.', 401);
+    const user = await sessionUser(b, req);
+    if (!user) throw new UserError('Sign in with Discord first.', 401);
     const me = await getMemberByUserId(b, user.id);
-    if (!me) throw new UserError('Link your Discord account first.');
+    if (!me) throw new UserError('Sign in with Discord first.');
 
     let p; try { p = await req.json(); } catch { p = {}; }
     if (p.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION });

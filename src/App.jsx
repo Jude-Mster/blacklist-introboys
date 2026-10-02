@@ -3,19 +3,14 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
-import { AuthProvider, useAuth } from '@/lib/AuthContext';
-import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import { AuthProvider } from '@/lib/AuthContext';
 import ScrollToTop from './components/ScrollToTop';
 import { Navigate, useLocation } from 'react-router-dom';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import GuildLayout from '@/components/GuildLayout';
-import LanternSpinner from '@/components/LanternSpinner';
 import Login from '@/pages/Login';
-import Register from '@/pages/Register';
-import ForgotPassword from '@/pages/ForgotPassword';
-import ResetPassword from '@/pages/ResetPassword';
 import Landing from '@/pages/Landing';
-import LinkDiscord from '@/pages/LinkDiscord';
+import AccountProblem from '@/pages/AccountProblem';
 import Dashboard from '@/pages/Dashboard';
 import Games from '@/pages/Games';
 import Leaderboard from '@/pages/Leaderboard';
@@ -27,51 +22,27 @@ import Guide from '@/pages/Guide';
 import { Privacy, Terms } from '@/pages/Legal';
 // Add page imports here
 
-// Send signed-out visitors to /login but remember where they were going, so a
-// Discord link that returns to a browser that isn't signed in can finish after login.
-const LoginRedirect = () => {
+// Old addresses (signup, password reset, the old Discord link page's callback)
+// all lead to the one sign-in page, keeping any ?code&state Discord sent.
+const ToLogin = () => {
   const loc = useLocation();
-  const here = loc.pathname + loc.search;
-  return <Navigate to={"/login?returnTo=" + encodeURIComponent(here)} replace />;
+  return <Navigate to={"/login" + loc.search} replace />;
 };
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
-
-  // Show loading spinner while checking app public settings or auth
-  if (isLoadingPublicSettings || isLoadingAuth) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center">
-        <LanternSpinner label="Opening the gates" />
-      </div>
-    );
-  }
-
-  // Handle authentication errors
-  if (authError) {
-    if (authError.type === 'user_not_registered') {
-      return <UserNotRegisteredError />;
-    } else if (authError.type === 'auth_required') {
-      // Redirect to login automatically
-      navigateToLogin();
-      return null;
-    }
-  }
-
-  // Render the main app
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
-      <Route path="/forgot-password" element={<ForgotPassword />} />
-      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/register" element={<ToLogin />} />
+      <Route path="/forgot-password" element={<ToLogin />} />
+      <Route path="/reset-password" element={<ToLogin />} />
       <Route path="/" element={<Landing />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
-      <Route element={<ProtectedRoute unauthenticatedElement={<LoginRedirect />} />}>
+      <Route element={<ProtectedRoute unauthenticatedElement={<ToLogin />} />}>
         <Route element={<GuildLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/link-discord" element={<LinkDiscord />} />
+          <Route path="/link-discord" element={<AccountProblem />} />
           <Route path="/games" element={<Games />} />
           <Route path="/poker" element={<Poker />} />
           <Route path="/poker/:tableId" element={<Poker />} />

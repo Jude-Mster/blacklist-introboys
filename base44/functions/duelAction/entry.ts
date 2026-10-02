@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
+import { sessionUser } from '../../shared/session.ts';
 import {
   getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, randInt, GAME_NAMES, UserError, errorResponse
 } from '../../shared/points.ts';
@@ -29,13 +30,13 @@ async function expireOld(b) {
 export default async function(req) {
   try {
     const b = createClientFromRequest(req);
-    const user = await b.auth.me();
-    if (!user) throw new UserError('Log in first.', 401);
+    const user = await sessionUser(b, req);
+    if (!user) throw new UserError('Sign in with Discord first.', 401);
     let p; try { p = await req.json(); } catch { p = {}; }
     if (p.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION });
 
     const me = await getMemberByUserId(b, user.id);
-    if (!me) throw new UserError('Link your Discord account first.');
+    if (!me) throw new UserError('Sign in with Discord first.');
     const settings = await getSettings(b);
     if (!(settings.games_enabled || []).includes('coinflip')) throw new UserError('Yin Yang Toss is closed right now.');
 

@@ -100,7 +100,7 @@ export default function RosterSection() {
                     {self ? " (you)" : ""}
                   </p>
                   <p className="text-xs text-mist">
-                    {Number(m.points || 0).toLocaleString()} points{m.banned ? " · banned from games" : ""}{m.user_id ? "" : " · hasn't logged in yet"}
+                    {Number(m.points || 0).toLocaleString()} points{m.banned ? " · banned from games" : ""}{m.access_checked_at ? "" : " · hasn't logged in yet"}
                   </p>
                 </div>
                 {locked ? (

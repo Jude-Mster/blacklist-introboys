@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
+import { sessionUser } from '../../shared/session.ts';
 import {
   getSettings, getMemberByUserId, getMemberByDiscordId, changePoints, withMemberLock,
   awardedLast24h, UserError, errorResponse
@@ -9,10 +10,10 @@ import { BACKEND_VERSION } from '../../shared/version.ts';
 export default async function(req) {
   try {
     const b = createClientFromRequest(req);
-    const user = await b.auth.me();
-    if (!user) throw new UserError('Log in first.', 401);
+    const user = await sessionUser(b, req);
+    if (!user) throw new UserError('Sign in with Discord first.', 401);
     const caller = await getMemberByUserId(b, user.id);
-    if (!caller) throw new UserError('Link your Discord account first.');
+    if (!caller) throw new UserError('Sign in with Discord first.');
     if (!['officer', 'leader'].includes(caller.role)) throw new UserError('Only officers and the leader can award points.', 403);
 
     let payload; try { payload = await req.json(); } catch { payload = {}; }
