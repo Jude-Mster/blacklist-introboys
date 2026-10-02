@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
+import { sessionUser } from '../../shared/session.ts';
 import {
   getSettings, getMemberByUserId, getMemberByDiscordId, changePoints, withMemberLock,
   ALL_GAMES, RANK_TITLE, UserError, errorResponse
@@ -19,10 +20,10 @@ function int(v, { min = 0, max = 1e9, name = 'value' } = {}) {
 export default async function(req) {
   try {
     const b = createClientFromRequest(req);
-    const user = await b.auth.me();
-    if (!user) throw new UserError('Log in first.', 401);
+    const user = await sessionUser(b, req);
+    if (!user) throw new UserError('Sign in with Discord first.', 401);
     const caller = await getMemberByUserId(b, user.id);
-    if (!caller) throw new UserError('Link your Discord account first.');
+    if (!caller) throw new UserError('Sign in with Discord first.');
     if (!['officer', 'leader'].includes(caller.role)) throw new UserError('Officers and the leader only.', 403);
     const leaderOnly = () => { if (caller.role !== 'leader') throw new UserError('Only the leader can do that.', 403); };
 
@@ -109,7 +110,7 @@ export default async function(req) {
     if (action === 'roster') {
       const { items } = await b.asServiceRole.entities.Member.filter(
         {},
-        { sort: '-points', limit: 500, fields: ['discord_id', 'discord_name', 'discord_username', 'avatar_url', 'points', 'role', 'banned', 'user_id'] }
+        { sort: '-points', limit: 500, fields: ['discord_id', 'discord_name', 'discord_username', 'avatar_url', 'points', 'role', 'banned', 'access_checked_at'] }
       );
       return Response.json({ members: items });
     }

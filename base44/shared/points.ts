@@ -64,13 +64,18 @@ export function houseEdge(settings) {
   return Math.min(e, 20) / 100;
 }
 
-// The member row for a logged-in user, whether or not they still have access.
+// The member row for the signed-in caller, whether or not they still have access.
+// `userId` is the id from sessionUser(), which is the Member id.
 export async function getMemberRecordByUserId(b, userId) {
-  const { items } = await b.asServiceRole.entities.Member.filter({ user_id: userId }, { limit: 1 });
-  return items[0] || null;
+  if (!userId) return null;
+  try {
+    return (await b.asServiceRole.entities.Member.get(userId)) || null;
+  } catch {
+    return null;
+  }
 }
 
-// Used by every function: someone who lost the guild role counts as not linked.
+// Used by every function: someone who lost the guild role counts as signed out.
 export async function getMemberByUserId(b, userId) {
   const m = await getMemberRecordByUserId(b, userId);
   return m && !m.no_access ? m : null;
