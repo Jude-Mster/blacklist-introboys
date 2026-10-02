@@ -1,0 +1,63 @@
+{
+  "name": "WheelTable",
+  "type": "object",
+  "description": "The one shared Twelve Skies Wheel: current round and recent results",
+  "properties": {
+    "round_no": {
+      "type": "integer",
+      "default": 0
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "betting",
+        "settled"
+      ]
+    },
+    "bets_close_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "settled_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "next_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "result_index": {
+      "type": "integer"
+    },
+    "recent": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "total_bet": {
+      "type": "integer",
+      "default": 0
+    },
+    "players": {
+      "type": "integer",
+      "default": 0
+    },
+    "lock_token": {
+      "type": "string"
+    },
+    "lock_until": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "result_faction": {
+      "type": "string"
+    }
+  },
+  "rls": {
+    "read": true,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

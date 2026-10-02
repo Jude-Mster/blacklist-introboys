@@ -9,6 +9,7 @@ const CHECKS = [
   { fn: "getMyAccount", label: "Accounts and ranks" },
   { fn: "playGame", label: "Toss, dice, slots and wheel" },
   { fn: "rouletteAction", label: "Live roulette" },
+  { fn: "wheelAction", label: "Live Twelve Skies Wheel" },
   { fn: "duelAction", label: "Coin duels" },
   { fn: "raffleAction", label: "Raffle" },
   { fn: "chatSend", label: "Chat" },

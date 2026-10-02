@@ -8,7 +8,7 @@ export const GAMES = [
   { id: "coinflip", name: "Blacklist Yin Yang Toss", blurb: "Call Yin or Yang, or duel another member." },
   { id: "dragondice", name: "Blacklist Dragon Dice", blurb: "Set your own odds on a roll of 1 to 100." },
   { id: "lanternslots", name: "Blacklist Lantern Slots", blurb: "Three reels. Three seals pays 50×." },
-  { id: "skywheel", name: "Blacklist Twelve Skies Wheel", blurb: "Back a faction and spin the wheel." },
+  { id: "skywheel", name: "Blacklist Twelve Skies Wheel", blurb: "One shared wheel. Back a faction each round." },
   { id: "roulette", name: "Blacklist Jade Roulette", blurb: "One shared table. A new spin every round." },
   { id: "poker", name: "Poker Room", blurb: "Texas Hold'em against other members.", href: "/poker" }
 ];
