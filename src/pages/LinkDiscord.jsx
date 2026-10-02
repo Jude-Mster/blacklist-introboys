@@ -5,7 +5,7 @@ import Panel from "@/components/Panel";
 import LanternSpinner from "@/components/LanternSpinner";
 import { useGuild, errorText } from "@/lib/GuildContext";
 import { Seal } from "@/components/SealLogo";
-import { Loader2 } from "lucide-react";
+import { Loader2, Check, Copy } from "lucide-react";
 
 const ERRORS = {
   not_in_guild: {
@@ -44,19 +44,55 @@ const ERRORS = {
   }
 };
 
+// discord.gg short-links are captured by the Discord app's Android intent
+// filter and silently fail to open inside the installed app (TWA/WebView).
+// discord.com/invite/<code> is a regular HTTPS page that opens reliably, so we
+// normalize whatever the admin saved into that form.
+function normalizeInvite(url) {
+  if (!url) return "";
+  const m = String(url).match(/^https?:\/\/(?:www\.)?discord\.gg\/([A-Za-z0-9]+)/i);
+  return m ? `https://discord.com/invite/${m[1]}` : String(url);
+}
+
 export default function LinkDiscord() {
   const { account, loading } = useGuild();
   const [params] = useSearchParams();
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
   const { reload } = useGuild();
   const denied = account && account.denied === "no_role";
   const problem = ERRORS[params.get("error")] || (denied ? ERRORS.no_role : null);
 
   if (loading) return <LanternSpinner label="Checking your account" className="py-24" />;
   if (account && account.linked) return <Navigate to="/dashboard" replace />;
-  const invite = account && account.invite_url;
+  const invite = normalizeInvite(account && account.invite_url);
+
+  const copyInvite = async () => {
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(invite);
+      ok = true;
+    } catch {
+      // Older browsers / insecure contexts: fall back to a temporary textarea.
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = invite;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "absolute";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch {
+        ok = false;
+      }
+    }
+    setCopied(ok);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const recheck = async () => {
     setChecking(true);
@@ -101,9 +137,17 @@ export default function LinkDiscord() {
               <p className="font-heading font-bold text-gold">{problem.title}</p>
               <p className="mt-1 text-sm text-mist">{problem.body}</p>
               {problem.invite && invite && (
-                <a href={invite} target="_top" rel="noreferrer" className="btn-bronze mt-3 h-10 w-full text-sm">
-                  Join our Discord server
-                </a>
+                <div className="mt-3 w-full">
+                  <a href={invite} target="_blank" rel="noopener noreferrer" className="btn-bronze h-10 w-full text-sm">
+                    Join our Discord server
+                  </a>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="flex-1 truncate rounded border border-bronze/60 bg-ink px-2 py-1.5 text-xs text-mist">{invite}</span>
+                    <button type="button" onClick={copyInvite} className="btn-bronze h-9 shrink-0 px-3 text-xs">
+                      {copied ? <><Check className="h-3.5 w-3.5" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy invite link</>}
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           ) : (
