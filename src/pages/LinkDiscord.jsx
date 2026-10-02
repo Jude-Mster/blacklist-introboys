@@ -99,8 +99,8 @@ export default function LinkDiscord() {
     setError("");
     try {
       const res = await base44.functions.invoke("getMyAccount", { recheck: true });
-      if (res.data && res.data.linked) await reload();
-      else setError("Still no guild member role on your Discord account. Ask the Guild Leader, then try again.");
+      if (res.data && res.data.linked) await reload();else
+      setError("Still no guild member role on your Discord account. Ask the Guild Leader, then try again.");
     } catch (e) {
       setError(errorText(e, "Couldn't check right now. Try again in a moment."));
     } finally {
@@ -132,12 +132,12 @@ export default function LinkDiscord() {
         <div className="flex flex-col items-center text-center">
           <Seal size={56} className="my-2" />
 
-          {problem ? (
-            <div role="status" className="mt-4 w-full rounded-md border border-bronze/60 bg-panel p-4 text-left">
+          {problem ?
+          <div role="status" className="mt-4 w-full rounded-md border border-bronze/60 bg-panel p-4 text-left">
               <p className="font-heading font-bold text-gold">{problem.title}</p>
               <p className="mt-1 text-sm text-mist">{problem.body}</p>
-              {problem.invite && invite && (
-                <div className="mt-3 w-full">
+              {problem.invite && invite &&
+            <div className="mt-3 w-full">
                   <a href={invite} target="_blank" rel="noopener noreferrer" className="btn-bronze h-10 w-full text-sm">
                     Join our Discord server
                   </a>
@@ -148,29 +148,29 @@ export default function LinkDiscord() {
                     </button>
                   </div>
                 </div>
-              )}
-            </div>
-          ) : (
-            <p className="mt-4 text-[15px] text-mist">
-              Your Discord account is your key to the hall. We use it to find your points and check that you're in our server.
-            </p>
-          )}
+            }
+            </div> :
+
+          <p className="mt-4 text-[15px] text-mist">Your Discord account is your key to gain access to the website. We use it to find your points and check that you're in our server.
+
+          </p>
+          }
 
           {error && <p role="alert" className="mt-4 text-sm text-ember">{error}</p>}
 
           <button onClick={start} disabled={busy} className="btn-seal mt-6 h-12 w-full text-base">
-            {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Opening Discord</> : problem ? (problem.invite ? "Try again" : "Link Discord again") : "Link Discord"}
+            {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Opening Discord</> : problem ? problem.invite ? "Try again" : "Link Discord again" : "Link Discord"}
           </button>
 
-          {denied && (
-            <button onClick={recheck} disabled={checking} className="btn-bronze mt-3 h-11 w-full text-sm">
+          {denied &&
+          <button onClick={recheck} disabled={checking} className="btn-bronze mt-3 h-11 w-full text-sm">
               {checking ? <><Loader2 className="h-4 w-4 animate-spin" /> Checking</> : "I have the role now, check again"}
             </button>
-          )}
+          }
 
           <p className="mt-4 text-xs text-mist/80">We only see your name, avatar, which servers you're in and your roles in our server. We can't read your messages.</p>
         </div>
       </Panel>
-    </div>
-  );
+    </div>);
+
 }
