@@ -51,7 +51,7 @@ export default function Sidebar({ collapsed, onToggle, onChat, chatOpen, unread 
           <Item item={RAFFLE} active={isActive(RAFFLE, location)} wide={wide} badge={raffleOpen} />
           <Item item={RANKINGS} active={isActive(RANKINGS, location)} wide={wide} />
           <Item item={GUIDE} active={isActive(GUIDE, location)} wide={wide} />
-          <Item item={CHAT} onClick={onChat} active={chatOpen} badge={unread} wide={wide} />
+          {member && <Item item={CHAT} onClick={onChat} active={chatOpen} badge={unread} wide={wide} />}
         </Group>
 
         <Group label="You" wide={wide}>

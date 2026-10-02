@@ -40,23 +40,25 @@ export default function TopBar({ onChat, chatOpen, unread }) {
               <Points value={member.points} className="text-sm font-bold text-gold sm:text-base" iconSize={16} />
             </Link>
           )}
-          <button
-            onClick={onChat}
-            aria-pressed={chatOpen}
-            aria-label={unread ? `Chat, ${unread} new messages` : "Chat"}
-            title="Chat"
-            className={cn(
-              "relative hidden h-9 w-9 items-center justify-center rounded-md border transition-colors md:flex",
-              chatOpen ? "border-gold bg-bronze/30 text-gold" : "border-bronze/50 text-mist hover:text-gold"
-            )}
-          >
-            <MessageSquare className="h-[18px] w-[18px]" />
-            {unread > 0 && (
-              <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-crimson px-1 text-[10px] font-bold text-[hsl(0_0%_92%)]">
-                {unread > 9 ? "9+" : unread}
-              </span>
-            )}
-          </button>
+          {member && (
+            <button
+              onClick={onChat}
+              aria-pressed={chatOpen}
+              aria-label={unread ? `Chat, ${unread} new messages` : "Chat"}
+              title="Chat"
+              className={cn(
+                "relative hidden h-9 w-9 items-center justify-center rounded-md border transition-colors md:flex",
+                chatOpen ? "border-gold bg-bronze/30 text-gold" : "border-bronze/50 text-mist hover:text-gold"
+              )}
+            >
+              <MessageSquare className="h-[18px] w-[18px]" />
+              {unread > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-crimson px-1 text-[10px] font-bold text-[hsl(0_0%_92%)]">
+                  {unread > 9 ? "9+" : unread}
+                </span>
+              )}
+            </button>
+          )}
           <AccountMenu member={member} />
         </div>
       </div>

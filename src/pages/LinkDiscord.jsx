@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Navigate, useSearchParams } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { Navigate, useSearchParams, useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import LanternSpinner from "@/components/LanternSpinner";
@@ -38,6 +38,18 @@ const ERRORS = {
     title: "Discord is busy",
     body: "Discord asked us to slow down. Wait a minute and try again."
   },
+  already_linked: {
+    title: "This Discord is already linked",
+    body: "That Discord account is linked to another site member. Ask the Guild Leader to unlink it first, then try again."
+  },
+  not_owner_leader: {
+    title: "Talk to the Guild Leader",
+    body: "Your account is marked as Guild Leader but you aren't the owner of our Discord server. Contact the Guild Leader to fix this before linking."
+  },
+  wrong_account: {
+    title: "This isn't your link",
+    body: "This linking link was started from a different site account. Start Discord linking from your own account below."
+  },
   server: {
     title: "Something went wrong on our side",
     body: "Try again in a moment. If it keeps happening, tell the guild leader."
@@ -46,8 +58,7 @@ const ERRORS = {
 
 // discord.gg short-links are captured by the Discord app's Android intent
 // filter and silently fail to open inside the installed app (TWA/WebView).
-// discord.com/invite/<code> is a regular HTTPS page that opens reliably, so we
-// normalize whatever the admin saved into that form.
+// discord.com/invite/<code> is a regular HTTPS page that opens reliably.
 function normalizeInvite(url) {
   if (!url) return "";
   const m = String(url).match(/^https?:\/\/(?:www\.)?discord\.gg\/([A-Za-z0-9]+)/i);
@@ -55,17 +66,56 @@ function normalizeInvite(url) {
 }
 
 export default function LinkDiscord() {
-  const { account, loading } = useGuild();
+  const { account, loading, reload } = useGuild();
   const [params] = useSearchParams();
+  const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [completing, setCompleting] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
-  const { reload } = useGuild();
+
+  const code = params.get("code");
+  const state = params.get("state");
   const denied = account && account.denied === "no_role";
   const problem = ERRORS[params.get("error")] || (denied ? ERRORS.no_role : null);
 
+  // Discord redirected back with ?code&state. The authenticated
+  // discordLinkComplete function checks the browser session matches the user who
+  // started the flow, then runs the Discord checks and links.
+  useEffect(() => {
+    if (!code || !state) return;
+    let alive = true;
+    setCompleting(true);
+    (async () => {
+      try {
+        const res = await base44.functions.invoke("discordLinkComplete", { code, state });
+        if (!alive) return;
+        const redirect = res.data && res.data.redirect;
+        if (!redirect) {
+          setError("Couldn't finish linking. Try again.");
+          return;
+        }
+        if (redirect.startsWith("/dashboard")) {
+          await reload();
+          navigate("/dashboard", { replace: true });
+        } else {
+          // an error path on this page — replace so the error card shows
+          navigate(redirect, { replace: true });
+        }
+      } catch (e) {
+        if (alive) setError(errorText(e, "Couldn't finish linking. Try again."));
+      } finally {
+        if (alive) setCompleting(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [code, state, reload, navigate]);
+
   if (loading) return <LanternSpinner label="Checking your account" className="py-24" />;
+  if (completing) return <LanternSpinner label="Finishing your link" className="py-24" />;
   if (account && account.linked) return <Navigate to="/dashboard" replace />;
   const invite = normalizeInvite(account && account.invite_url);
 
@@ -75,7 +125,6 @@ export default function LinkDiscord() {
       await navigator.clipboard.writeText(invite);
       ok = true;
     } catch {
-      // Older browsers / insecure contexts: fall back to a temporary textarea.
       try {
         const ta = document.createElement("textarea");
         ta.value = invite;
@@ -99,8 +148,8 @@ export default function LinkDiscord() {
     setError("");
     try {
       const res = await base44.functions.invoke("getMyAccount", { recheck: true });
-      if (res.data && res.data.linked) await reload();else
-      setError("Still no guild member role on your Discord account. Ask the Guild Leader, then try again.");
+      if (res.data && res.data.linked) await reload();
+      else setError("Still no guild member role on your Discord account. Ask the Guild Leader, then try again.");
     } catch (e) {
       setError(errorText(e, "Couldn't check right now. Try again in a moment."));
     } finally {
@@ -132,12 +181,12 @@ export default function LinkDiscord() {
         <div className="flex flex-col items-center text-center">
           <Seal size={56} className="my-2" />
 
-          {problem ?
-          <div role="status" className="mt-4 w-full rounded-md border border-bronze/60 bg-panel p-4 text-left">
+          {problem ? (
+            <div role="status" className="mt-4 w-full rounded-md border border-bronze/60 bg-panel p-4 text-left">
               <p className="font-heading font-bold text-gold">{problem.title}</p>
               <p className="mt-1 text-sm text-mist">{problem.body}</p>
-              {problem.invite && invite &&
-            <div className="mt-3 w-full">
+              {problem.invite && invite && (
+                <div className="mt-3 w-full">
                   <a href={invite} target="_blank" rel="noopener noreferrer" className="btn-bronze h-10 w-full text-sm">
                     Join our Discord server
                   </a>
@@ -148,29 +197,27 @@ export default function LinkDiscord() {
                     </button>
                   </div>
                 </div>
-            }
-            </div> :
-
-          <p className="mt-4 text-[15px] text-mist">Your Discord account is your key to gain access to the website. We use it to find your points and check that you're in our server.
-
-          </p>
-          }
+              )}
+            </div>
+          ) : (
+            <p className="mt-4 text-[15px] text-mist">Your Discord account is your key to gain access to the website. We use it to find your points and check that you're in our server.</p>
+          )}
 
           {error && <p role="alert" className="mt-4 text-sm text-ember">{error}</p>}
 
           <button onClick={start} disabled={busy} className="btn-seal mt-6 h-12 w-full text-base">
-            {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Opening Discord</> : problem ? problem.invite ? "Try again" : "Link Discord again" : "Link Discord"}
+            {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Opening Discord</> : problem ? (problem.invite ? "Try again" : "Link Discord again") : "Link Discord"}
           </button>
 
-          {denied &&
-          <button onClick={recheck} disabled={checking} className="btn-bronze mt-3 h-11 w-full text-sm">
+          {denied && (
+            <button onClick={recheck} disabled={checking} className="btn-bronze mt-3 h-11 w-full text-sm">
               {checking ? <><Loader2 className="h-4 w-4 animate-spin" /> Checking</> : "I have the role now, check again"}
             </button>
-          }
+          )}
 
           <p className="mt-4 text-xs text-mist/80">We only see your name, avatar, which servers you're in and your roles in our server. We can't read your messages.</p>
         </div>
       </Panel>
-    </div>);
-
+    </div>
+  );
 }

@@ -1,0 +1,45 @@
+{
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "daily_access_recheck",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "recheck": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "dailyAccessRecheck",
+            "args": {}
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Recheck member access",
+            "description": "Daily Discord role re-check"
+          }
+        }
+      }
+    ]
+  },
+  "description": "Once a day, re-check every non-leader member's Discord role and sync no_access. Never changes no_access when Discord couldn't be asked.",
+  "name": "Daily Access Recheck",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "0 4 * * *",
+      "one_time_date": null,
+      "timezone": "America/New_York",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  }
+}

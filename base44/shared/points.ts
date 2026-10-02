@@ -39,16 +39,6 @@ export const GAME_NAMES = {
   poker: "Poker Room"
 };
 
-// Is this Base44 user the app owner? The owner is always the Guild Leader.
-export async function isAppAdmin(b, userId) {
-  try {
-    const u = await b.asServiceRole.entities.User.get(userId);
-    return !!u && u.role === "admin";
-  } catch {
-    return false;
-  }
-}
-
 export async function getSettings(b) {
   const { items } = await b.asServiceRole.entities.Settings.filter({}, { limit: 1 });
   if (items.length === 0) {

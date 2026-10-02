@@ -49,8 +49,8 @@ export default function ChatBox({ channels = [{ id: "guild", label: "Guild" }], 
   const load = useCallback(
     async (channel) => {
       try {
-        const res = await base44.entities.ChatMessage.filter({ channel }, { sort: "-created_date", limit: PAGE });
-        merge(channel, rows(res));
+        const res = await base44.functions.invoke("getChatMessages", { channel, limit: PAGE });
+        merge(channel, rows(res.data));
       } catch {
         /* chat is best effort */
       }

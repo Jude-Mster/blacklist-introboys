@@ -25,8 +25,8 @@ export default function LiveFeed({ className, limit = 14 }) {
     let alive = true;
     const load = async () => {
       try {
-        const res = await base44.entities.GameFeed.filter({}, { sort: "-created_date", limit });
-        if (alive) merge(rows(res));
+        const res = await base44.functions.invoke("getGameFeed", { limit });
+        if (alive) merge(rows(res.data));
       } catch {
         if (alive) setItems((cur) => cur || []);
       }

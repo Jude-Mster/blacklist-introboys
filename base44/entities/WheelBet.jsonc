@@ -41,7 +41,7 @@
     }
   },
   "rls": {
-    "read": true,
+    "read": false,
     "create": false,
     "update": false,
     "delete": false

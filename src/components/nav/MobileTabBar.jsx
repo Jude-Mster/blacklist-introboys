@@ -30,7 +30,7 @@ export default function MobileTabBar({ onChat, chatOpen, unread }) {
     { ...HOME, active: !quiet && isActive(HOME, location) },
     { ...GAMES_HUB, active: !quiet && location.pathname === "/games" },
     { ...POKER, active: !quiet && isActive(POKER, location) },
-    { ...CHAT, active: chatOpen && !more, onClick: onChat, badge: unread },
+    ...(member ? [{ ...CHAT, active: chatOpen && !more, onClick: onChat, badge: unread }] : []),
     { id: "more", short: "More", icon: Menu, active: more || (!chatOpen && inMore), onClick: () => setMore(true) }
   ];
 
@@ -46,7 +46,7 @@ export default function MobileTabBar({ onChat, chatOpen, unread }) {
         aria-label="Main"
         className="fixed inset-x-0 bottom-0 z-40 border-t border-bronze/70 bg-[hsl(0_0%_4%/0.96)] pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden"
       >
-        <div className="mx-auto grid max-w-md grid-cols-5">
+        <div className={cn("mx-auto grid max-w-md", member ? "grid-cols-5" : "grid-cols-4")}>
           {tabs.map((t) => {
             const Icon = t.icon;
             const inner = (

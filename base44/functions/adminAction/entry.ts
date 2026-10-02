@@ -51,7 +51,8 @@ export default async function(req) {
       }
       if ('member_role_id' in p) {
         const r = String(p.member_role_id ?? '').trim();
-        if (r && !isSnowflake(r)) throw new UserError('Member role ID should be the 17-20 digit number from "Copy Role ID".');
+        if (!r) throw new UserError("Member role ID can't be blank. Paste the 17-20 digit number from \"Copy Role ID\".");
+        if (!isSnowflake(r)) throw new UserError('Member role ID should be the 17-20 digit number from "Copy Role ID".');
         update.member_role_id = r;
       }
       if ('app_download_url' in p) {

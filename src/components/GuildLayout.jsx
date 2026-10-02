@@ -86,7 +86,7 @@ function Shell() {
           <Outlet />
         </div>
       </main>
-      <ChatDrawer open={chatOpen} onClose={closeChat} onIncoming={onIncoming} />
+      {account && account.linked && <ChatDrawer open={chatOpen} onClose={closeChat} onIncoming={onIncoming} />}
       <AppPrompt />
       <MobileTabBar onChat={toggleChat} chatOpen={chatOpen} unread={unread} />
     </div>
