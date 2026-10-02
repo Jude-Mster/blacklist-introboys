@@ -59,12 +59,12 @@ export default function Games() {
               <Link
                 key={g.id}
                 to={g.href}
-                className="flex min-w-[9.5rem] shrink-0 items-center gap-3 rounded-md border border-crimson/60 bg-crimson/10 px-3 py-2.5 text-left transition-colors hover:border-gold"
+                className="flex min-w-0 shrink-0 items-center gap-2.5 sm:min-w-[9.5rem] sm:gap-3 rounded-md border border-crimson/60 bg-crimson/10 px-3 py-2.5 text-left transition-colors hover:border-gold"
               >
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded border border-bronze/50 bg-black/40">{ICONS[g.id]}</span>
                 <span className="min-w-0">
                   <span className="block font-heading text-sm font-bold text-[hsl(var(--foreground))]">{g.name}</span>
-                  <span className="block truncate text-xs text-mist">Play live with members</span>
+                  <span className="hidden truncate text-xs text-mist sm:block">Play live with members</span>
                 </span>
               </Link>
             );
@@ -76,7 +76,7 @@ export default function Games() {
               aria-selected={on}
               onClick={() => setParams({ game: g.id }, { replace: true })}
               className={cn(
-                "flex min-w-[9.5rem] shrink-0 items-center gap-3 rounded-md border px-3 py-2.5 text-left transition-colors",
+                "flex min-w-0 shrink-0 items-center gap-2.5 sm:min-w-[9.5rem] sm:gap-3 rounded-md border px-3 py-2.5 text-left transition-colors",
                 on ? "border-gold bg-bronze/25" : "border-bronze/45 bg-black/25 hover:border-bronze"
               )}
             >
@@ -85,7 +85,7 @@ export default function Games() {
               </span>
               <span className="min-w-0">
                 <span className={cn("block font-heading text-sm font-bold", on ? "text-gold" : "text-[hsl(var(--foreground))]")}>{g.name}</span>
-                <span className="block truncate text-xs text-mist">{g.blurb}</span>
+                <span className="hidden truncate text-xs text-mist sm:block">{g.blurb}</span>
               </span>
             </button>
           );
@@ -124,7 +124,8 @@ export default function Games() {
           </dl>
         </Panel>
         <LiveFeed />
-        <ChatBox height="h-64" />
+        {/* On phones chat lives in the bottom bar, so the page stays short. */}
+        <ChatBox height="h-64" className="hidden lg:block" />
         </div>
       </div>
     </div>

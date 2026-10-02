@@ -36,6 +36,9 @@ export default function Landing() {
         <p className="mt-12 max-w-sm text-xs text-mist/60">
           Points have no real-money value. They can't be bought, sold or cashed out.
         </p>
+        <p className="mt-3 text-xs text-mist/80">
+          <Link to="/privacy" className="underline">Privacy</Link> · <Link to="/terms" className="underline">Terms</Link>
+        </p>
       </main>
     </div>
   );

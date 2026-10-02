@@ -24,6 +24,7 @@ import Admin from '@/pages/Admin';
 import Poker from '@/pages/Poker';
 import Raffle from '@/pages/Raffle';
 import Guide from '@/pages/Guide';
+import { Privacy, Terms } from '@/pages/Legal';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -57,6 +58,8 @@ const AuthenticatedApp = () => {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/" element={<Landing />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/terms" element={<Terms />} />
       <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
         <Route element={<GuildLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />

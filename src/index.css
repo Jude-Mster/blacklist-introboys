@@ -312,3 +312,46 @@
     transition-duration: 0.01ms !important;
   }
 }
+/* ---------- Phones only (desktop is untouched) ---------- */
+@media (max-width: 767px) {
+  /* iOS zooms the page when a focused field is under 16px. */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+  /* Comfortable tap targets. */
+  .btn-bronze,
+  .btn-seal {
+    min-height: 44px;
+  }
+  /* Windows run closer to the screen edge so content gets the width. */
+  .gw-title {
+    height: 2.75rem;
+    padding: 0 1rem;
+  }
+  .gw-title h2,
+  .gw-title h3 {
+    font-size: 1rem;
+  }
+  /* No grey flash or accidental text selection when tapping controls. */
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  /* Side-scrolling rows snap to each item and hide their scrollbar. */
+  [role='tablist'] {
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+  [role='tablist']::-webkit-scrollbar {
+    display: none;
+  }
+  [role='tablist'] > * {
+    scroll-snap-align: start;
+  }
+  html {
+    overscroll-behavior-y: none;
+  }
+}

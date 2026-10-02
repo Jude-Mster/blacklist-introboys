@@ -76,7 +76,7 @@ function Shell() {
       <main
         id="main"
         className={cn(
-          "px-3 pb-32 pt-[4.5rem] transition-[padding] duration-200 sm:px-4 sm:pt-[5.25rem] md:pb-12 md:pl-[88px]",
+          "px-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-[4.25rem] transition-[padding] duration-200 sm:px-4 sm:pt-[5.25rem] md:pb-12 md:pl-[88px]",
           collapsed ? "lg:pl-[88px]" : "lg:pl-[260px]"
         )}
       >
