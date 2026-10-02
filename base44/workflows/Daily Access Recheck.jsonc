@@ -3,7 +3,7 @@
     "document": {
       "dsl": "1.0.0",
       "name": "daily_access_recheck",
-      "version": "1.0",
+      "version": "1.1",
       "namespace": "base44"
     },
     "do": [
@@ -12,7 +12,9 @@
           "call": "invoke_backend_function",
           "with": {
             "function_name": "dailyAccessRecheck",
-            "args": {}
+            "args": {
+              "__wf_secret": "a38d759dc94c446fab834e45b8c15b33174691e91b2541db"
+            }
           },
           "then": "end",
           "x-base44": {
@@ -23,7 +25,7 @@
       }
     ]
   },
-  "description": "Once a day, re-check every non-leader member's Discord role and sync no_access. Never changes no_access when Discord couldn't be asked.",
+  "description": "Once a day, re-check every non-leader member's Discord role and sync no_access. Never changes no_access when Discord couldn't be asked. Passes a shared secret so the function can reject anonymous callers.",
   "name": "Daily Access Recheck",
   "trigger": {
     "condition": null,
