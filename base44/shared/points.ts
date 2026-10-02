@@ -62,8 +62,7 @@ export async function getSettings(b) {
       house_edge_pct: 3,
       daily_wheel_prizes: [50, 100, 150, 250, 500, 1000],
       award_cap_per_day: 10000,
-      games_enabled: ALL_GAMES,
-      big_win_threshold: 5000
+      games_enabled: ALL_GAMES
     });
   }
   return items[0];
@@ -75,9 +74,16 @@ export function houseEdge(settings) {
   return Math.min(e, 20) / 100;
 }
 
-export async function getMemberByUserId(b, userId) {
+// The member row for a logged-in user, whether or not they still have access.
+export async function getMemberRecordByUserId(b, userId) {
   const { items } = await b.asServiceRole.entities.Member.filter({ user_id: userId }, { limit: 1 });
   return items[0] || null;
+}
+
+// Used by every function: someone who lost the guild role counts as not linked.
+export async function getMemberByUserId(b, userId) {
+  const m = await getMemberRecordByUserId(b, userId);
+  return m && !m.no_access ? m : null;
 }
 
 export async function getMemberByDiscordId(b, discordId) {

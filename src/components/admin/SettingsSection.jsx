@@ -4,6 +4,8 @@ import Panel from "@/components/Panel";
 import { useGuild, errorText } from "@/lib/GuildContext";
 import { GAMES } from "@/lib/games";
 
+const DEFAULT_MEMBER_ROLE_ID = "1309724734203887647";
+
 export default function SettingsSection() {
   const { settings, loadSettings, reload } = useGuild();
   const [form, setForm] = useState(null);
@@ -38,13 +40,13 @@ export default function SettingsSection() {
           guild_id: s.guild_id,
           officer_role_id: s.officer_role_id,
           discord_invite_url: s.discord_invite_url,
+          member_role_id: s.member_role_id ?? DEFAULT_MEMBER_ROLE_ID,
           app_download_url: s.app_download_url || "",
           min_bet: s.min_bet,
           max_bet: s.max_bet,
           daily_bet_cap: s.daily_bet_cap,
           house_edge_pct: s.house_edge_pct,
           award_cap_per_day: s.award_cap_per_day,
-          big_win_threshold: s.big_win_threshold,
           daily_wheel_prizes: Array.isArray(s.daily_wheel_prizes) ? s.daily_wheel_prizes : String(s.daily_wheel_prizes).split(","),
           games_enabled: s.games_enabled || [],
           chat_enabled: s.chat_enabled !== false
@@ -83,6 +85,14 @@ export default function SettingsSection() {
             inputMode="numeric"
           />
           <Field
+            id="member_role_id"
+            label="Required member role ID"
+            hint="Only people with this Discord role can use the site. Everyone else sees a message to talk to the Guild Leader. Leave empty to allow anyone in the server."
+            value={s.member_role_id ?? DEFAULT_MEMBER_ROLE_ID}
+            onChange={(v) => set("member_role_id", v.trim())}
+            placeholder="1309724734203887647"
+          />
+          <Field
             id="discord_invite_url"
             label="Invite link"
             hint="Shown to people who try to link but aren't in the server yet."
@@ -112,7 +122,6 @@ export default function SettingsSection() {
             <Field id="daily_bet_cap" label="Daily wager limit" type="number" value={s.daily_bet_cap} onChange={(v) => set("daily_bet_cap", v)} />
             <Field id="house_edge_pct" label="House edge %" type="number" value={s.house_edge_pct} onChange={(v) => set("house_edge_pct", v)} hint="0 to 20. At 3, games return 97% over time." />
             <Field id="award_cap_per_day" label="Vice Guild Member award cap / 24h" type="number" value={s.award_cap_per_day} onChange={(v) => set("award_cap_per_day", v)} />
-            <Field id="big_win_threshold" label="Big-win threshold" type="number" value={s.big_win_threshold} onChange={(v) => set("big_win_threshold", v)} hint="Wins above this many points are announced in Discord (roulette and poker). 0 = every win." />
             <Field
               id="daily_wheel_prizes"
               label="Daily wheel prizes"

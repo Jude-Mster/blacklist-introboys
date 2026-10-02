@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-import { getMemberByUserId, getSettings, errorResponse, isAppAdmin } from '../../shared/points.ts';
+import { getMemberRecordByUserId, getSettings, errorResponse, isAppAdmin } from '../../shared/points.ts';
+import { refreshAccess } from '../../shared/access.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
 
 const PUBLIC_MEMBER_FIELDS = [
@@ -13,11 +14,17 @@ export default async function(req) {
     const user = await b.auth.me();
     if (!user) return Response.json({ error: 'Log in first.' }, { status: 401 });
 
-    const [found, settings] = await Promise.all([getMemberByUserId(b, user.id), getSettings(b)]);
+    let p; try { p = await req.json(); } catch { p = {}; }
+    const [found, settings] = await Promise.all([getMemberRecordByUserId(b, user.id), getSettings(b)]);
     let member = found;
     // The app owner is always the Guild Leader, even if they linked before that rule existed.
     if (member && member.role !== 'leader' && (await isAppAdmin(b, user.id))) {
       member = await b.asServiceRole.entities.Member.update(member.id, { role: 'leader' });
+    }
+    // Keep access in step with the member's Discord role.
+    if (member) member = await refreshAccess(b, settings, member, !!(p && p.recheck) && !!member.no_access);
+    if (member && member.no_access) {
+      return Response.json({ linked: false, denied: 'no_role', setup: { guild_configured: true }, invite_url: settings.discord_invite_url || '', version: BACKEND_VERSION });
     }
     const setup = { guild_configured: !!String(settings.guild_id || '').trim() };
     if (!member) return Response.json({ linked: false, setup, invite_url: settings.discord_invite_url || '' });

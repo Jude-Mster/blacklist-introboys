@@ -35,7 +35,7 @@ export default async function(req) {
       client_id: clientId,
       redirect_uri: redirectUri,
       response_type: 'code',
-      scope: 'identify guilds',
+      scope: 'identify guilds guilds.members.read',
       state
     });
     return Response.json({ url: `https://discord.com/oauth2/authorize?${params.toString()}` });

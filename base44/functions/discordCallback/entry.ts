@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { secrets } from 'base44:runtime';
 import { getSettings } from '../../shared/points.ts';
+import { requiredRoleId } from '../../shared/access.ts';
 
 const DISCORD_API = 'https://discord.com/api/v10';
 
@@ -96,7 +97,27 @@ export default async function(req) {
     }
 
     const isGuildOwner = !!(myGuild && myGuild.owner);
+
+    // Members must hold the guild role. The app owner and the server owner always get in.
+    const roleId = requiredRoleId(settings);
+    if (roleId && !admin && !isGuildOwner) {
+      const mRes = await fetch(`${DISCORD_API}/users/@me/guilds/${guildId}/member`, auth);
+      if (mRes.status === 429) return fail('busy');
+      const gm = mRes.ok ? await mRes.json() : null;
+      const roles = gm && Array.isArray(gm.roles) ? gm.roles.map(String) : [];
+      if (!roles.includes(roleId)) {
+        console.log('Role check failed', JSON.stringify({ discord_user: me.id, required_role: roleId, status: mRes.status }));
+        // If they linked before, lock that account until they get the role.
+        const { items: prior } = await b.asServiceRole.entities.Member.filter({ discord_id: String(me.id) }, { limit: 1 });
+        if (prior[0] && prior[0].role !== 'leader') {
+          await b.asServiceRole.entities.Member.update(prior[0].id, { no_access: true, access_checked_at: new Date().toISOString() });
+        }
+        return fail('no_role');
+      }
+    }
     const profile = {
+      no_access: false,
+      access_checked_at: new Date().toISOString(),
       user_id: st.user_id,
       discord_name: me.global_name || me.username,
       discord_username: me.username,

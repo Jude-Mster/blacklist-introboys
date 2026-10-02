@@ -13,6 +13,11 @@ const ERRORS = {
     body: "Join the BLACKLIST INTROBOYS server with the same Discord account, then link again. Check that the account on Discord's Authorize screen is yours.",
     invite: true
   },
+  no_role: {
+    title: "Guild members only",
+    body: "You need to be a BLACKLIST INTROBOYS guild member to use this site. If you're in the guild, talk to the Guild Leader in Discord to get the member role, then come back and link again.",
+    invite: true
+  },
   guild_not_set: {
     title: "The guild hall isn't set up yet",
     body: "The guild leader needs to finish setup before members can link. Let them know, then try again later."
@@ -43,12 +48,29 @@ export default function LinkDiscord() {
   const { account, loading } = useGuild();
   const [params] = useSearchParams();
   const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
-  const problem = ERRORS[params.get("error")];
+  const { reload } = useGuild();
+  const denied = account && account.denied === "no_role";
+  const problem = ERRORS[params.get("error")] || (denied ? ERRORS.no_role : null);
 
   if (loading) return <LanternSpinner label="Checking your account" className="py-24" />;
   if (account && account.linked) return <Navigate to="/dashboard" replace />;
   const invite = account && account.invite_url;
+
+  const recheck = async () => {
+    setChecking(true);
+    setError("");
+    try {
+      const res = await base44.functions.invoke("getMyAccount", { recheck: true });
+      if (res.data && res.data.linked) await reload();
+      else setError("Still no guild member role on your Discord account. Ask the Guild Leader, then try again.");
+    } catch (e) {
+      setError(errorText(e, "Couldn't check right now. Try again in a moment."));
+    } finally {
+      setChecking(false);
+    }
+  };
 
   const start = async () => {
     setBusy(true);
@@ -96,7 +118,13 @@ export default function LinkDiscord() {
             {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Opening Discord</> : problem ? "Link Discord again" : "Link Discord"}
           </button>
 
-          <p className="mt-4 text-xs text-mist/80">We only see your name, avatar and which servers you're in. We can't read your messages.</p>
+          {denied && (
+            <button onClick={recheck} disabled={checking} className="btn-bronze mt-3 h-11 w-full text-sm">
+              {checking ? <><Loader2 className="h-4 w-4 animate-spin" /> Checking</> : "I have the role now, check again"}
+            </button>
+          )}
+
+          <p className="mt-4 text-xs text-mist/80">We only see your name, avatar, which servers you're in and your roles in our server. We can't read your messages.</p>
         </div>
       </Panel>
     </div>

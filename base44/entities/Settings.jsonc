@@ -89,6 +89,10 @@
     "app_download_url": {
       "type": "string",
       "description": "https link to the Android app (APK). Empty = no download prompt."
+    },
+    "member_role_id": {
+      "type": "string",
+      "description": "Discord role required to use the site. Empty = anyone in the server."
     }
   },
   "rls": {
