@@ -32,7 +32,7 @@ export function Privacy() {
       <h2>What we do not do</h2>
       <p>We do not sell or share your information with advertisers. We do not read your Discord messages outside the linked guild channel. Google and Discord only tell us who you are when you log in.</p>
       <h2>Where it is kept</h2>
-      <p>The site is hosted on Base44. Your information is kept for as long as you are a member.</p>
+      <p>Your information is kept for as long as you are a member.</p>
       <h2>Removing your data</h2>
       <p>Ask the Guild Leader in the guild's Discord server and your account and its data will be deleted.</p>
     </Page>
