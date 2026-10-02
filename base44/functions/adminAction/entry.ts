@@ -1,8 +1,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import {
   getSettings, getMemberByUserId, getMemberByDiscordId, changePoints, withMemberLock,
-  ALL_GAMES, UserError, errorResponse
+  ALL_GAMES, RANK_TITLE, UserError, errorResponse
 } from '../../shared/points.ts';
+import { BACKEND_VERSION } from '../../shared/version.ts';
+import { postSystem, GUILD_CHANNEL } from '../../shared/chat.ts';
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const isSnowflake = (s: string) => /^\d{15,21}$/.test(s);
@@ -77,14 +79,26 @@ export default async function(req) {
       return Response.json({ ok: true });
     }
 
+    if (action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION });
+
+    if (action === 'roster') {
+      const { items } = await b.asServiceRole.entities.Member.filter(
+        {},
+        { sort: '-points', limit: 500, fields: ['discord_id', 'discord_name', 'discord_username', 'avatar_url', 'points', 'role', 'banned', 'user_id'] }
+      );
+      return Response.json({ members: items });
+    }
+
     if (action === 'setRole') {
       leaderOnly();
       const role = payload.role;
-      if (!['member', 'officer'].includes(role)) throw new UserError('Role must be member or officer.');
+      if (!['member', 'guild_member', 'officer'].includes(role)) throw new UserError('Pick Member, Guild Member or Vice Guild Member.');
       const target = await getMemberByDiscordId(b, String(payload.discordId));
       if (!target) throw new UserError('Member not found.', 404);
       if (target.id === caller.id) throw new UserError("You can't change your own role.");
       await b.asServiceRole.entities.Member.update(target.id, { role });
+      const up = ['member', 'guild_member', 'officer'].indexOf(role) > ['member', 'guild_member', 'officer'].indexOf(target.role);
+      await postSystem(b, GUILD_CHANNEL, `${target.discord_name || target.discord_id} is now ${RANK_TITLE[role]}.${up ? ' Congratulations!' : ''}`);
       return Response.json({ ok: true });
     }
 

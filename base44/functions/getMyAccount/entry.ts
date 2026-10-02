@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-import { getMemberByUserId, getSettings, errorResponse } from '../../shared/points.ts';
+import { getMemberByUserId, getSettings, errorResponse, isAppAdmin } from '../../shared/points.ts';
+import { BACKEND_VERSION } from '../../shared/version.ts';
 
 const PUBLIC_MEMBER_FIELDS = [
   'id', 'discord_id', 'discord_name', 'discord_username', 'avatar_url', 'points', 'role',
@@ -12,7 +13,12 @@ export default async function(req) {
     const user = await b.auth.me();
     if (!user) return Response.json({ error: 'Log in first.' }, { status: 401 });
 
-    const [member, settings] = await Promise.all([getMemberByUserId(b, user.id), getSettings(b)]);
+    const [found, settings] = await Promise.all([getMemberByUserId(b, user.id), getSettings(b)]);
+    let member = found;
+    // The app owner is always the Guild Leader, even if they linked before that rule existed.
+    if (member && member.role !== 'leader' && (await isAppAdmin(b, user.id))) {
+      member = await b.asServiceRole.entities.Member.update(member.id, { role: 'leader' });
+    }
     const setup = { guild_configured: !!String(settings.guild_id || '').trim() };
     if (!member) return Response.json({ linked: false, setup, invite_url: settings.discord_invite_url || '' });
 
@@ -44,7 +50,8 @@ export default async function(req) {
       rank: (above.items || []).length + 1,
       stats,
       recentLogs: logs.items,
-      recentBets: betItems
+      recentBets: betItems,
+      version: BACKEND_VERSION
     });
   } catch (e) {
     return errorResponse(e);

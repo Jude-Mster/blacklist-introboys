@@ -1,6 +1,31 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { getSettings, getMemberByUserId, UserError, errorResponse } from '../../shared/points.ts';
 import { GUILD_CHANNEL } from '../../shared/chat.ts';
+import { BACKEND_VERSION } from '../../shared/version.ts';
+import { secrets } from 'base44:runtime';
+
+// Copy a guild-chat message into the linked Discord channel (optional).
+// Set the secret DISCORD_CHAT_WEBHOOK_URL to a channel webhook to turn it on.
+async function relayToDiscord(me, text) {
+  let url = '';
+  try { url = secrets.get('DISCORD_CHAT_WEBHOOK_URL') || ''; } catch { url = ''; }
+  if (!url.startsWith('https://discord.com/api/webhooks/') && !url.startsWith('https://discordapp.com/api/webhooks/')) return;
+  try {
+    const body = {
+      content: text.slice(0, 1900),
+      username: `${(me.discord_name || 'Member').slice(0, 60)} (site)`,
+      allowed_mentions: { parse: [] }
+    };
+    if (me.avatar_url && me.avatar_url.startsWith('https://')) body.avatar_url = me.avatar_url;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 4000);
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctl.signal });
+    clearTimeout(timer);
+    if (!res.ok) console.error('discord relay failed', res.status);
+  } catch (e) {
+    console.error('discord relay failed', e);
+  }
+}
 
 const MAX_LEN = 300;
 const MIN_GAP_MS = 1200;
@@ -14,11 +39,12 @@ export default async function(req) {
     if (!me) throw new UserError('Link your Discord account first.');
 
     let p; try { p = await req.json(); } catch { p = {}; }
+    if (p.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION });
     const settings = await getSettings(b);
     if (settings.chat_enabled === false) throw new UserError('Chat is turned off right now.');
 
     if (p.action === 'delete') {
-      if (!['officer', 'leader'].includes(me.role)) throw new UserError('Only Elders can remove messages.', 403);
+      if (!['officer', 'leader'].includes(me.role)) throw new UserError('Only the Guild Leader and Vice Guild Members can remove messages.', 403);
       const msg = await b.asServiceRole.entities.ChatMessage.get(String(p.id));
       if (!msg) throw new UserError('Message not found.', 404);
       await b.asServiceRole.entities.ChatMessage.update(msg.id, { deleted: true, text: '' });
@@ -59,6 +85,7 @@ export default async function(req) {
       kind: 'user',
       deleted: false
     });
+    if (channel === GUILD_CHANNEL) await relayToDiscord(me, text);
     return Response.json({ ok: true, message: msg });
   } catch (e) {
     return errorResponse(e);

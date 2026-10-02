@@ -215,7 +215,7 @@ export default async function(req) {
 
     // ----- Leader: create or close tables -----
     if (action === 'createTable' || action === 'closeTable') {
-      if (me.role !== 'leader') throw new UserError('Only the Guild Master can manage tables.', 403);
+      if (me.role !== 'leader') throw new UserError('Only the Guild Leader can manage tables.', 403);
       if (action === 'createTable') {
         const n = (v) => Math.floor(Number(v));
         const d = { name: String(p.name || '').trim().slice(0, 40), small_blind: n(p.small_blind), big_blind: n(p.big_blind), min_buyin: n(p.min_buyin), max_buyin: n(p.max_buyin) };

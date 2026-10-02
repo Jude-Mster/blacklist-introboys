@@ -4,14 +4,11 @@ import {
   resolveCoinFlip, resolveDragonDice, resolveLanternSlots, resolveSkyWheel, resolveRoulette, validRouletteBet,
   WHEEL_SEGMENTS, UserError, errorResponse
 } from '../../shared/points.ts';
+import { GAME_NAMES } from '../../shared/points.ts';
+import { postFeed } from '../../shared/feed.ts';
+import { BACKEND_VERSION } from '../../shared/version.ts';
 
-const GAME_LABEL = {
-  coinflip: 'Yin Yang Toss',
-  dragondice: 'Dragon Dice',
-  lanternslots: 'Lantern Slots',
-  skywheel: 'Twelve Skies Wheel',
-  roulette: 'Jade Roulette'
-};
+const GAME_LABEL = GAME_NAMES;
 
 export default async function(req) {
   try {
@@ -20,6 +17,7 @@ export default async function(req) {
     if (!user) throw new UserError('Log in first.', 401);
     let payload; try { payload = await req.json(); } catch { payload = {}; }
     const { game, wager, choice } = payload;
+    if (payload.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION });
 
     const found = await getMemberByUserId(b, user.id);
     if (!found) throw new UserError('Link your Discord account first.');
@@ -96,11 +94,22 @@ export default async function(req) {
         won: r.won,
         outcome: r.outcome
       });
+      await postFeed(b, member, { game, game_name: GAME_LABEL[game], wager: w, payout: r.payout, detail: feedDetail(game, r.outcome) });
       return { ...r, balance, wager: w, net, wageredToday: usedToday + w };
     });
 
     return Response.json(result);
   } catch (e) {
     return errorResponse(e);
+  }
+}
+function feedDetail(game, o) {
+  switch (game) {
+    case 'coinflip': return `Called ${o.choice === 'tails' ? 'Yin' : 'Yang'}, landed ${o.side === 'tails' ? 'Yin' : 'Yang'}`;
+    case 'dragondice': return `Rolled ${o.roll}, ${o.direction} ${o.target}`;
+    case 'lanternslots': return (o.reels || []).join(' ');
+    case 'skywheel': return `Backed ${o.pick}, landed ${o.landed}`;
+    case 'roulette': return `Ball on ${o.number}`;
+    default: return '';
   }
 }
