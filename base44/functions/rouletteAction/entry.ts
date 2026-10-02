@@ -4,6 +4,7 @@ import {
   validRouletteBet, rouletteWins, ROULETTE_ORDER, GAME_NAMES, UserError, errorResponse
 } from '../../shared/points.ts';
 import { postFeed } from '../../shared/feed.ts';
+import { announceBigWin } from '../../shared/chat.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
 
 // One shared roulette table that runs itself:
@@ -35,7 +36,7 @@ async function advance(b, settings) {
     let t = await b.asServiceRole.entities.RouletteTable.get(first.id);
     const now = Date.now();
     if (t.status === 'betting' && Date.parse(t.bets_close_at) <= now) {
-      t = await settle(b, t, now);
+      t = await settle(b, t, now, settings);
     } else if (t.status === 'settled' && (!t.next_at || Date.parse(t.next_at) <= now)) {
       const seconds = Math.min(Math.max(Number(settings.roulette_bet_seconds) || 30, 10), 120);
       t = await b.asServiceRole.entities.RouletteTable.update(t.id, {
@@ -50,7 +51,7 @@ async function advance(b, settings) {
   });
 }
 
-async function settle(b, t, now: number) {
+async function settle(b, t, now: number, settings) {
   const number = randInt(37);
   const { items: bets } = await b.asServiceRole.entities.RouletteBet.filter({ round_no: t.round_no, settled: false }, { limit: 500 });
   for (const rb of bets) {
@@ -68,6 +69,10 @@ async function settle(b, t, now: number) {
     await postFeed(b, { id: rb.member_id, discord_name: rb.name, avatar_url: rb.avatar, role: rb.role }, {
       game: 'roulette', game_name: NAME, wager: rb.amount, payout, detail: `Ball on ${number}`
     });
+    const threshold = Number(settings.big_win_threshold) || 0;
+    if (net > 0 && net >= threshold) {
+      await announceBigWin(rb.name || 'A member', NAME, net, `ball on ${number}`);
+    }
   }
   return await b.asServiceRole.entities.RouletteTable.update(t.id, {
     status: 'settled',

@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 
 const PAGE = 40;
 const POLL_MS = 10000;
-const ROLE_COLOR = { leader: "text-gold", officer: "text-jade", guild_member: "text-azure", member: "text-[hsl(var(--foreground))]" };
+const ROLE_COLOR = { leader: "text-[#FF4D55]", officer: "text-gold", guild_member: "text-[#FF6B70]", member: "text-[hsl(var(--foreground))]" };
 
 const rows = (res) => (Array.isArray(res) ? res : (res && res.items) || []);
 const time = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
@@ -142,7 +142,7 @@ export default function ChatBox({ channels = [{ id: "guild", label: "Guild" }], 
             >
               {c.label}
               {unread[c.id] > 0 && (
-                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-crimson px-1 text-[10px] font-bold text-[hsl(43_70%_92%)]">
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-crimson px-1 text-[10px] font-bold text-[hsl(0_0%_92%)]">
                   {unread[c.id] > 9 ? "9+" : unread[c.id]}
                 </span>
               )}

@@ -20,7 +20,7 @@ export default function Sidebar({ collapsed, onToggle, onChat, chatOpen, unread 
     <nav
       aria-label="Main"
       className={cn(
-        "fixed bottom-0 left-0 top-14 z-30 hidden flex-col border-r border-bronze/50 bg-[hsl(192_26%_5.5%/0.97)] transition-[width] duration-200 sm:top-16 md:flex",
+        "fixed bottom-0 left-0 top-14 z-30 hidden flex-col border-r border-bronze/50 bg-[hsl(0_0%_5.5%/0.97)] transition-[width] duration-200 sm:top-16 md:flex",
         wide ? "w-[72px] lg:w-[244px]" : "w-[72px]"
       )}
     >
@@ -83,7 +83,7 @@ function Item({ item, glyph, active, wide, onClick, badge }) {
       >
         {glyph || (Icon && <Icon className="h-[18px] w-[18px]" />)}
         {badge > 0 && (
-          <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-crimson px-1 text-[10px] font-bold text-[hsl(43_70%_92%)]">
+          <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-crimson px-1 text-[10px] font-bold text-[hsl(0_0%_92%)]">
             {badge > 9 ? "9+" : badge}
           </span>
         )}

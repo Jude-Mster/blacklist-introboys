@@ -44,7 +44,7 @@ export default function DragonDice({ settings, balance }) {
     <Panel title="Blacklist Dragon Dice">
       <div
         className={cn(
-          "mb-5 rounded-md border border-bronze/40 bg-[radial-gradient(circle_at_50%_0%,hsl(205_35%_16%),hsl(192_26%_6%))] px-4 pb-5 pt-4",
+          "mb-5 rounded-md border border-bronze/40 bg-[radial-gradient(circle_at_50%_0%,hsl(0_0%_16%),hsl(0_0%_6%))] px-4 pb-5 pt-4",
           game.result && (won ? "win-glow" : "loss-shake")
         )}
       >
@@ -77,7 +77,7 @@ export default function DragonDice({ settings, balance }) {
               left: `${roll ?? 50}%`,
               opacity: roll === null ? 0.35 : 1,
               background: "radial-gradient(circle at 35% 30%, #F4F1E4, #9FD8CC 50%, #2E7F72)",
-              boxShadow: roll === null ? "none" : "0 0 14px 2px hsl(170 45% 45% / 0.6)",
+              boxShadow: roll === null ? "none" : "0 0 14px 2px hsl(150 55% 50% / 0.6)",
               transition: `left ${ROLL_MS}ms cubic-bezier(0.2, 0.7, 0.2, 1), opacity 300ms`
             }}
             aria-hidden="true"

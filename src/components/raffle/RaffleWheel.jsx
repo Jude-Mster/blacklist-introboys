@@ -1,6 +1,6 @@
 import React from "react";
 
-const PALETTE = ["#A3161F", "#2E7F5E", "#3E7FB8", "#C99A3A", "#6B4FA0", "#B8553A", "#3FA796", "#8A6A3E"];
+const PALETTE = ["#C8161D", "#2E7F5E", "#3E7FB8", "#8C8C8C", "#6B4FA0", "#B8553A", "#3FA796", "#5C5C5C"];
 
 // Slice angles for a list of entrants; each ticket is an equal share of the wheel.
 export function slices(entrants) {
@@ -32,8 +32,8 @@ export default function RaffleWheel({ entrants, rotation, spinMs = 6000, spinnin
   return (
     <div className="relative mx-auto" style={{ width: size, height: size, maxWidth: "100%" }}>
       <svg className="absolute left-1/2 top-[-6px] z-10 -translate-x-1/2" width="28" height="32" viewBox="0 0 28 32" aria-hidden="true">
-        <path d="M14 30 L3 6 Q14 0 25 6 Z" fill="#A3161F" stroke="#D8B46A" strokeWidth="2" />
-        <circle cx="14" cy="9" r="3" fill="#D8B46A" />
+        <path d="M14 30 L3 6 Q14 0 25 6 Z" fill="#C8161D" stroke="#F2F2F2" strokeWidth="2" />
+        <circle cx="14" cy="9" r="3" fill="#F2F2F2" />
       </svg>
       <svg
         viewBox="-112 -112 224 224"
@@ -43,8 +43,8 @@ export default function RaffleWheel({ entrants, rotation, spinMs = 6000, spinnin
         role="img"
         aria-label={list.length ? `Raffle wheel with ${list.length} members` : "Empty raffle wheel"}
       >
-        <circle r="110" fill="#141C1E" stroke="#8A6A3E" strokeWidth="3" />
-        {list.length === 0 && <circle r={r} fill="#1B2528" />}
+        <circle r="110" fill="#0E0E0E" stroke="#5C5C5C" strokeWidth="3" />
+        {list.length === 0 && <circle r={r} fill="#161616" />}
         {list.length === 1 && <circle r={r} fill={list[0].color} />}
         {list.length > 1 &&
           list.map((s) => {
@@ -56,7 +56,7 @@ export default function RaffleWheel({ entrants, rotation, spinMs = 6000, spinnin
                 d={`M0 0 L${x1} ${y1} A${r} ${r} 0 ${s.size > 180 ? 1 : 0} 1 ${x2} ${y2} Z`}
                 fill={s.color}
                 fillOpacity={winnerId && winnerId !== s.member_id ? 0.35 : 0.92}
-                stroke="#0D1416"
+                stroke="#050505"
                 strokeWidth="1"
               />
             );
@@ -76,14 +76,14 @@ export default function RaffleWheel({ entrants, rotation, spinMs = 6000, spinnin
               transform={`rotate(${s.mid - 90} ${tx} ${ty})`}
               fontWeight="700"
               fontSize={s.size > 25 ? 10 : 8}
-              fill="#F4ECD6"
+              fill="#FFFFFF"
             >
               {name}
             </text>
           );
         })}
-        <circle r="20" fill="#0D1416" stroke="#D8B46A" strokeWidth="2" />
-        <text textAnchor="middle" dominantBaseline="central" fontFamily="'Shippori Mincho B1', serif" fontWeight="800" fontSize="15" fill="#D8B46A">
+        <circle r="20" fill="#050505" stroke="#F2F2F2" strokeWidth="2" />
+        <text textAnchor="middle" dominantBaseline="central" fontFamily="'Oswald', sans-serif" fontWeight="800" fontSize="15" fill="#F2F2F2">
           福
         </text>
       </svg>

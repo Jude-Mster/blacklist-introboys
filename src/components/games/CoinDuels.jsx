@@ -106,7 +106,7 @@ export default function CoinDuels({ settings, balance }) {
     <div className="space-y-5">
       <div
         className={cn(
-          "relative flex h-48 items-center justify-center rounded-md border border-bronze/40 bg-[radial-gradient(circle_at_50%_40%,hsl(205_35%_16%),hsl(192_26%_6%))]",
+          "relative flex h-48 items-center justify-center rounded-md border border-bronze/40 bg-[radial-gradient(circle_at_50%_40%,hsl(0_0%_16%),hsl(0_0%_6%))]",
           show && (show.won ? "win-glow" : "loss-shake")
         )}
         style={{ perspective: 800 }}

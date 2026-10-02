@@ -80,6 +80,11 @@
       "type": "integer",
       "default": 0,
       "description": "0 = same as max_bet"
+    },
+    "big_win_threshold": {
+      "type": "integer",
+      "default": 5000,
+      "description": "A win above this many points is announced in the linked Discord channel. 0 = announce every win."
     }
   },
   "rls": {

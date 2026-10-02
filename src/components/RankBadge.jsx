@@ -4,10 +4,10 @@ import { ROLE_TITLE, ROLE_SHORT } from "@/lib/ranks";
 import { cn } from "@/lib/utils";
 
 const STYLE = {
-  leader: "border-gold/80 bg-gold/15 text-gold",
-  officer: "border-jade/70 bg-jade/10 text-jade",
-  guild_member: "border-azure/70 bg-azure/10 text-azure",
-  member: "border-bronze/60 bg-black/30 text-mist",
+  leader: "border-crimson bg-crimson text-white",
+  officer: "border-white/80 bg-white text-black",
+  guild_member: "border-[#E0474D]/80 bg-crimson/15 text-[#FF6B70]",
+  member: "border-bronze bg-black/30 text-mist",
   guest: "border-[#5865F2]/70 bg-[#5865F2]/15 text-[#A5ADFF]"
 };
 const ICON = { leader: Crown, officer: ShieldCheck, guild_member: Swords };

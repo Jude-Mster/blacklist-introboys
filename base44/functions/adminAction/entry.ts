@@ -60,6 +60,7 @@ export default async function(req) {
         update.daily_wheel_prizes = prizes;
       }
       if ('chat_enabled' in p) update.chat_enabled = p.chat_enabled !== false;
+      if ('big_win_threshold' in p) update.big_win_threshold = int(p.big_win_threshold, { min: 0, name: 'Big-win threshold' });
       if ('games_enabled' in p) {
         update.games_enabled = (Array.isArray(p.games_enabled) ? p.games_enabled : []).filter((g) => ALL_GAMES.includes(g));
       }

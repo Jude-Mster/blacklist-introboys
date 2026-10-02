@@ -31,7 +31,7 @@ export default function AccountMenu({ member }) {
         <Avatar url={member ? member.avatar_url : ""} name={member ? member.discord_name : "?"} size={32} className="border border-bronze/70" />
         <ChevronDown className="h-4 w-4" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56 border-bronze/70 bg-[hsl(192_22%_9%)]">
+      <DropdownMenuContent align="end" className="w-56 border-bronze/70 bg-[hsl(0_0%_9%)]">
         {member && (
           <>
             <DropdownMenuLabel className="font-normal">

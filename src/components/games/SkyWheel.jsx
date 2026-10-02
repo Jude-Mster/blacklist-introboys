@@ -29,7 +29,7 @@ export default function SkyWheel({ settings, balance }) {
     <Panel title="Blacklist Twelve Skies Wheel">
       <div
         className={cn(
-          "mb-5 rounded-md border border-bronze/40 bg-[radial-gradient(circle_at_50%_45%,hsl(205_35%_16%),hsl(192_26%_6%))] py-5",
+          "mb-5 rounded-md border border-bronze/40 bg-[radial-gradient(circle_at_50%_45%,hsl(0_0%_16%),hsl(0_0%_6%))] py-5",
           game.result && (game.result.won ? "win-glow" : "loss-shake")
         )}
       >

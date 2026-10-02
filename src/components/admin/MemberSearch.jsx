@@ -56,7 +56,7 @@ export default function MemberSearch({ onSelect, placeholder = "Search by name o
         <p className="mt-1 text-xs text-mist">No member matches "{q}". They appear here after linking or being awarded in Discord.</p>
       )}
       {open && results.length > 0 && (
-        <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border border-bronze/70 bg-[hsl(192_22%_9%)] shadow-xl">
+        <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border border-bronze/70 bg-[hsl(0_0%_9%)] shadow-xl">
           {results.map((m) => (
             <li key={m.id}>
               <button type="button" onClick={() => pick(m)} className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-bronze/20">

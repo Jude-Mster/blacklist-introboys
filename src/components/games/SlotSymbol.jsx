@@ -16,7 +16,7 @@ export default function SlotSymbol({ id, size = 44 }) {
             fontSize: size * 0.5,
             color: "#E9F5F1",
             background: "radial-gradient(circle at 35% 30%, #6FCBB8, #2E7F72 60%, #164A42)",
-            border: "2px solid #D8B46A"
+            border: "2px solid #F2F2F2"
           }}
           lang="zh-Hant"
           aria-label="Dragon"
@@ -27,13 +27,13 @@ export default function SlotSymbol({ id, size = 44 }) {
     case "lantern":
       return (
         <svg width={size} height={size} viewBox="0 0 40 40" aria-label="Lantern" role="img">
-          <line x1="20" y1="2" x2="20" y2="7" stroke="#D8B46A" strokeWidth="1.5" />
-          <rect x="13" y="7" width="14" height="3" rx="1" fill="#D8B46A" />
-          <ellipse cx="20" cy="21" rx="12" ry="12" fill="#C42A2A" stroke="#D8B46A" strokeWidth="1.2" />
-          <path d="M20 9 V33 M12 14 Q20 21 12 28 M28 14 Q20 21 28 28" stroke="#F0D795" strokeOpacity="0.55" fill="none" />
+          <line x1="20" y1="2" x2="20" y2="7" stroke="#F2F2F2" strokeWidth="1.5" />
+          <rect x="13" y="7" width="14" height="3" rx="1" fill="#F2F2F2" />
+          <ellipse cx="20" cy="21" rx="12" ry="12" fill="#C42A2A" stroke="#F2F2F2" strokeWidth="1.2" />
+          <path d="M20 9 V33 M12 14 Q20 21 12 28 M28 14 Q20 21 28 28" stroke="#FFFFFF" strokeOpacity="0.55" fill="none" />
           <ellipse cx="20" cy="21" rx="4.5" ry="6.5" fill="#FFD27A" opacity="0.8" />
-          <rect x="12" y="32" width="16" height="3" rx="1" fill="#D8B46A" />
-          <path d="M18 35 L17 39 M20 35 V39 M22 35 L23 39" stroke="#D8B46A" strokeWidth="1" />
+          <rect x="12" y="32" width="16" height="3" rx="1" fill="#F2F2F2" />
+          <path d="M18 35 L17 39 M20 35 V39 M22 35 L23 39" stroke="#F2F2F2" strokeWidth="1" />
         </svg>
       );
     case "maple":

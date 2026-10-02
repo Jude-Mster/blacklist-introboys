@@ -38,23 +38,23 @@ function Face({ side, back }) {
         WebkitBackfaceVisibility: "hidden",
         transform: back ? "rotateY(180deg)" : undefined,
         background: yang
-          ? "radial-gradient(circle at 35% 30%, #F6E2A8, #D8B46A 45%, #8A6A3E)"
-          : "radial-gradient(circle at 35% 30%, #4A5A62, #1E282C 55%, #0B1012)",
-        border: `3px solid ${yang ? "#8A6A3E" : "#D8B46A"}`,
+          ? "radial-gradient(circle at 35% 30%, #FFFFFF, #F2F2F2 45%, #5C5C5C)"
+          : "radial-gradient(circle at 35% 30%, #4A4A4A, #1C1C1C 55%, #0B1012)",
+        border: `3px solid ${yang ? "#5C5C5C" : "#F2F2F2"}`,
         boxShadow: "inset 0 0 0 6px rgba(0,0,0,0.18), 0 10px 30px -8px rgba(0,0,0,0.8)"
       }}
     >
       <span className="absolute inset-3 rounded-full border" style={{ borderColor: yang ? "#8A6A3E99" : "#D8B46A66" }} />
       {/* square hole of an old cash coin */}
-      <span className="absolute h-5 w-5 border-2" style={{ borderColor: yang ? "#8A6A3E" : "#D8B46A88", background: yang ? "#B8934F" : "#141C1E" }} />
+      <span className="absolute h-5 w-5 border-2" style={{ borderColor: yang ? "#5C5C5C" : "#D8B46A88", background: yang ? "#9A9A9A" : "#0E0E0E" }} />
       <span
         className="absolute top-4 font-heading text-2xl font-extrabold"
-        style={{ color: yang ? "#5A4020" : "#D8B46A" }}
+        style={{ color: yang ? "#161616" : "#F2F2F2" }}
         lang="zh-Hant"
       >
         {side.glyph}
       </span>
-      <span className="absolute bottom-4 text-[11px] font-bold tracking-[0.2em]" style={{ color: yang ? "#5A4020" : "#D8B46Acc" }}>
+      <span className="absolute bottom-4 text-[11px] font-bold tracking-[0.2em]" style={{ color: yang ? "#161616" : "#D8B46Acc" }}>
         {side.name.toUpperCase()}
       </span>
     </div>

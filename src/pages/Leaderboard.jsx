@@ -9,7 +9,7 @@ import RankBadge from "@/components/RankBadge";
 import { cn } from "@/lib/utils";
 
 const MEDAL = [
-  { ring: "#D8B46A", label: "First", glyph: "壹" },
+  { ring: "#F2F2F2", label: "First", glyph: "壹" },
   { ring: "#B9C4CC", label: "Second", glyph: "貳" },
   { ring: "#B07A45", label: "Third", glyph: "參" }
 ];
@@ -94,7 +94,7 @@ function Podium({ m, place, me }) {
       <div className="relative">
         {place === 0 && (
           <svg className="absolute -top-6 left-1/2 -translate-x-1/2" width="34" height="22" viewBox="0 0 34 22" aria-hidden="true">
-            <path d="M2 20 L5 6 L12 13 L17 2 L22 13 L29 6 L32 20 Z" fill="#D8B46A" stroke="#8A6A3E" strokeWidth="1.2" />
+            <path d="M2 20 L5 6 L12 13 L17 2 L22 13 L29 6 L32 20 Z" fill="#F2F2F2" stroke="#5C5C5C" strokeWidth="1.2" />
           </svg>
         )}
         <div className="rounded-full p-[3px]" style={{ background: medal.ring }}>

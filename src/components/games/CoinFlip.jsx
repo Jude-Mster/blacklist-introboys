@@ -45,7 +45,7 @@ function HouseToss({ settings, balance }) {
     <>
       <div
         className={cn(
-          "relative mx-auto mb-5 flex h-52 items-center justify-center rounded-md border border-bronze/40 bg-[radial-gradient(circle_at_50%_40%,hsl(205_35%_16%),hsl(192_26%_6%))]",
+          "relative mx-auto mb-5 flex h-52 items-center justify-center rounded-md border border-bronze/40 bg-[radial-gradient(circle_at_50%_40%,hsl(0_0%_16%),hsl(0_0%_6%))]",
           game.result && (game.result.won ? "win-glow" : "loss-shake")
         )}
         style={{ perspective: 800 }}

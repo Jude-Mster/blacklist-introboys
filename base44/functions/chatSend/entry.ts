@@ -1,30 +1,12 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { getSettings, getMemberByUserId, UserError, errorResponse } from '../../shared/points.ts';
-import { GUILD_CHANNEL } from '../../shared/chat.ts';
+import { GUILD_CHANNEL, postToDiscord } from '../../shared/chat.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
-import { secrets } from 'base44:runtime';
 
 // Copy a guild-chat message into the linked Discord channel (optional).
 // Set the secret DISCORD_CHAT_WEBHOOK_URL to a channel webhook to turn it on.
 async function relayToDiscord(me, text) {
-  let url = '';
-  try { url = secrets.get('DISCORD_CHAT_WEBHOOK_URL') || ''; } catch { url = ''; }
-  if (!url.startsWith('https://discord.com/api/webhooks/') && !url.startsWith('https://discordapp.com/api/webhooks/')) return;
-  try {
-    const body = {
-      content: text.slice(0, 1900),
-      username: `${(me.discord_name || 'Member').slice(0, 60)} (site)`,
-      allowed_mentions: { parse: [] }
-    };
-    if (me.avatar_url && me.avatar_url.startsWith('https://')) body.avatar_url = me.avatar_url;
-    const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 4000);
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctl.signal });
-    clearTimeout(timer);
-    if (!res.ok) console.error('discord relay failed', res.status);
-  } catch (e) {
-    console.error('discord relay failed', e);
-  }
+  await postToDiscord(text, { username: `${(me.discord_name || 'Member').slice(0, 60)} (site)`, avatarUrl: me.avatar_url });
 }
 
 const MAX_LEN = 300;

@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 
 const SPIN_MS = 5000;
 const POLL_MS = 2000;
-const COLORS = { red: "#A3161F", black: "#151B1D", green: "#2E7F5E" };
+const COLORS = { red: "#C8161D", black: "#111111", green: "#2E7F5E" };
 const SEGMENTS = ROULETTE_ORDER.map((n) => ({ label: String(n), color: COLORS[rouletteColor(n)], fontSize: 9 }));
 const CHIP_VALUES = [10, 50, 100, 500, 1000, 5000];
 const ROWS = Array.from({ length: 12 }, (_, r) => [r * 3 + 1, r * 3 + 2, r * 3 + 3]);
@@ -194,7 +194,7 @@ export default function Roulette({ settings, balance }) {
         disabled={!open}
         aria-label={`Bet on ${betLabel({ type, value })}${on + wait ? `, ${on + wait} on it` : ""}`}
         className={cn(
-          "relative flex items-center justify-center border border-bronze/45 font-heading font-bold text-[hsl(43_60%_92%)] transition-[filter] enabled:hover:brightness-125 disabled:cursor-default",
+          "relative flex items-center justify-center border border-bronze/45 font-heading font-bold text-[hsl(0_0%_92%)] transition-[filter] enabled:hover:brightness-125 disabled:cursor-default",
           hit && "z-10 outline outline-2 outline-gold",
           number !== null && !hit && "opacity-60",
           className
@@ -236,7 +236,7 @@ export default function Roulette({ settings, balance }) {
       </div>
       <div
         className={cn(
-          "mb-4 rounded-md border border-bronze/40 bg-[radial-gradient(circle_at_50%_45%,hsl(160_30%_14%),hsl(192_26%_6%))] py-4",
+          "mb-4 rounded-md border border-bronze/40 bg-[radial-gradient(circle_at_50%_45%,hsl(0_0%_9%),hsl(0_0%_6%))] py-4",
           myNet !== null && (myNet > 0 ? "win-glow" : myNet < 0 ? "loss-shake" : "")
         )}
       >
@@ -256,7 +256,7 @@ export default function Roulette({ settings, balance }) {
           {showResult && !spinning && (
             <p className="text-sm text-mist">
               The ball lands on{" "}
-              <span className="rounded px-2 py-0.5 font-heading text-base font-extrabold text-[hsl(43_60%_92%)]" style={{ background: COLORS[rouletteColor(number)] }}>
+              <span className="rounded px-2 py-0.5 font-heading text-base font-extrabold text-[hsl(0_0%_92%)]" style={{ background: COLORS[rouletteColor(number)] }}>
                 {number}
               </span>
               <span className="ml-2">Next spin in {nextIn} s</span>
@@ -278,7 +278,7 @@ export default function Roulette({ settings, balance }) {
           {table.recent.slice(showResult || table.status === "betting" ? 0 : 1).map((n, i) => (
             <span
               key={`${n}-${i}`}
-              className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-[hsl(43_60%_92%)]", i === 0 && "ring-1 ring-gold")}
+              className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-[hsl(0_0%_92%)]", i === 0 && "ring-1 ring-gold")}
               style={{ background: COLORS[rouletteColor(n)] }}
             >
               {n}
@@ -298,7 +298,7 @@ export default function Roulette({ settings, balance }) {
             aria-pressed={chip === v}
             className={cn(
               "flex h-11 w-11 items-center justify-center rounded-full border-2 border-dashed text-xs font-bold transition-transform",
-              chip === v ? "scale-110 border-gold bg-crimson text-[hsl(43_70%_92%)]" : "border-bronze/70 bg-black/40 text-gold"
+              chip === v ? "scale-110 border-gold bg-crimson text-[hsl(0_0%_92%)]" : "border-bronze/70 bg-black/40 text-gold"
             )}
           >
             {v >= 1000 ? `${v / 1000}k` : v}
@@ -307,7 +307,7 @@ export default function Roulette({ settings, balance }) {
       </div>
 
       {/* board */}
-      <div className="select-none overflow-hidden rounded-md border border-bronze/60 bg-[hsl(160_35%_12%)]">
+      <div className="select-none overflow-hidden rounded-md border border-bronze/60 bg-[hsl(0_0%_9%)]">
         {cell("straight", 0, "0", "h-10 w-full", { background: COLORS.green })}
         <div className="grid grid-cols-3">
           {ROWS.flat().map((n) => cell("straight", n, n, "h-10", { background: COLORS[rouletteColor(n)] }))}
@@ -321,8 +321,8 @@ export default function Roulette({ settings, balance }) {
         <div className="grid grid-cols-3">
           {cell("half", "low", "1–18", "h-10 bg-black/20 text-sm")}
           {cell("parity", "even", "Even", "h-10 bg-black/20 text-sm")}
-          {cell("color", "red", <span className="h-4 w-4 rotate-45 bg-[#C42A2A]" aria-hidden="true" />, "h-10", { background: "hsl(160 35% 12%)" })}
-          {cell("color", "black", <span className="h-4 w-4 rotate-45 border border-mist/40 bg-[#0B0F10]" aria-hidden="true" />, "h-10", { background: "hsl(160 35% 12%)" })}
+          {cell("color", "red", <span className="h-4 w-4 rotate-45 bg-[#C42A2A]" aria-hidden="true" />, "h-10", { background: "hsl(0 0% 9%)" })}
+          {cell("color", "black", <span className="h-4 w-4 rotate-45 border border-mist/40 bg-[#0B0F10]" aria-hidden="true" />, "h-10", { background: "hsl(0 0% 9%)" })}
           {cell("parity", "odd", "Odd", "h-10 bg-black/20 text-sm")}
           {cell("half", "high", "19–36", "h-10 bg-black/20 text-sm")}
         </div>
@@ -395,8 +395,8 @@ function Chip({ amount, waiting }) {
   return (
     <span
       className={cn(
-        "pointer-events-none absolute right-0.5 top-0.5 flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-dashed px-1 text-[10px] font-extrabold text-[hsl(192_26%_7%)] shadow",
-        waiting ? "border-bronze bg-[hsl(43_60%_92%)]" : "border-[hsl(43_70%_88%)] bg-gold"
+        "pointer-events-none absolute right-0.5 top-0.5 flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-dashed px-1 text-[10px] font-extrabold text-[hsl(0_0%_7%)] shadow",
+        waiting ? "border-bronze bg-[hsl(0_0%_92%)]" : "border-[hsl(0_0%_88%)] bg-gold"
       )}
     >
       {amount >= 1000 ? `${Math.round(amount / 100) / 10}k` : amount}

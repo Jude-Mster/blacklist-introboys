@@ -65,10 +65,10 @@ export default function PokerTableView({ tableId }) {
         {/* the table */}
         <div className="relative mx-auto h-[430px] w-full max-w-[640px] sm:h-[460px]">
           <div
-            className="absolute inset-x-[11%] inset-y-[12%] rounded-[50%] border-[6px] border-[hsl(35_38%_32%)]"
+            className="absolute inset-x-[11%] inset-y-[12%] rounded-[50%] border-[6px] border-[hsl(0_0%_32%)]"
             style={{
-              background: "radial-gradient(ellipse at 50% 40%, hsl(160 38% 24%), hsl(165 42% 13%) 70%, hsl(170 45% 9%))",
-              boxShadow: "inset 0 0 0 2px hsl(40 58% 63% / 0.35), inset 0 0 50px rgba(0,0,0,0.6), 0 20px 50px -20px rgba(0,0,0,0.9)"
+              background: "radial-gradient(ellipse at 50% 40%, hsl(357 62% 24%), hsl(357 66% 13%) 70%, hsl(357 70% 7%))",
+              boxShadow: "inset 0 0 0 2px hsl(0 0% 100% / 0.3), inset 0 0 50px rgba(0,0,0,0.6), 0 20px 50px -20px rgba(0,0,0,0.9)"
             }}
           >
             <span className="absolute inset-0 flex items-center justify-center font-heading text-6xl font-extrabold text-black/15" aria-hidden="true">
@@ -86,11 +86,11 @@ export default function PokerTableView({ tableId }) {
                 t.board && t.board[i] ? (
                   <PlayingCard key={i} card={t.board[i]} size="sm" highlight={winningCards.has(t.board[i])} />
                 ) : (
-                  <div key={i} className="h-12 w-[34px] rounded-[5px] border border-dashed border-[hsl(43_60%_80%/0.18)]" />
+                  <div key={i} className="h-12 w-[34px] rounded-[5px] border border-dashed border-[hsl(0_0%_80%/0.18)]" />
                 )
               )}
             </div>
-            <p className="text-center text-xs text-[hsl(43_60%_88%/0.85)]" aria-live="polite">
+            <p className="text-center text-xs text-[hsl(0_0%_88%/0.85)]" aria-live="polite">
               {winners.length
                 ? winners.map((w) => `${t.seats[w.seat]?.name || "Someone"} wins ${w.amount.toLocaleString()}${w.hand ? ` · ${w.hand}` : ""}`).join(" · ")
                 : PHASE_LABEL[t.phase]}
@@ -212,13 +212,13 @@ function Seat({ s, x, y, isTurn, left, dealer, mine, winner, cards, hidden, best
               ? `conic-gradient(hsl(var(--gold)) ${pct * 360}deg, hsl(0 0% 100% / 0.12) 0deg)`
               : mine
                 ? "hsl(var(--jade))"
-                : "hsl(35 38% 32%)"
+                : "hsl(0 0% 32%)"
           }}
         >
-          <Avatar url={s.avatar} name={s.name} size={42} className="border-2 border-[hsl(192_26%_7%)]" />
+          <Avatar url={s.avatar} name={s.name} size={42} className="border-2 border-[hsl(0_0%_7%)]" />
         </div>
         {dealer && (
-          <span className="absolute -right-2 -top-1 flex h-5 w-5 items-center justify-center rounded-full border border-bronze bg-[hsl(43_60%_90%)] text-[10px] font-extrabold text-[hsl(192_26%_7%)]" title="Dealer">
+          <span className="absolute -right-2 -top-1 flex h-5 w-5 items-center justify-center rounded-full border border-bronze bg-[hsl(0_0%_90%)] text-[10px] font-extrabold text-[hsl(0_0%_7%)]" title="Dealer">
             D
           </span>
         )}

@@ -19,7 +19,7 @@ export default function MobileTabBar({ onChat, chatOpen, unread }) {
   return (
     <nav
       aria-label="Main"
-      className="fixed inset-x-0 bottom-0 z-50 border-t border-bronze/60 bg-[hsl(192_26%_5%/0.97)] pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden"
+      className="fixed inset-x-0 bottom-0 z-50 border-t border-bronze/60 bg-[hsl(0_0%_5%/0.97)] pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden"
     >
       <div className="mx-auto flex max-w-md items-stretch justify-around gap-1 px-2 py-2">
         {tabs.map((t) => {
@@ -30,14 +30,14 @@ export default function MobileTabBar({ onChat, chatOpen, unread }) {
                 className={cn(
                   "relative flex h-11 w-11 items-center justify-center rounded-[5px] border transition-colors",
                   t.active
-                    ? "border-gold bg-gradient-to-b from-bronze/50 to-bronze/15 text-gold shadow-[0_0_14px_-2px_hsl(40_58%_63%/0.55)]"
+                    ? "border-gold bg-gradient-to-b from-bronze/50 to-bronze/15 text-gold shadow-[0_0_14px_-2px_hsl(0_0%_63%/0.55)]"
                     : "border-bronze/55 bg-black/40 text-mist"
                 )}
               >
                 <span className="pointer-events-none absolute inset-[3px] rounded-[3px] border border-white/5" />
                 <Icon className="h-5 w-5" />
                 {t.badge > 0 && (
-                  <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-crimson px-1 text-[10px] font-bold text-[hsl(43_70%_92%)]">
+                  <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-crimson px-1 text-[10px] font-bold text-[hsl(0_0%_92%)]">
                     {t.badge > 9 ? "9+" : t.badge}
                   </span>
                 )}

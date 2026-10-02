@@ -19,13 +19,13 @@ export default function PlayingCard({ card, size = "md", back, highlight, dim, c
         className={cn("relative shrink-0 overflow-hidden rounded-[5px] border border-gold/70 shadow-md", SIZES[size], className)}
         style={{
           background:
-            "repeating-linear-gradient(45deg, #8E141C 0 4px, #A3161F 4px 8px), #A3161F"
+            "repeating-linear-gradient(45deg, #8E141C 0 4px, #C8161D 4px 8px), #C8161D"
         }}
         aria-label="Face-down card"
         role="img"
       >
-        <span className="absolute inset-[3px] rounded-[3px] border border-[hsl(43_70%_85%/0.55)]" />
-        <span className="absolute inset-0 flex items-center justify-center font-heading font-extrabold text-[hsl(43_70%_85%/0.8)]">BI</span>
+        <span className="absolute inset-[3px] rounded-[3px] border border-[hsl(0_0%_85%/0.55)]" />
+        <span className="absolute inset-0 flex items-center justify-center font-heading font-extrabold text-[hsl(0_0%_85%/0.8)]">BI</span>
       </div>
     );
   }
@@ -37,7 +37,7 @@ export default function PlayingCard({ card, size = "md", back, highlight, dim, c
       className={cn(
         "relative flex shrink-0 flex-col items-center justify-center rounded-[5px] border font-heading font-extrabold leading-none shadow-md transition-[opacity,transform]",
         SIZES[size],
-        highlight ? "-translate-y-1 border-gold ring-2 ring-gold" : "border-[hsl(40_30%_70%)]",
+        highlight ? "-translate-y-1 border-gold ring-2 ring-gold" : "border-[hsl(0_0%_70%)]",
         dim && "opacity-45",
         className
       )}

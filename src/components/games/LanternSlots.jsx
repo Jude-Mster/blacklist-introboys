@@ -51,7 +51,7 @@ export default function LanternSlots({ settings, balance }) {
     <Panel title="Blacklist Lantern Slots">
       <div
         className={cn(
-          "relative mb-5 rounded-md border border-bronze/60 bg-[linear-gradient(180deg,hsl(356_40%_14%),hsl(192_26%_6%))] p-3",
+          "relative mb-5 rounded-md border border-bronze/60 bg-[linear-gradient(180deg,hsl(356_40%_14%),hsl(0_0%_6%))] p-3",
           game.result && (won ? "win-glow" : "loss-shake")
         )}
       >
@@ -59,7 +59,7 @@ export default function LanternSlots({ settings, balance }) {
           {strips.map((strip, i) => (
             <div
               key={i}
-              className="relative overflow-hidden rounded-[4px] border border-bronze/50 bg-[hsl(43_30%_88%/0.06)]"
+              className="relative overflow-hidden rounded-[4px] border border-bronze/50 bg-[hsl(0_0%_88%/0.06)]"
               style={{ height: ROW * 3 }}
             >
               <div
@@ -75,7 +75,7 @@ export default function LanternSlots({ settings, balance }) {
                 ))}
               </div>
               {/* fade top and bottom rows so the payline reads */}
-              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,hsl(192_26%_6%/0.85),transparent_34%,transparent_66%,hsl(192_26%_6%/0.85))]" />
+              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,hsl(0_0%_6%/0.85),transparent_34%,transparent_66%,hsl(0_0%_6%/0.85))]" />
             </div>
           ))}
         </div>

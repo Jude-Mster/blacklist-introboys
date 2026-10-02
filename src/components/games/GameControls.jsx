@@ -48,7 +48,7 @@ export default function GameControls({
           <>
             {playLabel}
             {potential > 0 && (
-              <span className="ml-1 inline-flex items-center gap-1 text-sm font-medium text-[hsl(43_70%_90%/0.8)]">
+              <span className="ml-1 inline-flex items-center gap-1 text-sm font-medium text-[hsl(0_0%_90%/0.8)]">
                 · win <Ingot size={14} /> {potential.toLocaleString()}
               </span>
             )}

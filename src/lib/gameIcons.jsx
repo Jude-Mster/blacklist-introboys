@@ -21,7 +21,7 @@ export const GAME_ICONS = {
   ),
   roulette: (
     <span
-      className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] border-gold bg-[#2E7F5E] text-[9px] font-extrabold leading-none text-[hsl(43_60%_92%)]"
+      className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-[1.5px] border-gold bg-[#2E7F5E] text-[9px] font-extrabold leading-none text-[hsl(0_0%_92%)]"
       aria-hidden="true"
     >
       0

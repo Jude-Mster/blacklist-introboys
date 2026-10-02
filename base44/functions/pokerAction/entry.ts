@@ -3,7 +3,7 @@ import {
   getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, UserError, errorResponse
 } from '../../shared/points.ts';
 import { act, forceFold, tick, newSeat, viewFor } from '../../shared/poker.ts';
-import { postSystem, tableChannel } from '../../shared/chat.ts';
+import { postSystem, tableChannel, announceBigWin } from '../../shared/chat.ts';
 
 const BETTING = ['preflop', 'flop', 'turn', 'river'];
 const DEFAULT_TABLES = [
@@ -49,7 +49,7 @@ async function ensureTables(b) {
 }
 
 // Run the table under its lock: load, tick (timeouts / next hand), apply fn, save.
-async function withTable(b, tableId, fn) {
+async function withTable(b, tableId, settings, fn) {
   return withRecordLock(b, 'PokerTable', tableId, async () => {
     const t = load(await b.asServiceRole.entities.PokerTable.get(tableId));
     const secret = await getSecret(b, tableId);
@@ -64,7 +64,13 @@ async function withTable(b, tableId, fn) {
     if (t.phase === 'showdown' && (before.phase !== 'showdown' || before.hand !== t.hand_no) && t.showdown && t.showdown.winners) {
       for (const w of t.showdown.winners) {
         const s = t.seats[w.seat];
-        if (s) await postSystem(b, tableChannel(t.id), `${s.name} wins ${w.amount}${w.hand ? ` with ${w.hand.toLowerCase()}` : ''}.`);
+        if (s) {
+          await postSystem(b, tableChannel(t.id), `${s.name} wins ${w.amount}${w.hand ? ` with ${w.hand.toLowerCase()}` : ''}.`);
+          const threshold = Number(settings.big_win_threshold) || 0;
+          if (w.amount > 0 && w.amount >= threshold) {
+            await announceBigWin(s.name, 'Poker Room', w.amount, w.hand ? `with ${w.hand.toLowerCase()}` : undefined);
+          }
+        }
       }
     }
     return { t, secret, out };
@@ -111,7 +117,7 @@ export default async function(req) {
     if (action === 'state') {
       let row = await b.asServiceRole.entities.PokerTable.get(tableId);
       if (needsTick(row)) {
-        const { t } = await withTable(b, tableId, async () => ({ dirty: true }));
+        const { t } = await withTable(b, tableId, settings, async () => ({ dirty: true }));
         row = t;
       }
       const t = load(row);
@@ -128,7 +134,7 @@ export default async function(req) {
       for (const row of all) {
         if (row.id !== tableId && seatOf(load(row), me.id) >= 0) throw new UserError(`You're already seated at ${row.name}. Leave it first.`);
       }
-      const { t } = await withTable(b, tableId, async (t) => {
+      const { t } = await withTable(b, tableId, settings, async (t) => {
         if (t.active === false) throw new UserError('This table is closed.');
         if (seatOf(t, me.id) >= 0) throw new UserError("You're already at this table.");
         if (!Number.isInteger(buyin) || buyin < t.min_buyin || buyin > t.max_buyin) {
@@ -148,7 +154,7 @@ export default async function(req) {
     if (action === 'leave') {
       let refund = 0;
       let seated = false;
-      const { t } = await withTable(b, tableId, async (t, secret, now) => {
+      const { t } = await withTable(b, tableId, settings, async (t, secret, now) => {
         const i = seatOf(t, me.id);
         if (i < 0) return { dirty: false };
         seated = true;
@@ -168,7 +174,7 @@ export default async function(req) {
     }
 
     if (action === 'act') {
-      const { t, secret } = await withTable(b, tableId, async (t, secret, now) => {
+      const { t, secret } = await withTable(b, tableId, settings, async (t, secret, now) => {
         const i = seatOf(t, me.id);
         if (i < 0) throw new UserError("You're not seated at this table.");
         try {
@@ -184,7 +190,7 @@ export default async function(req) {
 
     if (action === 'topup') {
       const amount = Math.floor(Number(p.amount));
-      const { t } = await withTable(b, tableId, async (t) => {
+      const { t } = await withTable(b, tableId, settings, async (t) => {
         const i = seatOf(t, me.id);
         if (i < 0) throw new UserError("You're not seated at this table.");
         const s = t.seats[i];
@@ -201,7 +207,7 @@ export default async function(req) {
     }
 
     if (action === 'sitout' || action === 'sitin') {
-      const { t } = await withTable(b, tableId, async (t) => {
+      const { t } = await withTable(b, tableId, settings, async (t) => {
         const i = seatOf(t, me.id);
         if (i < 0) throw new UserError("You're not seated at this table.");
         const s = t.seats[i];
@@ -230,7 +236,7 @@ export default async function(req) {
         return Response.json({ ok: true, table: publicView(load(row)) });
       }
       // closeTable: only between hands; everyone gets their chips back.
-      await withTable(b, tableId, async (t) => {
+      await withTable(b, tableId, settings, async (t) => {
         if (BETTING.includes(t.phase)) throw new UserError('Wait for the current hand to finish.');
         for (let i = 0; i < t.seats.length; i++) {
           const s = t.seats[i];

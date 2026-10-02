@@ -62,7 +62,8 @@ export async function getSettings(b) {
       house_edge_pct: 3,
       daily_wheel_prizes: [50, 100, 150, 250, 500, 1000],
       award_cap_per_day: 10000,
-      games_enabled: ALL_GAMES
+      games_enabled: ALL_GAMES,
+      big_win_threshold: 5000
     });
   }
   return items[0];

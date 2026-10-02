@@ -12,7 +12,7 @@ export default function TopBar({ onChat, chatOpen, unread }) {
   const member = account && account.linked ? account.member : null;
 
   return (
-    <header className="fixed inset-x-0 top-0 z-40 border-b border-bronze/50 bg-[hsl(192_26%_6%/0.92)] backdrop-blur-md">
+    <header className="fixed inset-x-0 top-0 z-40 border-b border-bronze/50 bg-[hsl(0_0%_6%/0.92)] backdrop-blur-md">
       <div className="flex h-14 items-center justify-between gap-3 px-3 sm:h-16 sm:px-4">
         <Link to="/dashboard" className="shrink-0" aria-label="Guild hall home">
           <SealLogo compact />
@@ -40,7 +40,7 @@ export default function TopBar({ onChat, chatOpen, unread }) {
           >
             <MessageSquare className="h-[18px] w-[18px]" />
             {unread > 0 && (
-              <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-crimson px-1 text-[10px] font-bold text-[hsl(43_70%_92%)]">
+              <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-crimson px-1 text-[10px] font-bold text-[hsl(0_0%_92%)]">
                 {unread > 9 ? "9+" : unread}
               </span>
             )}

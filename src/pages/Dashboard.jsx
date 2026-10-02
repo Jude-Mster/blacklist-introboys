@@ -14,7 +14,7 @@ import { AlertTriangle, Ticket, ChevronRight } from "lucide-react";
 import ActivityList from "@/components/ActivityList";
 
 const DAY = 24 * 60 * 60 * 1000;
-const WHEEL_COLORS = ["#A3161F", "#8A6A3E", "#3E7FB8", "#3FA796", "#7A2E5C", "#C99A3A"];
+const WHEEL_COLORS = ["#C8161D", "#5C5C5C", "#3E7FB8", "#3FA796", "#7A2E5C", "#8C8C8C"];
 
 export default function Dashboard() {
   const { account, settings, loading } = useGuild();
@@ -104,10 +104,10 @@ function CharacterCard({ member: m, rank, stats }) {
       <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center">
         <div className="flex items-center gap-4">
           <div className="relative shrink-0">
-            <div className="rounded-full p-[3px]" style={{ background: "conic-gradient(#D8B46A, #8A6A3E, #3FA796, #D8B46A)" }}>
+            <div className="rounded-full p-[3px]" style={{ background: "conic-gradient(#FFFFFF, #C8161D, #5C5C5C, #FFFFFF)" }}>
               <Avatar url={m.avatar_url} name={m.discord_name} size={80} className="border-2 border-[hsl(var(--ink))]" />
             </div>
-            <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-sm border border-gold/70 bg-crimson px-1.5 text-[11px] font-bold text-[hsl(43_70%_90%)]">
+            <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-sm border border-gold/70 bg-crimson px-1.5 text-[11px] font-bold text-[hsl(0_0%_90%)]">
               #{rank || "–"}
             </span>
           </div>

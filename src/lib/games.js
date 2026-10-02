@@ -34,8 +34,8 @@ export const WHEEL_SEGMENTS = [
 ];
 export const FACTIONS = {
   guanyin: { name: "Guanyin", glyph: "觀", color: "#3E7FB8" },
-  fujin: { name: "Fujin", glyph: "符", color: "#B8323A" },
-  jinong: { name: "Jinong", glyph: "金", color: "#C99A3A" },
+  fujin: { name: "Fujin", glyph: "符", color: "#C8161D" },
+  jinong: { name: "Jinong", glyph: "金", color: "#8C8C8C" },
   dragon: { name: "Dragon", glyph: "龍", color: "#3FA796" }
 };
 export const wheelMultiplier = (pick, edge) => {

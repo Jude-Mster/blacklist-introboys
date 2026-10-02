@@ -19,7 +19,7 @@ export default function ChatDrawer({ open, onClose, onIncoming }) {
       aria-hidden={!open}
       inert={open ? undefined : ""}
       className={cn(
-        "fixed right-0 top-14 z-40 flex w-full flex-col border-l border-bronze/60 bg-[hsl(192_24%_7%/0.98)] shadow-[-20px_0_40px_-20px_rgba(0,0,0,0.8)] backdrop-blur-md transition-transform duration-200 sm:top-16 md:w-[360px]",
+        "fixed right-0 top-14 z-40 flex w-full flex-col border-l border-bronze/60 bg-[hsl(0_0%_7%/0.98)] shadow-[-20px_0_40px_-20px_rgba(0,0,0,0.8)] backdrop-blur-md transition-transform duration-200 sm:top-16 md:w-[360px]",
         "bottom-[calc(76px+env(safe-area-inset-bottom))] md:bottom-0",
         open ? "translate-x-0" : "pointer-events-none translate-x-full"
       )}
