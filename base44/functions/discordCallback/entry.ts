@@ -36,6 +36,7 @@ async function isAppAdmin(b, userId) {
 }
 
 export default async function(req) {
+  // NOTE: never redirect to req.url.origin (dispatcher host) — see below.
   // Resolve the app's public origin. Prefer APP_URL (custom domain); otherwise
   // derive it from the registered Discord redirect URI, which is always the app
   // domain. NEVER fall back to req.url.origin — inside the dispatcher worker that
