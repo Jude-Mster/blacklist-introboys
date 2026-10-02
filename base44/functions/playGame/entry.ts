@@ -15,13 +15,13 @@ export default async function(req) {
   try {
     const b = createClientFromRequest(req);
     const user = await sessionUser(b, req);
-    if (!user) throw new UserError('Sign in with Discord first.', 401);
+    if (!user) throw new UserError('Link your Discord first.', 401);
     let payload; try { payload = await req.json(); } catch { payload = {}; }
     const { game, wager, choice } = payload;
     if (payload.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION });
 
     const found = await getMemberByUserId(b, user.id);
-    if (!found) throw new UserError('Sign in with Discord first.');
+    if (!found) throw new UserError('Link your Discord first.');
 
     const settings = await getSettings(b);
     if (!Array.isArray(settings.games_enabled) || !settings.games_enabled.includes(game))

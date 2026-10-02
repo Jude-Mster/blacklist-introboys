@@ -73,12 +73,12 @@ export default async function(req) {
   try {
     const b = createClientFromRequest(req);
     const user = await sessionUser(b, req);
-    if (!user) throw new UserError('Sign in with Discord first.', 401);
+    if (!user) throw new UserError('Link your Discord first.', 401);
     let p; try { p = await req.json(); } catch { p = {}; }
     if (p.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION });
 
     const me = await getMemberByUserId(b, user.id);
-    if (!me) throw new UserError('Sign in with Discord first.');
+    if (!me) throw new UserError('Link your Discord first.');
     const leader = me.role === 'leader';
 
     if (p.action === 'list') {

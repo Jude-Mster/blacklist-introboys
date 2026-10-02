@@ -22,10 +22,10 @@ export default function Landing() {
 
         </p>
 
-        <Link to="/login" className="btn-seal mt-8 h-12 px-9 text-base">ENTER THE GUILD SITE
+        <Link to="/login" className="btn-seal mt-8 h-12 px-9 text-base">Link Discord
 
         </Link>
-        <p className="mt-3 text-sm text-mist/80">Members only. Sign in with your Discord account.</p>
+        <p className="mt-3 text-sm text-mist/80">INTROBOYS members only. Link your Discord account to verify you're a member.</p>
 
         <ul className="mt-12 grid w-full max-w-lg grid-cols-3 gap-3 text-left text-[13px] text-mist sm:text-sm">
           <Feature icon={<Ingot size={20} />} text="Your points, live" />

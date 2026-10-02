@@ -21,9 +21,9 @@ export default async function(req) {
   try {
     const b = createClientFromRequest(req);
     const user = await sessionUser(b, req);
-    if (!user) throw new UserError('Sign in with Discord first.', 401);
+    if (!user) throw new UserError('Link your Discord first.', 401);
     const caller = await getMemberByUserId(b, user.id);
-    if (!caller) throw new UserError('Sign in with Discord first.');
+    if (!caller) throw new UserError('Link your Discord first.');
     if (!['officer', 'leader'].includes(caller.role)) throw new UserError('Officers and the leader only.', 403);
     const leaderOnly = () => { if (caller.role !== 'leader') throw new UserError('Only the leader can do that.', 403); };
 

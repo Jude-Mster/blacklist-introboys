@@ -8,9 +8,9 @@ export default async function(req) {
   try {
     const b = createClientFromRequest(req);
     const user = await sessionUser(b, req);
-    if (!user) throw new UserError('Sign in with Discord first.', 401);
+    if (!user) throw new UserError('Link your Discord first.', 401);
     const found = await getMemberByUserId(b, user.id);
-    if (!found) throw new UserError('Sign in with Discord first.');
+    if (!found) throw new UserError('Link your Discord first.');
 
     const settings = await getSettings(b);
     const prizes = Array.isArray(settings.daily_wheel_prizes) && settings.daily_wheel_prizes.length

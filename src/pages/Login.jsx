@@ -15,7 +15,7 @@ import {
 
 const MEMBERS_ONLY = {
   title: "Members only",
-  body: "This site is for BLACKLIST INTROBOYS guild members. To get access, join our Discord server and contact guild leader Juts to join the guild, then sign in again.",
+  body: "This site is for BLACKLIST INTROBOYS guild members. To get access, join our Discord server and contact guild leader Juts to join the guild, then link your Discord again.",
   invite: true
 };
 
@@ -24,18 +24,18 @@ const ERRORS = {
   no_role: MEMBERS_ONLY,
   guild_not_set: {
     title: "The guild hall isn't set up yet",
-    body: "The guild leader needs to finish setup before members can sign in. Let them know, then try again later."
+    body: "The guild leader needs to finish setup before members can link their Discord. Let them know, then try again later."
   },
   cancelled: {
-    title: "Sign-in was cancelled",
-    body: "You pressed Cancel on Discord. Sign in again when you're ready."
+    title: "Linking was cancelled",
+    body: "You pressed Cancel on Discord. Link your Discord again when you're ready."
   },
   state: {
-    title: "That sign-in expired",
-    body: "The Discord sign-in took too long or was opened twice. Start again below."
+    title: "That link expired",
+    body: "The Discord link took too long or was opened twice. Start again below."
   },
   token: {
-    title: "Discord didn't accept the sign-in",
+    title: "Discord didn't accept the link",
     body: "Try again. If it keeps happening, the guild leader should check the Discord redirect and client secret."
   },
   busy: {
@@ -103,7 +103,7 @@ export default function Login() {
     } catch (e) {
       setConfirm(null);
       setFinishing(false);
-      setError(errorText(e, "Couldn't finish signing in. Try again."));
+      setError(errorText(e, "Couldn't finish linking. Try again."));
       navigate("/login", { replace: true });
     }
   }, [code, state, navigate]);
@@ -128,11 +128,11 @@ export default function Login() {
         // Discord refuses to load inside a frame, so always leave at the top level.
         window.top.location.href = data.url;
       } else {
-        setError("Couldn't start Discord sign-in. Try again.");
+        setError("Couldn't start Discord linking. Try again.");
         setBusy(false);
       }
     } catch (e) {
-      setError(errorText(e, "Couldn't start Discord sign-in."));
+      setError(errorText(e, "Couldn't start Discord linking."));
       setBusy(false);
     }
   };
@@ -163,7 +163,7 @@ export default function Login() {
 
   if (finishing) {
     return (
-      <AuthLayout title="Enter the guild hall">
+      <AuthLayout title="INTROBOYS MEMBERS ONLY">
         <LanternSpinner label="Checking your Discord" className="py-10" />
       </AuthLayout>
     );
@@ -172,14 +172,14 @@ export default function Login() {
   // Discord came back to a different browser/app than the one that started.
   if (confirm) {
     return (
-      <AuthLayout title="Enter the guild hall">
+      <AuthLayout title="INTROBOYS MEMBERS ONLY">
         <div className="flex flex-col items-center text-center">
           {confirm.avatar && <img src={confirm.avatar} alt="" className="h-16 w-16 rounded-full border border-bronze/60" />}
-          <p className="mt-3 font-heading text-lg font-bold text-gold">Sign in as {confirm.name}?</p>
-          <p className="mt-1 text-sm text-mist">Only continue if this is your Discord account and you started this sign-in yourself.</p>
+          <p className="mt-3 font-heading text-lg font-bold text-gold">Link Discord as {confirm.name}?</p>
+          <p className="mt-1 text-sm text-mist">Only continue if this is your Discord account and you started this yourself.</p>
         </div>
         <button onClick={() => finish(true)} className="btn-seal mt-5 h-12 w-full text-base">
-          Yes, sign me in
+          Yes, link my Discord
         </button>
         <button onClick={() => { setConfirm(null); navigate("/login", { replace: true }); }} className="btn-bronze mt-3 h-11 w-full text-sm">
           Cancel
@@ -190,8 +190,8 @@ export default function Login() {
 
   return (
     <AuthLayout
-      title="Enter the guild hall"
-      subtitle={problem ? undefined : "Sign in with your Discord account. Your profile is created for you."}
+      title="INTROBOYS MEMBERS ONLY"
+      subtitle={problem ? undefined : "Link your Discord account to verify you're a member and gain access to the website and events."}
     >
       {problem && (
         <div role="status" className="mb-5 w-full rounded-md border border-bronze/60 bg-panel p-4 text-left">
@@ -218,7 +218,7 @@ export default function Login() {
       <button type="button" onClick={start} disabled={busy} className="btn-seal h-12 w-full text-base">
         {busy
           ? <><Loader2 className="h-4 w-4 animate-spin" /> Opening Discord</>
-          : (problem ? "Try again with Discord" : "Continue with Discord")}
+          : (problem ? "Link Discord again" : "Link Discord")}
       </button>
 
       <p className="mt-4 text-center text-xs text-mist/80">

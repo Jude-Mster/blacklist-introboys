@@ -55,6 +55,6 @@ export default async function(req) {
     });
   } catch (e) {
     console.error(e);
-    return Response.json({ error: 'Could not start Discord sign-in.' }, { status: 500 });
+    return Response.json({ error: 'Could not start Discord linking.' }, { status: 500 });
   }
 }

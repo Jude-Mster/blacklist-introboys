@@ -13,7 +13,7 @@ export default async function(req) {
   try {
     const b = createClientFromRequest(req);
     const user = await sessionUser(b, req);
-    if (!user) return Response.json({ error: 'Sign in with Discord first.' }, { status: 401 });
+    if (!user) return Response.json({ error: 'Link your Discord first.' }, { status: 401 });
 
     const settings = await getSettings(b);
     // Keep access in step with the member's Discord role.
