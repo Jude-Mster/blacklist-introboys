@@ -9,13 +9,13 @@ import { Loader2, Check, Copy } from "lucide-react";
 
 const ERRORS = {
   not_in_guild: {
-    title: "You're not in our Discord server yet",
-    body: "Join the BLACKLIST INTROBOYS server with the same Discord account, then link again. Check that the account on Discord's Authorize screen is yours.",
+    title: "Members only",
+    body: "This site is for BLACKLIST INTROBOYS guild members. To get access, join our Discord server and contact guild leader Juts to join the guild, then link your Discord again.",
     invite: true
   },
   no_role: {
-    title: "Guild members only",
-    body: "You need to be a BLACKLIST INTROBOYS guild member to use this site. If you're in the guild, talk to the Guild Leader in Discord to get the member role, then come back and link again.",
+    title: "Members only",
+    body: "This site is for BLACKLIST INTROBOYS guild members. To get access, join our Discord server and contact guild leader Juts to join the guild, then link your Discord again.",
     invite: true
   },
   guild_not_set: {
