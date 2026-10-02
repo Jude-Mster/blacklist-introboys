@@ -41,7 +41,7 @@ export default function DragonDice({ settings, balance }) {
   const winTo = direction === "under" ? target - 1 : 100;
 
   return (
-    <Panel title="Dragon Dice">
+    <Panel title="Blacklist Dragon Dice">
       <div
         className={cn(
           "mb-5 rounded-md border border-bronze/40 bg-[radial-gradient(circle_at_50%_0%,hsl(205_35%_16%),hsl(192_26%_6%))] px-4 pb-5 pt-4",

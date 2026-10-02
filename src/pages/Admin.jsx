@@ -9,6 +9,8 @@ import BanSection from "@/components/admin/BanSection";
 import SettingsSection from "@/components/admin/SettingsSection";
 import ImportSection from "@/components/admin/ImportSection";
 import TotalsSection from "@/components/admin/TotalsSection";
+import RosterSection from "@/components/admin/RosterSection";
+import SystemCheck from "@/components/admin/SystemCheck";
 
 export default function Admin() {
   const { account, loading } = useGuild();
@@ -19,8 +21,8 @@ export default function Admin() {
   const role = account.member.role;
   if (role !== "officer" && role !== "leader") {
     return (
-      <Panel title="Elders only" className="mx-auto mt-6 max-w-md">
-        <p className="text-center text-sm text-mist">The admin hall is for Elders and the Guild Master.</p>
+      <Panel title="Officers only" className="mx-auto mt-6 max-w-md">
+        <p className="text-center text-sm text-mist">The admin hall is for Vice Guild Members and the Guild Leader.</p>
       </Panel>
     );
   }
@@ -42,9 +44,11 @@ export default function Admin() {
         <AwardSection />
         <BanSection />
       </div>
+      <RosterSection />
       <TotalsSection />
       {role === "leader" && <SettingsSection />}
       {role === "leader" && <ImportSection />}
+      {role === "leader" && <SystemCheck />}
     </div>
   );
 }

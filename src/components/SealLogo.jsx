@@ -78,4 +78,4 @@ export default function SealLogo({ compact = false }) {
   );
 }
 
-export const ROLE_TITLE = { leader: "Guild Master", officer: "Elder", member: "Disciple" };
+export { ROLE_TITLE } from "@/lib/ranks";

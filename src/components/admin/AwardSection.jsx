@@ -70,8 +70,8 @@ export default function AwardSection() {
         </div>
         <p className="text-xs text-mist">
           {isLeader
-            ? "As Guild Master you can also enter a negative number to take points away."
-            : `Elders can give up to ${(settings?.award_cap_per_day || 0).toLocaleString()} points per 24 hours.`}
+            ? "As Guild Leader you can also enter a negative number to take points away."
+            : `Vice Guild Members can give up to ${(settings?.award_cap_per_day || 0).toLocaleString()} points per 24 hours.`}
         </p>
         {msg && <p role="status" className="text-sm text-jade">{msg}</p>}
         {error && <p role="alert" className="text-sm text-ember">{error}</p>}

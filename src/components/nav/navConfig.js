@@ -1,4 +1,4 @@
-import { Home, Trophy, ScrollText, Shield, Swords, MessageSquare, Spade } from "lucide-react";
+import { Home, Trophy, ScrollText, Shield, Swords, MessageSquare, Spade, Ticket } from "lucide-react";
 import { GAMES } from "@/lib/games";
 
 // One source of truth for every navigation surface.
@@ -20,6 +20,7 @@ export function gameLinks(settings) {
   }));
 }
 
+export const RAFFLE = { id: "raffle", to: "/raffle", label: "Raffle", short: "Raffle", icon: Ticket };
 export const isAdminRole = (m) => !!m && (m.role === "officer" || m.role === "leader");
 
 // Is a nav item the current page?

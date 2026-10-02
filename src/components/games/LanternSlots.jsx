@@ -48,7 +48,7 @@ export default function LanternSlots({ settings, balance }) {
   const tier = game.result ? game.result.outcome.tier : null;
 
   return (
-    <Panel title="Lantern Slots">
+    <Panel title="Blacklist Lantern Slots">
       <div
         className={cn(
           "relative mb-5 rounded-md border border-bronze/60 bg-[linear-gradient(180deg,hsl(356_40%_14%),hsl(192_26%_6%))] p-3",

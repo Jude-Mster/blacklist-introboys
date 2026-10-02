@@ -55,7 +55,34 @@
     @apply border-border outline-ring/50;
   }
 
+  /* Dark, thin scrollbars everywhere (the sidebar used to show the white system one). */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--bronze) / 0.55) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--bronze) / 0.5);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--gold) / 0.6);
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
   html {
+    color-scheme: dark;
     -webkit-tap-highlight-color: transparent;
   }
 

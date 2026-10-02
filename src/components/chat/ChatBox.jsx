@@ -4,11 +4,12 @@ import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import Avatar from "@/components/Avatar";
 import { useGuild, errorText } from "@/lib/GuildContext";
+import RankBadge from "@/components/RankBadge";
 import { cn } from "@/lib/utils";
 
 const PAGE = 40;
 const POLL_MS = 10000;
-const ROLE_COLOR = { leader: "text-gold", officer: "text-jade", member: "text-[hsl(var(--foreground))]" };
+const ROLE_COLOR = { leader: "text-gold", officer: "text-jade", guild_member: "text-azure", member: "text-[hsl(var(--foreground))]" };
 
 const rows = (res) => (Array.isArray(res) ? res : (res && res.items) || []);
 const time = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
@@ -160,8 +161,12 @@ export default function ChatBox({ channels = [{ id: "guild", label: "Guild" }], 
               <li key={m.id} className="group flex gap-2">
                 <Avatar url={m.avatar} name={m.name} size={26} className="mt-0.5" />
                 <div className="min-w-0 flex-1">
-                  <p className="flex items-baseline gap-2 text-xs">
+                  <p className="flex items-center gap-1.5 text-xs">
                     <span className={cn("truncate font-bold", ROLE_COLOR[m.role] || ROLE_COLOR.member)}>{m.name}</span>
+                    <RankBadge role={m.role} short />
+                    {m.kind === "discord" && m.role !== "guest" && (
+                      <span className="shrink-0 text-[10px] text-[#A5ADFF]" title="Sent from Discord">via Discord</span>
+                    )}
                     <span className="shrink-0 text-mist/70">{time(m.created_date)}</span>
                     {canModerate && !m.deleted && (
                       <button
@@ -195,9 +200,9 @@ export default function ChatBox({ channels = [{ id: "guild", label: "Guild" }], 
             placeholder={me && me.banned ? "You can't chat while banned" : "Write a message"}
             disabled={!me || me.banned}
             aria-label="Message"
-            className="field h-10 flex-1 text-sm"
+            className="field h-10 min-w-0 flex-1 text-sm"
           />
-          <button type="submit" disabled={sending || !text.trim()} className="btn-seal h-10 w-11" aria-label="Send message">
+          <button type="submit" disabled={sending || !text.trim()} className="btn-seal h-10 w-11 shrink-0" aria-label="Send message">
             <Send className="h-4 w-4" />
           </button>
         </form>

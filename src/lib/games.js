@@ -5,11 +5,11 @@ export const round2 = (n) => Math.round(n * 100) / 100;
 export const edgeOf = (settings) => Math.min(Math.max(Number(settings?.house_edge_pct) || 0, 0), 20) / 100;
 
 export const GAMES = [
-  { id: "coinflip", name: "Yin Yang Toss", blurb: "Call Yin or Yang. Even odds." },
-  { id: "dragondice", name: "Dragon Dice", blurb: "Set your own odds on a roll of 1 to 100." },
-  { id: "lanternslots", name: "Lantern Slots", blurb: "Three reels. Three seals pays 50×." },
-  { id: "skywheel", name: "Twelve Skies Wheel", blurb: "Back a faction and spin the wheel." },
-  { id: "roulette", name: "Jade Roulette", blurb: "Single-zero roulette. Spread your chips." },
+  { id: "coinflip", name: "Blacklist Yin Yang Toss", blurb: "Call Yin or Yang, or duel another member." },
+  { id: "dragondice", name: "Blacklist Dragon Dice", blurb: "Set your own odds on a roll of 1 to 100." },
+  { id: "lanternslots", name: "Blacklist Lantern Slots", blurb: "Three reels. Three seals pays 50×." },
+  { id: "skywheel", name: "Blacklist Twelve Skies Wheel", blurb: "Back a faction and spin the wheel." },
+  { id: "roulette", name: "Blacklist Jade Roulette", blurb: "One shared table. A new spin every round." },
   { id: "poker", name: "Poker Room", blurb: "Texas Hold'em against other members.", href: "/poker" }
 ];
 
@@ -62,5 +62,17 @@ export function betLabel(b) {
     case "dozen": return ["1st 12", "2nd 12", "3rd 12"][b.value - 1];
     case "column": return `Column ${b.value}`;
     default: return "";
+  }
+}
+export function rouletteWins(b, n) {
+  if (b.type === "straight") return b.value === n;
+  if (n === 0) return false;
+  switch (b.type) {
+    case "color": return rouletteColor(n) === b.value;
+    case "parity": return (n % 2 === 0 ? "even" : "odd") === b.value;
+    case "half": return (n <= 18 ? "low" : "high") === b.value;
+    case "dozen": return Math.ceil(n / 12) === b.value;
+    case "column": return ((n - 1) % 3) + 1 === b.value;
+    default: return false;
   }
 }

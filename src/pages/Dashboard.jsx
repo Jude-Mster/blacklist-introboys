@@ -5,11 +5,12 @@ import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import LanternSpinner from "@/components/LanternSpinner";
 import { useGuild, errorText } from "@/lib/GuildContext";
-import { Ingot, ROLE_TITLE } from "@/components/SealLogo";
+import { Ingot } from "@/components/SealLogo";
+import RankBadge from "@/components/RankBadge";
 import Wheel, { angleFor } from "@/components/games/Wheel";
 import { GAMES } from "@/lib/games";
 import { cn } from "@/lib/utils";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Ticket, ChevronRight } from "lucide-react";
 import ActivityList from "@/components/ActivityList";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -52,6 +53,17 @@ export default function Dashboard() {
       )}
 
       <CharacterCard member={m} rank={account.rank} stats={account.stats} />
+
+      <Link to="/raffle" className="flex items-center gap-3 rounded-md border border-bronze/50 bg-black/25 px-4 py-3 transition-colors hover:border-gold/70">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded border border-bronze/50 bg-black/40 text-gold">
+          <Ticket className="h-5 w-5" aria-hidden="true" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-heading font-bold text-gold">Guild raffle</span>
+          <span className="block text-xs text-mist">Buy tickets with points and get your name on the wheel.</span>
+        </span>
+        <ChevronRight className="h-5 w-5 shrink-0 text-mist" aria-hidden="true" />
+      </Link>
 
       <div className="grid gap-5 md:grid-cols-2">
         <DailyWheel member={m} settings={settings} />
@@ -101,7 +113,7 @@ function CharacterCard({ member: m, rank, stats }) {
           </div>
           <div className="min-w-0">
             <h1 className="truncate font-heading text-2xl font-bold text-[hsl(var(--foreground))]">{m.discord_name || m.discord_id}</h1>
-            <p className="text-sm text-gold">{ROLE_TITLE[m.role] || m.role} of the Blacklist</p>
+            <RankBadge role={m.role} className="mt-1" />
           </div>
         </div>
 

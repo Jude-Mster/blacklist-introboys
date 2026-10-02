@@ -26,7 +26,7 @@ export default function SkyWheel({ settings, balance }) {
   const landed = game.result ? game.result.outcome.landed : null;
 
   return (
-    <Panel title="Twelve Skies Wheel">
+    <Panel title="Blacklist Twelve Skies Wheel">
       <div
         className={cn(
           "mb-5 rounded-md border border-bronze/40 bg-[radial-gradient(circle_at_50%_45%,hsl(205_35%_16%),hsl(192_26%_6%))] py-5",

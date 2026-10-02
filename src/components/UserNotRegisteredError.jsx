@@ -6,7 +6,7 @@ const UserNotRegisteredError = () => {
   return (
     <AuthLayout title="Access restricted">
       <p className="text-center text-sm text-mist">
-        This account isn't allowed into the guild hall yet. Ask the Guild Master to invite you, or log out and use the account you signed up with.
+        This account isn't allowed into the guild hall yet. Ask the Guild Leader to invite you, or log out and use the account you signed up with.
       </p>
       <button type="button" onClick={() => base44.auth.logout("/")} className="btn-bronze mt-5 h-11 w-full">
         Log out

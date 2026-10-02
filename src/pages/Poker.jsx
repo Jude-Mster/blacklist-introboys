@@ -15,7 +15,7 @@ export default function Poker() {
   if (settings && !(settings.games_enabled || []).includes("poker")) {
     return (
       <Panel title="Poker room closed" className="mx-auto max-w-md">
-        <p className="text-center text-mist">The Guild Master has closed the poker room for now.</p>
+        <p className="text-center text-mist">The Guild Leader has closed the poker room for now.</p>
       </Panel>
     );
   }

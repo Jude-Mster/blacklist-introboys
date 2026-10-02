@@ -55,7 +55,7 @@ export default function Profile() {
           <div className="min-w-0 flex-1">
             <h1 className="truncate font-heading text-2xl font-bold">{m.discord_name || m.discord_id}</h1>
             <p className="text-sm">
-              <span className="text-gold">{ROLE_TITLE[m.role] || m.role}</span>
+              <span className="text-gold">{ROLE_TITLE[m.role] || ROLE_TITLE.member}</span>
               <span className="text-mist"> · rank #{account.rank}</span>
             </p>
             {m.discord_username && <p className="truncate text-xs text-mist">@{m.discord_username}</p>}

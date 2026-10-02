@@ -2,12 +2,10 @@ import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import MemberSearch, { SelectedMember } from "./MemberSearch";
-import { useGuild, errorText } from "@/lib/GuildContext";
+import { errorText } from "@/lib/GuildContext";
 
-// Ban or unban a member; the leader can also promote Elders (officers).
+// Ban or unban a member. Ranks are changed in the roster.
 export default function BanSection() {
-  const { account } = useGuild();
-  const isLeader = account?.member?.role === "leader";
   const [target, setTarget] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -22,7 +20,7 @@ export default function BanSection() {
       setMsg(done);
       setTarget((t) => ({
         ...t,
-        ...(action === "ban" ? { banned: true } : action === "unban" ? { banned: false } : { role: extra.role })
+        banned: action === "ban"
       }));
     } catch (e) {
       setError(errorText(e, "That didn't work."));
@@ -34,7 +32,7 @@ export default function BanSection() {
   const name = target ? target.discord_name || target.discord_id : "";
 
   return (
-    <Panel title="Manage members">
+    <Panel title="Ban from games">
       <p className="mb-3 text-sm text-mist">Banned members can't play games or spin the daily wheel. Their points stay.</p>
       {target ? <SelectedMember m={target} onClear={() => { setTarget(null); setMsg(""); }} /> : <MemberSearch onSelect={setTarget} />}
 
@@ -51,16 +49,6 @@ export default function BanSection() {
               className="btn-bronze h-10 px-4 text-sm !text-ember"
             >
               Ban from games
-            </button>
-          )}
-          {isLeader && target.role === "member" && (
-            <button disabled={busy} onClick={() => act("setRole", { role: "officer" }, `${name} is now an Elder.`)} className="btn-bronze h-10 px-4 text-sm">
-              Make Elder
-            </button>
-          )}
-          {isLeader && target.role === "officer" && (
-            <button disabled={busy} onClick={() => act("setRole", { role: "member" }, `${name} is a Disciple again.`)} className="btn-bronze h-10 px-4 text-sm">
-              Remove Elder rank
             </button>
           )}
         </div>

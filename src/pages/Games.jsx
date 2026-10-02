@@ -9,6 +9,8 @@ import DragonDice from "@/components/games/DragonDice";
 import LanternSlots from "@/components/games/LanternSlots";
 import SkyWheel from "@/components/games/SkyWheel";
 import Roulette from "@/components/games/Roulette";
+import LiveFeed from "@/components/games/LiveFeed";
+import ChatBox from "@/components/chat/ChatBox";
 import { GAME_ICONS } from "@/lib/gameIcons";
 import { GAMES } from "@/lib/games";
 import { cn } from "@/lib/utils";
@@ -29,7 +31,7 @@ export default function Games() {
   if (member.banned) {
     return (
       <Panel title="Games closed" className="mx-auto max-w-md">
-        <p className="text-center text-mist">An officer has closed the games for your account. Ask them in Discord if you think this is a mistake.</p>
+        <p className="text-center text-mist">A guild officer has closed the games for your account. Ask them in Discord if you think this is a mistake.</p>
       </Panel>
     );
   }
@@ -90,8 +92,8 @@ export default function Games() {
         })}
       </div>
 
-      <div className="mx-auto grid max-w-[56rem] gap-5 md:grid-cols-[minmax(0,1fr)_260px] md:items-start">
-        <div className="mx-auto w-full max-w-lg md:max-w-none">
+      <div className="mx-auto grid max-w-[64rem] grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+        <div className="mx-auto w-full min-w-0 max-w-xl lg:max-w-none">
           {Game ? (
             <Game key={current.id} settings={settings} balance={member.points} />
           ) : (
@@ -102,7 +104,7 @@ export default function Games() {
           )}
         </div>
 
-        <div className="space-y-5 md:sticky md:top-24">
+        <div className="mx-auto w-full min-w-0 max-w-xl space-y-5 lg:max-w-none">
         <Panel title="Your purse">
           <dl className="space-y-3 text-sm">
             <div className="flex items-center justify-between">
@@ -121,6 +123,8 @@ export default function Games() {
             </p>
           </dl>
         </Panel>
+        <LiveFeed />
+        <ChatBox height="h-64" />
         </div>
       </div>
     </div>

@@ -4,7 +4,8 @@ import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import LanternSpinner from "@/components/LanternSpinner";
 import { useGuild, errorText } from "@/lib/GuildContext";
-import { Points, ROLE_TITLE } from "@/components/SealLogo";
+import { Points } from "@/components/SealLogo";
+import RankBadge from "@/components/RankBadge";
 import { cn } from "@/lib/utils";
 
 const MEDAL = [
@@ -73,7 +74,7 @@ export default function Leaderboard() {
                     {m.discord_name || m.discord_id}
                     {m.discord_id === me && <span className="ml-2 text-xs text-gold">You</span>}
                   </p>
-                  <p className="text-xs text-mist">{ROLE_TITLE[m.role] || m.role}</p>
+                  <RankBadge role={m.role} className="mt-0.5" />
                 </div>
                 <Points value={m.points} className="font-heading font-bold text-gold" iconSize={15} />
               </li>

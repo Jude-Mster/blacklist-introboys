@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { LogOut, ScrollText, Shield, ChevronDown } from "lucide-react";
+import { LogOut, ScrollText, Shield, ChevronDown, Ticket } from "lucide-react";
 import Avatar from "@/components/Avatar";
 import { ROLE_TITLE } from "@/components/SealLogo";
 import { base44 } from "@/api/base44Client";
@@ -42,6 +42,11 @@ export default function AccountMenu({ member }) {
             <DropdownMenuItem asChild>
               <Link to="/profile" className="cursor-pointer">
                 <ScrollText className="h-4 w-4" /> Profile and history
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/raffle" className="cursor-pointer">
+                <Ticket className="h-4 w-4" /> Raffle
               </Link>
             </DropdownMenuItem>
             {isAdminRole(member) && (

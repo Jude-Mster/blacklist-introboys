@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useGuild } from "@/lib/GuildContext";
 import { GAME_ICONS } from "@/lib/gameIcons";
-import { HOME, RANKINGS, PROFILE, ADMIN, POKER, CHAT, gameLinks, isActive, isAdminRole } from "./navConfig";
+import { HOME, RANKINGS, PROFILE, ADMIN, POKER, CHAT, RAFFLE, gameLinks, isActive, isAdminRole } from "./navConfig";
 import { cn } from "@/lib/utils";
 
 // Desktop and tablet navigation. Full width with labels on large screens,
@@ -21,10 +21,10 @@ export default function Sidebar({ collapsed, onToggle, onChat, chatOpen, unread 
       aria-label="Main"
       className={cn(
         "fixed bottom-0 left-0 top-14 z-30 hidden flex-col border-r border-bronze/50 bg-[hsl(192_26%_5.5%/0.97)] transition-[width] duration-200 sm:top-16 md:flex",
-        wide ? "w-[72px] lg:w-[232px]" : "w-[72px]"
+        wide ? "w-[72px] lg:w-[244px]" : "w-[72px]"
       )}
     >
-      <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3">
         <Item item={HOME} active={isActive(HOME, location)} wide={wide} />
 
         <Group label="Play" wide={wide}>
@@ -35,6 +35,7 @@ export default function Sidebar({ collapsed, onToggle, onChat, chatOpen, unread 
         </Group>
 
         <Group label="Guild" wide={wide}>
+          <Item item={RAFFLE} active={isActive(RAFFLE, location)} wide={wide} />
           <Item item={RANKINGS} active={isActive(RANKINGS, location)} wide={wide} />
           <Item item={CHAT} onClick={onChat} active={chatOpen} badge={unread} wide={wide} />
         </Group>
@@ -62,7 +63,7 @@ export default function Sidebar({ collapsed, onToggle, onChat, chatOpen, unread 
 
 function Group({ label, wide, children }) {
   return (
-    <div className="mt-5">
+    <div className="mt-3">
       <p className={cn("mb-1.5 px-2 text-xs font-medium text-mist/70", wide ? "hidden lg:block" : "hidden")}>{label}</p>
       <div className={cn("mx-2 mb-2 h-px bg-bronze/30", wide ? "lg:hidden" : "")} aria-hidden="true" />
       <div className="space-y-0.5">{children}</div>
@@ -87,7 +88,7 @@ function Item({ item, glyph, active, wide, onClick, badge }) {
           </span>
         )}
       </span>
-      <span className={cn("truncate text-sm", active ? "font-bold text-gold" : "text-[hsl(var(--foreground))]/85", wide ? "hidden lg:inline" : "sr-only")}>
+      <span className={cn("min-w-0 text-[13px] leading-tight", active ? "font-bold text-gold" : "text-[hsl(var(--foreground))]/85", wide ? "hidden lg:inline" : "sr-only")}>
         {item.label}
       </span>
     </>

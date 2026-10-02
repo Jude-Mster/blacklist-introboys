@@ -1,117 +1,291 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Loader2, Undo2, RotateCcw, Repeat } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Loader2, Undo2, RotateCcw, Repeat, Users } from "lucide-react";
+import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
+import Avatar from "@/components/Avatar";
 import { Ingot } from "@/components/SealLogo";
 import Wheel, { angleFor } from "./Wheel";
-import useGame from "./useGame";
-import { ROULETTE_ORDER, ROULETTE_PAYS, rouletteColor, betKey, betLabel } from "@/lib/games";
+import { useGuild, errorText } from "@/lib/GuildContext";
+import { ROULETTE_ORDER, ROULETTE_PAYS, rouletteColor, rouletteWins, betKey, betLabel } from "@/lib/games";
 import { cn } from "@/lib/utils";
 
-const SPIN_MS = 3600;
+const SPIN_MS = 5000;
+const POLL_MS = 2000;
 const COLORS = { red: "#A3161F", black: "#151B1D", green: "#2E7F5E" };
 const SEGMENTS = ROULETTE_ORDER.map((n) => ({ label: String(n), color: COLORS[rouletteColor(n)], fontSize: 9 }));
 const CHIP_VALUES = [10, 50, 100, 500, 1000, 5000];
 const ROWS = Array.from({ length: 12 }, (_, r) => [r * 3 + 1, r * 3 + 2, r * 3 + 3]);
 
+// One shared table for the whole guild. The server runs the rounds on a timer:
+// betting -> spin -> result -> next round. Everyone sees the same ball.
 export default function Roulette({ settings, balance }) {
+  const { setBalance, reload } = useGuild();
   const chips = useMemo(() => CHIP_VALUES.filter((v) => v <= settings.max_bet), [settings.max_bet]);
   const [chip, setChip] = useState(chips[Math.min(1, chips.length - 1)] || settings.min_bet);
-  const [bets, setBets] = useState([]); // [{ type, value, amount }]
-  const [history, setHistory] = useState([]); // stack of previous `bets` for undo
-  const [lastSpin, setLastSpin] = useState(null);
+  const [state, setState] = useState(null); // { table, bets, mine }
+  const [offset, setOffset] = useState(0); // server clock minus this device's clock
+  const [now, setNow] = useState(Date.now());
+  const [pending, setPending] = useState([]); // chips not sent yet
+  const [history, setHistory] = useState([]);
+  const [lastBets, setLastBets] = useState(null);
+  const [placing, setPlacing] = useState(false);
+  const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [rotation, setRotation] = useState(0);
-  const game = useGame("roulette", { revealMs: SPIN_MS + 150 });
+  const [spinning, setSpinning] = useState(false);
+  const [revealed, setRevealed] = useState(0); // round whose result is on show
+  const seenBetting = useRef(0);
+  const animated = useRef(0);
+  const inFlight = useRef(false);
+
+  const refresh = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    try {
+      const res = await base44.functions.invoke("rouletteAction", { action: "state" });
+      const d = res.data;
+      if (d && d.table) {
+        setOffset(Date.parse(d.table.server_now) - Date.now());
+        setState(d);
+        setLoadError("");
+      }
+    } catch (e) {
+      setLoadError(errorText(e, "Couldn't reach the roulette table."));
+    } finally {
+      inFlight.current = false;
+    }
+  }, []);
 
   useEffect(() => {
-    if (!game.landing) return;
-    setRotation((r) => angleFor(game.landing.outcome.index, r, ROULETTE_ORDER.length, 5));
-  }, [game.landing]);
+    refresh();
+    const poll = setInterval(refresh, POLL_MS);
+    const tick = setInterval(() => setNow(Date.now()), 250);
+    let unsub = () => {};
+    try {
+      unsub = base44.entities.RouletteTable.subscribe(() => refresh());
+    } catch {
+      /* polling covers it */
+    }
+    return () => {
+      clearInterval(poll);
+      clearInterval(tick);
+      unsub && unsub();
+    };
+  }, [refresh]);
 
-  const total = bets.reduce((t, b) => t + b.amount, 0);
-  const onBoard = useMemo(() => Object.fromEntries(bets.map((b) => [betKey(b), b.amount])), [bets]);
-  const result = game.result && game.result.outcome;
-  const hitKeys = new Set(result ? result.hits.map(betKey) : []);
+  const table = state && state.table;
+  const round = table ? table.round_no : 0;
+  const serverNow = now + offset;
+
+  // Run the wheel when a round we watched gets its number.
+  useEffect(() => {
+    if (!table) return;
+    if (table.status === "betting") {
+      seenBetting.current = table.round_no;
+      return;
+    }
+    if (animated.current === table.round_no) return;
+    animated.current = table.round_no;
+    const fresh = seenBetting.current === table.round_no || Date.now() + offset - Date.parse(table.settled_at) < 4000;
+    if (!fresh) {
+      // Arrived after the spin: show the number without the show.
+      setRotation((r) => angleFor(table.result_index, r, ROULETTE_ORDER.length, 0));
+      setRevealed(table.round_no);
+      return;
+    }
+    setSpinning(true);
+    setRotation((r) => angleFor(table.result_index, r, ROULETTE_ORDER.length, 6));
+    const t = setTimeout(() => {
+      setSpinning(false);
+      setRevealed(table.round_no);
+      reload();
+    }, SPIN_MS + 100);
+    return () => {
+      clearTimeout(t);
+      setSpinning(false);
+      animated.current = 0;
+    };
+  }, [table && table.round_no, table && table.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // New round: remember last round's chips for "repeat", clear the board.
+  useEffect(() => {
+    setPending([]);
+    setHistory([]);
+    setError("");
+  }, [round]);
+  useEffect(() => {
+    if (state && state.mine && state.mine.bets && state.mine.bets.length) setLastBets(state.mine.bets);
+  }, [state]);
+
+  const betting = !!table && table.status === "betting";
+  const closeIn = betting ? Math.max(0, Math.ceil((Date.parse(table.bets_close_at) - serverNow) / 1000)) : 0;
+  const open = betting && Date.parse(table.bets_close_at) - serverNow > 1500;
+  const showResult = !!table && table.status === "settled" && revealed === table.round_no;
+  const nextIn = table && table.status === "settled" && table.next_at ? Math.max(0, Math.ceil((Date.parse(table.next_at) - serverNow) / 1000)) : 0;
+  const betSeconds = Math.min(Math.max(Number(settings.roulette_bet_seconds) || 30, 10), 120);
+
+  const mine = (state && state.mine) || null;
+  const placed = useMemo(() => (mine && mine.round_no === round ? mine.bets || [] : []), [mine, round]);
+  const placedTotal = placed.reduce((t, b) => t + b.amount, 0);
+  const pendingTotal = pending.reduce((t, b) => t + b.amount, 0);
+  const placedMap = useMemo(() => Object.fromEntries(placed.map((b) => [betKey(b), b.amount])), [placed]);
+  const pendingMap = useMemo(() => Object.fromEntries(pending.map((b) => [betKey(b), b.amount])), [pending]);
+  const number = showResult ? table.result_number : null;
 
   const place = (type, value) => {
-    if (game.busy) return;
-    if (total + chip > Math.min(settings.max_bet, balance)) return;
-    setHistory((h) => [...h, bets]);
-    setBets((bs) => {
+    if (!open || placing) return;
+    if (pendingTotal + chip > balance || placedTotal + pendingTotal + chip > settings.max_bet) {
+      setError(pendingTotal + chip > balance ? "Not enough points for another chip." : `You can bet up to ${settings.max_bet.toLocaleString()} per spin.`);
+      return;
+    }
+    setError("");
+    setHistory((h) => [...h, pending]);
+    setPending((bs) => {
       const k = betKey({ type, value });
-      const found = bs.find((b) => betKey(b) === k);
-      return found ? bs.map((b) => (betKey(b) === k ? { ...b, amount: b.amount + chip } : b)) : [...bs, { type, value, amount: chip }];
+      return bs.some((b) => betKey(b) === k) ? bs.map((b) => (betKey(b) === k ? { ...b, amount: b.amount + chip } : b)) : [...bs, { type, value, amount: chip }];
     });
   };
   const undo = () => {
-    setBets(history[history.length - 1] || []);
+    setPending(history[history.length - 1] || []);
     setHistory((h) => h.slice(0, -1));
   };
   const clear = () => {
-    setHistory((h) => [...h, bets]);
-    setBets([]);
-  };
-  const spin = async () => {
-    setLastSpin(bets);
-    const r = await game.play(total, { bets });
-    if (r) {
-      setBets([]);
-      setHistory([]);
-    }
+    setHistory((h) => [...h, pending]);
+    setPending([]);
   };
   const rebet = () => {
-    if (!lastSpin) return;
-    setHistory((h) => [...h, bets]);
-    setBets(lastSpin);
+    if (!lastBets) return;
+    const total = lastBets.reduce((t, b) => t + b.amount, 0);
+    if (total > balance || placedTotal + total > settings.max_bet) {
+      setError("Not enough room to repeat those bets.");
+      return;
+    }
+    setHistory((h) => [...h, pending]);
+    setPending(lastBets.map((b) => ({ ...b })));
+  };
+  const submit = async () => {
+    if (!pending.length || placing) return;
+    setPlacing(true);
+    setError("");
+    try {
+      const res = await base44.functions.invoke("rouletteAction", { action: "bet", bets: pending });
+      setBalance(res.data.balance);
+      setPending([]);
+      setHistory([]);
+      setState((s) => (s ? { ...s, mine: res.data.mine } : s));
+      refresh();
+    } catch (e) {
+      setError(errorText(e, "Those chips didn't go down. Try again."));
+    } finally {
+      setPlacing(false);
+    }
   };
 
   const cell = (type, value, children, className, style) => {
     const k = betKey({ type, value });
-    const amount = onBoard[k];
-    const hit = hitKeys.has(k) || (result && type === "straight" && value === result.number);
+    const on = placedMap[k] || 0;
+    const wait = pendingMap[k] || 0;
+    const hit = number !== null && rouletteWins({ type, value }, number);
     return (
       <button
         key={k}
         type="button"
         onClick={() => place(type, value)}
-        disabled={game.busy}
-        aria-label={`Bet on ${betLabel({ type, value })}${amount ? `, ${amount} placed` : ""}`}
+        disabled={!open}
+        aria-label={`Bet on ${betLabel({ type, value })}${on + wait ? `, ${on + wait} on it` : ""}`}
         className={cn(
-          "relative flex items-center justify-center border border-bronze/45 font-heading font-bold text-[hsl(43_60%_92%)] transition-[filter] hover:brightness-125 disabled:cursor-default",
+          "relative flex items-center justify-center border border-bronze/45 font-heading font-bold text-[hsl(43_60%_92%)] transition-[filter] enabled:hover:brightness-125 disabled:cursor-default",
           hit && "z-10 outline outline-2 outline-gold",
+          number !== null && !hit && "opacity-60",
           className
         )}
         style={style}
       >
         {children}
-        {amount > 0 && <Chip amount={amount} />}
+        {on + wait > 0 && <Chip amount={on + wait} waiting={wait > 0} />}
       </button>
     );
   };
 
-  const canSpin = total >= settings.min_bet && total <= settings.max_bet && total <= balance;
+  if (!table) {
+    return (
+      <Panel title="Blacklist Jade Roulette">
+        {loadError ? (
+          <div className="py-6 text-center">
+            <p role="alert" className="text-sm text-ember">{loadError}</p>
+            <p className="mt-2 text-xs text-mist">If this keeps happening, the Guild Leader can run the system check in the admin hall.</p>
+            <button onClick={refresh} className="btn-bronze mx-auto mt-4 h-10 px-5 text-sm">Try again</button>
+          </div>
+        ) : (
+          <p className="flex items-center justify-center gap-2 py-10 text-sm text-mist"><Loader2 className="h-4 w-4 animate-spin" /> Finding the table</p>
+        )}
+      </Panel>
+    );
+  }
+
+  const players = (state.bets || []).slice().sort((a, b) => b.amount - a.amount);
+  const myRow = players.find((p) => p.mine);
+  const myNet = showResult && myRow && myRow.settled ? myRow.net : null;
 
   return (
-    <Panel title="Jade Roulette">
+    <Panel title="Blacklist Jade Roulette">
+      {/* round status */}
+      <div className="mb-3 flex items-center justify-between gap-3 text-sm">
+        <span className="text-mist">Round {round.toLocaleString()}</span>
+        <span className="flex items-center gap-1.5 text-mist"><Users className="h-4 w-4" aria-hidden="true" /> {players.length} at the table</span>
+      </div>
       <div
         className={cn(
           "mb-4 rounded-md border border-bronze/40 bg-[radial-gradient(circle_at_50%_45%,hsl(160_30%_14%),hsl(192_26%_6%))] py-4",
-          game.result && (game.result.won ? "win-glow" : "loss-shake")
+          myNet !== null && (myNet > 0 ? "win-glow" : myNet < 0 ? "loss-shake" : "")
         )}
       >
-        <Wheel segments={SEGMENTS} rotation={rotation} spinMs={SPIN_MS} spinning={game.busy} size={250} highlight={result ? result.index : null} />
-        <div className="mt-3 text-center" aria-live="polite">
-          {result ? (
+        <Wheel segments={SEGMENTS} rotation={rotation} spinMs={SPIN_MS} spinning={spinning} size={250} highlight={showResult ? table.result_index : null} />
+        <div className="mt-3 px-4 text-center" aria-live="polite">
+          {betting && open && (
+            <>
+              <p className="text-sm text-mist">
+                Bets close in <span className="font-heading text-xl font-extrabold text-gold tabular-nums">{closeIn}</span> s
+              </p>
+              <div className="mx-auto mt-2 h-1.5 max-w-[220px] overflow-hidden rounded-full bg-black/50">
+                <div className="h-full bg-gold/80 transition-[width] duration-300 ease-linear" style={{ width: `${Math.min(100, (closeIn / betSeconds) * 100)}%` }} />
+              </div>
+            </>
+          )}
+          {((betting && !open) || spinning) && <p className="font-heading text-base font-bold text-gold">No more bets. The ball is rolling.</p>}
+          {showResult && !spinning && (
             <p className="text-sm text-mist">
               The ball lands on{" "}
-              <span className="rounded px-2 py-0.5 font-heading font-extrabold text-[hsl(43_60%_92%)]" style={{ background: COLORS[result.color] }}>
-                {result.number}
+              <span className="rounded px-2 py-0.5 font-heading text-base font-extrabold text-[hsl(43_60%_92%)]" style={{ background: COLORS[rouletteColor(number)] }}>
+                {number}
               </span>
+              <span className="ml-2">Next spin in {nextIn} s</span>
             </p>
-          ) : (
-            <p className="text-sm text-mist">Tap the board to place chips, then spin.</p>
           )}
         </div>
       </div>
+
+      {myNet !== null && (
+        <p className={cn("mb-3 text-center font-heading text-lg font-bold", myNet >= 0 ? "text-jade" : "text-ember")} aria-live="polite">
+          {myNet > 0 ? `Victory! +${myNet.toLocaleString()} points` : myNet === 0 ? "You broke even." : `Defeat. −${Math.abs(myNet).toLocaleString()} points`}
+        </p>
+      )}
+
+      {/* recent numbers */}
+      {table.recent.length > 0 && (
+        <div className="mb-4 flex items-center gap-1.5 overflow-hidden" aria-label="Recent numbers, newest first">
+          <span className="shrink-0 text-xs text-mist">Last</span>
+          {table.recent.slice(showResult || table.status === "betting" ? 0 : 1).map((n, i) => (
+            <span
+              key={`${n}-${i}`}
+              className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-[hsl(43_60%_92%)]", i === 0 && "ring-1 ring-gold")}
+              style={{ background: COLORS[rouletteColor(n)] }}
+            >
+              {n}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* chip picker */}
       <p className="label">Chip value</p>
@@ -159,52 +333,72 @@ export default function Roulette({ settings, balance }) {
 
       {/* controls */}
       <div className="mt-4 flex items-center justify-between gap-2">
-        <p className="flex items-center gap-1.5 text-sm">
-          <span className="text-mist">On the board</span>
-          <Ingot size={15} />
-          <span className="font-heading text-lg font-bold text-gold tabular-nums">{total.toLocaleString()}</span>
-        </p>
+        <div className="text-sm">
+          <p className="flex items-center gap-1.5">
+            <span className="text-mist">Your bets this spin</span>
+            <Ingot size={15} />
+            <span className="font-heading text-lg font-bold text-gold tabular-nums">{placedTotal.toLocaleString()}</span>
+          </p>
+          {pendingTotal > 0 && <p className="text-xs text-mist">White chips aren't placed yet.</p>}
+        </div>
         <div className="flex gap-1.5">
-          <IconBtn onClick={undo} disabled={game.busy || !history.length} label="Undo last chip"><Undo2 className="h-4 w-4" /></IconBtn>
-          <IconBtn onClick={clear} disabled={game.busy || !bets.length} label="Clear the board"><RotateCcw className="h-4 w-4" /></IconBtn>
-          <IconBtn onClick={rebet} disabled={game.busy || !lastSpin || bets.length > 0} label="Repeat last bets"><Repeat className="h-4 w-4" /></IconBtn>
+          <IconBtn onClick={undo} disabled={!open || !history.length} label="Undo last chip"><Undo2 className="h-4 w-4" /></IconBtn>
+          <IconBtn onClick={clear} disabled={!open || !pending.length} label="Clear unplaced chips"><RotateCcw className="h-4 w-4" /></IconBtn>
+          <IconBtn onClick={rebet} disabled={!open || !lastBets || pending.length > 0} label="Repeat my last bets"><Repeat className="h-4 w-4" /></IconBtn>
         </div>
       </div>
 
-      {game.error && (
-        <p role="alert" className="mt-3 rounded-md border border-ember/40 bg-ember/10 px-3 py-2 text-sm text-ember">{game.error}</p>
-      )}
+      {error && <p role="alert" className="mt-3 rounded-md border border-ember/40 bg-ember/10 px-3 py-2 text-sm text-ember">{error}</p>}
 
-      <button onClick={spin} disabled={game.busy || !canSpin} className="btn-seal mt-3 h-12 w-full text-base">
-        {game.busy ? <><Loader2 className="h-4 w-4 animate-spin" /> The ball is rolling</> : total ? `Spin for ${total.toLocaleString()}` : "Place a chip to spin"}
+      <button onClick={submit} disabled={!open || placing || !pending.length || placedTotal + pendingTotal < settings.min_bet} className="btn-seal mt-3 h-12 w-full text-base">
+        {placing ? (
+          <><Loader2 className="h-4 w-4 animate-spin" /> Placing chips</>
+        ) : !open ? (
+          "Bets are closed for this spin"
+        ) : pendingTotal ? (
+          `Place ${pendingTotal.toLocaleString()} on the table`
+        ) : placedTotal ? (
+          "Bets placed. Add more chips or wait for the spin"
+        ) : (
+          "Tap the board to add chips"
+        )}
       </button>
-      {total > 0 && total < settings.min_bet && <p className="mt-1.5 text-xs text-mist">Put at least {settings.min_bet} on the board.</p>}
+      {open && pendingTotal > 0 && placedTotal + pendingTotal < settings.min_bet && <p className="mt-1.5 text-xs text-mist">Put at least {settings.min_bet} on the board.</p>}
 
-      <div aria-live="polite" className="mt-3 min-h-[1.5rem] text-center">
-        {game.result && (
-          <p className={cn("font-heading text-lg font-bold", game.result.net >= 0 ? "text-jade" : "text-ember")}>
-            {game.result.net > 0
-              ? `Victory! +${game.result.net.toLocaleString()} points`
-              : game.result.net === 0
-                ? "You broke even."
-                : `Defeat. −${Math.abs(game.result.net).toLocaleString()} points`}
-          </p>
+      {/* who is in */}
+      <div className="mt-5 border-t border-bronze/30 pt-3">
+        <p className="label">At the table · {Number(players.reduce((t, p) => t + p.amount, 0)).toLocaleString()} points in play</p>
+        {players.length === 0 ? (
+          <p className="text-sm text-mist">Nobody has bet on this spin yet.</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {players.slice(0, 12).map((p, i) => (
+              <li key={`${p.name}-${i}`} className="flex items-center gap-2 text-sm">
+                <Avatar url={p.avatar} name={p.name} size={22} />
+                <span className={cn("min-w-0 flex-1 truncate", p.mine && "font-bold text-gold")}>{p.name}{p.mine ? " (you)" : ""}</span>
+                <span className="tabular-nums text-mist">{p.amount.toLocaleString()}</span>
+                {showResult && p.settled && (
+                  <span className={cn("w-16 text-right font-bold tabular-nums", p.net > 0 ? "text-jade" : p.net < 0 ? "text-ember" : "text-mist")}>
+                    {p.net > 0 ? "+" : p.net < 0 ? "−" : ""}{Math.abs(p.net).toLocaleString()}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
         )}
       </div>
-      {game.history.length > 0 && (
-        <div className="mt-1 flex items-center gap-1.5 overflow-hidden" aria-label="Your last results">
-          {game.history.map((h) => (
-            <span key={h.key} className={cn("h-2.5 w-2.5 shrink-0 rotate-45 border", h.net >= 0 ? "border-jade bg-jade/70" : "border-ember/70 bg-ember/25")} />
-          ))}
-        </div>
-      )}
     </Panel>
   );
 }
 
-function Chip({ amount }) {
+function Chip({ amount, waiting }) {
   return (
-    <span className="pointer-events-none absolute right-0.5 top-0.5 flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-dashed border-[hsl(43_70%_88%)] bg-gold px-1 text-[10px] font-extrabold text-[hsl(192_26%_7%)] shadow">
+    <span
+      className={cn(
+        "pointer-events-none absolute right-0.5 top-0.5 flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-dashed px-1 text-[10px] font-extrabold text-[hsl(192_26%_7%)] shadow",
+        waiting ? "border-bronze bg-[hsl(43_60%_92%)]" : "border-[hsl(43_70%_88%)] bg-gold"
+      )}
+    >
       {amount >= 1000 ? `${Math.round(amount / 100) / 10}k` : amount}
     </span>
   );
