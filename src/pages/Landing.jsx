@@ -18,7 +18,7 @@ export default function Landing() {
           <FullLogo className="mx-auto w-full max-w-[22rem] sm:max-w-[30rem]" />
         </h1>
 
-        <p className="mt-6 max-w-md text-base text-mist sm:text-lg">Welcome to our website. 
+        <p className="mt-6 max-w-md text-base text-mist sm:text-lg">Welcome to our guild website. A
 
         </p>
 
