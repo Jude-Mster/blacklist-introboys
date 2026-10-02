@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useGuild } from "@/lib/GuildContext";
 import { GAME_ICONS } from "@/lib/gameIcons";
-import { HOME, RANKINGS, PROFILE, ADMIN, POKER, CHAT, RAFFLE, gameLinks, isActive, isAdminRole } from "./navConfig";
+import { HOME, RANKINGS, PROFILE, ADMIN, POKER, CHAT, RAFFLE, GUIDE, gameLinks, isActive, isAdminRole } from "./navConfig";
 import { cn } from "@/lib/utils";
 import { base44 } from "@/api/base44Client";
 
@@ -50,6 +50,7 @@ export default function Sidebar({ collapsed, onToggle, onChat, chatOpen, unread 
         <Group label="Guild" wide={wide}>
           <Item item={RAFFLE} active={isActive(RAFFLE, location)} wide={wide} badge={raffleOpen} />
           <Item item={RANKINGS} active={isActive(RANKINGS, location)} wide={wide} />
+          <Item item={GUIDE} active={isActive(GUIDE, location)} wide={wide} />
           <Item item={CHAT} onClick={onChat} active={chatOpen} badge={unread} wide={wide} />
         </Group>
 

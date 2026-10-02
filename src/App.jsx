@@ -23,6 +23,7 @@ import Profile from '@/pages/Profile';
 import Admin from '@/pages/Admin';
 import Poker from '@/pages/Poker';
 import Raffle from '@/pages/Raffle';
+import Guide from '@/pages/Guide';
 // Add page imports here
 
 const AuthenticatedApp = () => {
@@ -64,6 +65,7 @@ const AuthenticatedApp = () => {
           <Route path="/poker" element={<Poker />} />
           <Route path="/poker/:tableId" element={<Poker />} />
           <Route path="/raffle" element={<Raffle />} />
+          <Route path="/guide" element={<Guide />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/admin" element={<Admin />} />

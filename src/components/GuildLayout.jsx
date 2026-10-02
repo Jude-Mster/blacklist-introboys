@@ -1,3 +1,4 @@
+import WarTimer from "@/components/WarTimer";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { GuildProvider, useGuild } from "@/lib/GuildContext";
@@ -80,6 +81,7 @@ function Shell() {
         )}
       >
         <div className="mx-auto w-full max-w-5xl">
+          <WarTimer variant="strip" className="mb-3 md:hidden" />
           <Outlet />
         </div>
       </main>
