@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { MessageSquare } from "lucide-react";
 import SealLogo, { Points } from "@/components/SealLogo";
+import WarTimer from "@/components/WarTimer";
 import { useGuild } from "@/lib/GuildContext";
 import AccountMenu from "./AccountMenu";
 import { cn } from "@/lib/utils";
@@ -18,8 +19,8 @@ export default function TopBar({ onChat, chatOpen, unread }) {
           <Link to="/dashboard" className="shrink-0" aria-label="Guild hall home">
             <SealLogo compact />
           </Link>
-          <span aria-hidden="true" className="hidden h-6 w-px shrink-0 bg-crimson sm:block" />
-          <div className="hidden items-center gap-1.5 sm:flex">
+          <span aria-hidden="true" className="hidden h-6 w-px shrink-0 bg-crimson lg:block" />
+          <div className="hidden items-center gap-1.5 lg:flex">
             {["TSM", "GLOBAL", "WUXEN2"].map((t) => (
               <span key={t} className="font-display border border-bronze bg-black/40 px-1.5 py-0.5 text-[12px] uppercase tracking-wider text-white">
                 {t}
@@ -29,6 +30,7 @@ export default function TopBar({ onChat, chatOpen, unread }) {
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2.5">
+          <WarTimer className="hidden sm:inline-flex" />
           {member && (
             <Link
               to="/profile"
