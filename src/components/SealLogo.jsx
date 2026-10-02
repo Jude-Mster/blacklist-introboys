@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 export function Seal({ size = 36, className }) {
   return (
     <img
-      src="/logo-mark.png"
+      src="https://base44.app/api/apps/6abe8bba244ec63c6d6d2855/files/mp/public/6abe8bba244ec63c6d6d2855/de4f11b7b_logo-mark.png"
       width={size}
       height={size}
       alt="BLACKLIST INTROBOYS"
@@ -18,7 +18,7 @@ export function Seal({ size = 36, className }) {
 
 // The full guild logo.
 export function FullLogo({ className }) {
-  return <img src="/logo.png" alt="BLACKLIST INTROBOYS, TwelveSky guild" draggable={false} className={cn("select-none", className)} />;
+  return <img src="https://base44.app/api/apps/6abe8bba244ec63c6d6d2855/files/mp/public/6abe8bba244ec63c6d6d2855/68df4465e_logo.png" alt="BLACKLIST INTROBOYS, TwelveSky guild" draggable={false} className={cn("select-none", className)} />;
 }
 
 // The ingot that marks a points amount.

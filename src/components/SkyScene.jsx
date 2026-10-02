@@ -14,7 +14,7 @@ export default function SkyScene({ className, dim = false }) {
         }}
       />
       <img
-        src="/logo-mark.png"
+        src="https://base44.app/api/apps/6abe8bba244ec63c6d6d2855/files/mp/public/6abe8bba244ec63c6d6d2855/de4f11b7b_logo-mark.png"
         alt=""
         className="float-slow absolute left-1/2 top-1/2 w-[150vw] max-w-none -translate-x-1/2 -translate-y-1/2 select-none sm:w-[62rem]"
         style={{ opacity: dim ? 0.035 : 0.055 }}

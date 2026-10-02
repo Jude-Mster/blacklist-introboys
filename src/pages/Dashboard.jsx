@@ -10,7 +10,7 @@ import RankBadge from "@/components/RankBadge";
 import Wheel, { angleFor } from "@/components/games/Wheel";
 import { GAMES } from "@/lib/games";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, Ticket, ChevronRight } from "lucide-react";
+import { AlertTriangle, Ticket } from "lucide-react";
 import ActivityList from "@/components/ActivityList";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -54,16 +54,7 @@ export default function Dashboard() {
 
       <CharacterCard member={m} rank={account.rank} stats={account.stats} />
 
-      <Link to="/raffle" className="flex items-center gap-3 rounded-md border border-bronze/50 bg-black/25 px-4 py-3 transition-colors hover:border-gold/70">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded border border-bronze/50 bg-black/40 text-gold">
-          <Ticket className="h-5 w-5" aria-hidden="true" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block font-heading font-bold text-gold">Guild raffle</span>
-          <span className="block text-xs text-mist">Buy tickets with points and get your name on the wheel.</span>
-        </span>
-        <ChevronRight className="h-5 w-5 shrink-0 text-mist" aria-hidden="true" />
-      </Link>
+      <RaffleBanner />
 
       <div className="grid gap-5 md:grid-cols-2">
         <DailyWheel member={m} settings={settings} />
@@ -206,4 +197,80 @@ function formatWait(ms) {
   const h = Math.floor(ms / 3600000);
   const m = Math.max(1, Math.ceil((ms % 3600000) / 60000));
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+function RaffleBanner() {
+  const [raffle, setRaffle] = useState(null);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    let alive = true;
+    base44.functions.invoke("raffleAction", { action: "list" })
+      .then((res) => {
+        if (!alive) return;
+        const open = (res.data && res.data.raffles || []).find((r) => r.status === "open");
+        setRaffle(open || null);
+      })
+      .catch(() => {})
+      .finally(() => { if (alive) setNow(Date.now()); });
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!raffle) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [raffle]);
+
+  const open = !!raffle;
+  const endsAt = raffle && raffle.ends_at ? Date.parse(raffle.ends_at) : 0;
+  const remaining = endsAt ? Math.max(0, endsAt - now) : 0;
+  const pot = raffle ? Number(raffle.pot || 0) : 0;
+  const myTickets = raffle ? Number(raffle.my_tickets || 0) : 0;
+
+  return (
+    <Link
+      to="/raffle"
+      className={cn(
+        "flex flex-col gap-3 rounded-md border px-4 py-4 transition-colors sm:flex-row sm:items-center",
+        open ? "border-crimson bg-gradient-to-r from-crimson/35 to-transparent shadow-[0_0_24px_-4px_rgba(200,22,29,0.5)]" : "border-bronze/50 bg-black/25"
+      )}
+    >
+      <span className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded", open ? "bg-crimson" : "border border-bronze/50 bg-black/40 text-gold")}>
+        <Ticket className={cn("h-5 w-5", open ? "text-white" : "text-gold")} aria-hidden="true" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block font-display text-[22px] uppercase leading-tight text-white">
+          {open ? (raffle.title || "Guild raffle") : "Guild raffle"}
+        </span>
+        <span className="mt-1 block min-h-[1.25rem] text-sm text-mist">
+          {open ? (
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="ember-pulse inline-flex items-center rounded-sm bg-crimson px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-white">Live</span>
+              <span>Draw in <span className="tabular-nums text-gold">{formatCountdown(remaining)}</span></span>
+              <span aria-hidden="true">·</span>
+              <span>Pot <span className="tabular-nums text-gold">{pot.toLocaleString()}</span></span>
+              <span aria-hidden="true">·</span>
+              <span>You hold <span className="tabular-nums text-gold">{myTickets}</span> tickets</span>
+            </span>
+          ) : (
+            "No raffle running right now. Check back soon."
+          )}
+        </span>
+      </span>
+      <span className="btn-seal h-11 w-full px-6 sm:w-auto">{open ? "Buy tickets" : "View raffle"}</span>
+    </Link>
+  );
+}
+
+function formatCountdown(ms) {
+  if (ms <= 0) return "0s";
+  const s = Math.floor(ms / 1000) % 60;
+  const m = Math.floor(ms / 60000) % 60;
+  const h = Math.floor(ms / 3600000) % 24;
+  const d = Math.floor(ms / 86400000);
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
 }

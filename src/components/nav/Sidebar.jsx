@@ -1,10 +1,11 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useGuild } from "@/lib/GuildContext";
 import { GAME_ICONS } from "@/lib/gameIcons";
 import { HOME, RANKINGS, PROFILE, ADMIN, POKER, CHAT, RAFFLE, gameLinks, isActive, isAdminRole } from "./navConfig";
 import { cn } from "@/lib/utils";
+import { base44 } from "@/api/base44Client";
 
 // Desktop and tablet navigation. Full width with labels on large screens,
 // an icon rail on tablets or when collapsed.
@@ -15,6 +16,18 @@ export default function Sidebar({ collapsed, onToggle, onChat, chatOpen, unread 
   const wide = !collapsed; // labels show only on lg+ and only when not collapsed
   const games = gameLinks(settings);
   const pokerOpen = !settings || (settings.games_enabled || []).includes("poker");
+  const [raffleOpen, setRaffleOpen] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    base44.functions.invoke("raffleAction", { action: "list" })
+      .then((res) => {
+        if (!alive) return;
+        setRaffleOpen((res.data && res.data.raffles || []).some((r) => r.status === "open"));
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   return (
     <nav
@@ -35,7 +48,7 @@ export default function Sidebar({ collapsed, onToggle, onChat, chatOpen, unread 
         </Group>
 
         <Group label="Guild" wide={wide}>
-          <Item item={RAFFLE} active={isActive(RAFFLE, location)} wide={wide} />
+          <Item item={RAFFLE} active={isActive(RAFFLE, location)} wide={wide} badge={raffleOpen} />
           <Item item={RANKINGS} active={isActive(RANKINGS, location)} wide={wide} />
           <Item item={CHAT} onClick={onChat} active={chatOpen} badge={unread} wide={wide} />
         </Group>
@@ -82,7 +95,10 @@ function Item({ item, glyph, active, wide, onClick, badge }) {
         )}
       >
         {glyph || (Icon && <Icon className="h-[18px] w-[18px]" />)}
-        {badge > 0 && (
+        {badge === true && (
+          <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-crimson" />
+        )}
+        {typeof badge === "number" && badge > 0 && (
           <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-crimson px-1 text-[10px] font-bold text-[hsl(0_0%_92%)]">
             {badge > 9 ? "9+" : badge}
           </span>

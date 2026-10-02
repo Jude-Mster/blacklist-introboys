@@ -14,9 +14,19 @@ export default function TopBar({ onChat, chatOpen, unread }) {
   return (
     <header className="fixed inset-x-0 top-0 z-40 border-b border-bronze/50 bg-[hsl(0_0%_6%/0.92)] backdrop-blur-md">
       <div className="flex h-14 items-center justify-between gap-3 px-3 sm:h-16 sm:px-4">
-        <Link to="/dashboard" className="shrink-0" aria-label="Guild hall home">
-          <SealLogo compact />
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link to="/dashboard" className="shrink-0" aria-label="Guild hall home">
+            <SealLogo compact />
+          </Link>
+          <span aria-hidden="true" className="hidden h-6 w-px shrink-0 bg-crimson sm:block" />
+          <div className="hidden items-center gap-1.5 sm:flex">
+            {["TSM", "GLOBAL", "WUXEN2"].map((t) => (
+              <span key={t} className="font-display border border-bronze bg-black/40 px-1.5 py-0.5 text-[12px] uppercase tracking-wider text-white">
+                {t}
+              </span>
+            ))}
+          </div>
+        </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2.5">
           {member && (
