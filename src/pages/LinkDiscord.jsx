@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Navigate, useSearchParams, useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import LanternSpinner from "@/components/LanternSpinner";
 import { useGuild, errorText } from "@/lib/GuildContext";
+import { useAuth } from "@/lib/AuthContext";
 import { Seal } from "@/components/SealLogo";
 import { Loader2, Check, Copy } from "lucide-react";
 
@@ -72,6 +73,8 @@ export default function LinkDiscord() {
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [needConfirm, setNeedConfirm] = useState(false);
+  const { user } = useAuth();
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
 
@@ -80,43 +83,77 @@ export default function LinkDiscord() {
   const denied = account && account.denied === "no_role";
   const problem = ERRORS[params.get("error")] || (denied ? ERRORS.no_role : null);
 
-  // Discord redirected back with ?code&state. The authenticated
-  // discordLinkComplete function checks the browser session matches the user who
-  // started the flow, then runs the Discord checks and links.
-  useEffect(() => {
+  // Discord redirected back with ?code&state. discordLinkComplete links the
+  // Discord account to the site account signed in on THIS browser. If linking was
+  // started on a different session (e.g. the installed app), it first asks us to
+  // confirm, and we show the confirm card below.
+  const complete = useCallback(async (confirm) => {
     if (!code || !state) return;
-    let alive = true;
     setCompleting(true);
-    (async () => {
-      try {
-        const res = await base44.functions.invoke("discordLinkComplete", { code, state });
-        if (!alive) return;
-        const redirect = res.data && res.data.redirect;
-        if (!redirect) {
-          setError("Couldn't finish linking. Try again.");
-          return;
-        }
-        if (redirect.startsWith("/dashboard")) {
-          await reload();
-          navigate("/dashboard", { replace: true });
-        } else {
-          // an error path on this page — replace so the error card shows
-          navigate(redirect, { replace: true });
-        }
-      } catch (e) {
-        if (alive) setError(errorText(e, "Couldn't finish linking. Try again."));
-      } finally {
-        if (alive) setCompleting(false);
+    setError("");
+    try {
+      const res = await base44.functions.invoke("discordLinkComplete", { code, state, confirm });
+      const data = res.data || {};
+      if (data.confirm_needed) {
+        setNeedConfirm(true);
+        return;
       }
-    })();
-    return () => {
-      alive = false;
-    };
+      setNeedConfirm(false);
+      if (!data.redirect) {
+        setError("Couldn't finish linking. Try again.");
+        return;
+      }
+      if (data.redirect.startsWith("/dashboard")) {
+        await reload();
+        navigate("/dashboard", { replace: true });
+      } else {
+        // an error path on this page - replace so the error card shows
+        navigate(data.redirect, { replace: true });
+      }
+    } catch (e) {
+      setNeedConfirm(false);
+      setError(errorText(e, "Couldn't finish linking. Try again."));
+    } finally {
+      setCompleting(false);
+    }
   }, [code, state, reload, navigate]);
+
+  useEffect(() => {
+    if (code && state) complete(false);
+  }, [code, state, complete]);
 
   if (loading) return <LanternSpinner label="Checking your account" className="py-24" />;
   if (completing) return <LanternSpinner label="Finishing your link" className="py-24" />;
   if (account && account.linked) return <Navigate to="/dashboard" replace />;
+
+  if (needConfirm) {
+    const who = (user && (user.email || user.full_name)) || "the account signed in here";
+    return (
+      <div className="mx-auto max-w-md pt-4 sm:pt-10">
+        <Panel title="Link your Discord">
+          <div className="flex flex-col items-center text-center">
+            <Seal size={56} className="my-2" />
+            <div role="status" className="mt-4 w-full rounded-md border border-bronze/60 bg-panel p-4 text-left">
+              <p className="font-heading font-bold text-gold">Finish linking on this account?</p>
+              <p className="mt-1 text-sm text-mist">
+                Discord linking was started somewhere else (for example in the app or another browser). Here you are signed in as <b className="text-white">{who}</b>.
+              </p>
+              <p className="mt-2 text-sm text-mist">
+                Only continue if you started this yourself. Your Discord account will be linked to this site account.
+              </p>
+            </div>
+            {error && <p role="alert" className="mt-4 text-sm text-ember">{error}</p>}
+            <button onClick={() => complete(true)} className="btn-seal mt-6 h-12 w-full text-base">
+              Link Discord to this account
+            </button>
+            <button onClick={() => { setNeedConfirm(false); navigate("/link-discord", { replace: true }); }} className="btn-bronze mt-3 h-11 w-full text-sm">
+              Cancel
+            </button>
+          </div>
+        </Panel>
+      </div>
+    );
+  }
   const invite = normalizeInvite(account && account.invite_url);
 
   const copyInvite = async () => {

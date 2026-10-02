@@ -19,9 +19,11 @@ function avatarUrl(me) {
   return `https://cdn.discordapp.com/avatars/${me.id}/${me.avatar}.${ext}?size=128`;
 }
 
-// Run the Discord checks + link for one state. Returns a landing path (always).
+// Run the Discord checks + link. The Discord account is always linked to `userId`,
+// the site account that is logged in on the browser FINISHING the flow (the one
+// that holds the Discord code). Returns a landing path (always).
 // Never throws for expected outcomes — those become /link-discord?error=... paths.
-async function linkFlow(b, st, code): Promise<string> {
+async function linkFlow(b, userId: string, code): Promise<string> {
   const fail = (c: string) => `/link-discord?error=${c}`;
 
   const tokenRes = await fetch(`${DISCORD_API}/oauth2/token`, {
@@ -58,7 +60,7 @@ async function linkFlow(b, st, code): Promise<string> {
   // Fail closed: must be positively confirmed as a member of our server.
   if (!myGuild) {
     console.log('Guild check failed', JSON.stringify({ configured_guild_id: guildId || '(not set)', discord_user: me.id }));
-    await markAccessDenied(b, { discordId: String(me.id), userId: st.user_id });
+    await markAccessDenied(b, { discordId: String(me.id), userId: userId });
     return fail(guildId ? 'not_in_guild' : 'guild_not_set');
   }
 
@@ -74,7 +76,7 @@ async function linkFlow(b, st, code): Promise<string> {
     }
     if (!mRes.ok || !roles.includes(roleId)) {
       console.log('Role check failed', JSON.stringify({ discord_user: me.id, required_role: roleId, status: mRes.status, roles }));
-      await markAccessDenied(b, { discordId: String(me.id), userId: st.user_id });
+      await markAccessDenied(b, { discordId: String(me.id), userId: userId });
       return fail('no_role');
     }
   }
@@ -82,28 +84,28 @@ async function linkFlow(b, st, code): Promise<string> {
   const { items: existing } = await b.asServiceRole.entities.Member.filter({ discord_id: String(me.id) }, { limit: 1 });
 
   // Already-linked guard: this Discord is linked to a DIFFERENT site user — never move it.
-  if (existing[0] && existing[0].user_id && existing[0].user_id !== st.user_id) {
-    console.log('Already linked to another user', JSON.stringify({ discord_id: me.id, owner_user: existing[0].user_id, attempt_user: st.user_id }));
+  if (existing[0] && existing[0].user_id && existing[0].user_id !== userId) {
+    console.log('Already linked to another user', JSON.stringify({ discord_id: me.id, owner_user: existing[0].user_id, attempt_user: userId }));
     return fail('already_linked');
   }
 
   // Never sticky leader: a non-owner row that is somehow leader → block, don't keep it.
   if (existing[0] && existing[0].role === 'leader' && !isGuildOwner) {
-    console.log('NON-OWNER LEADER BLOCK', JSON.stringify({ discord_id: me.id, user_id: st.user_id, role: existing[0].role }));
+    console.log('NON-OWNER LEADER BLOCK', JSON.stringify({ discord_id: me.id, user_id: userId, role: existing[0].role }));
     return fail('not_owner_leader');
   }
 
   const profile = {
     no_access: false,
     access_checked_at: new Date().toISOString(),
-    user_id: st.user_id,
+    user_id: userId,
     discord_name: me.global_name || me.username,
     discord_username: me.username,
     avatar_url: avatarUrl(me)
   };
 
   // Clear this site user's link from any other member rows (re-linking to a new Discord).
-  const { items: previous } = await b.asServiceRole.entities.Member.filter({ user_id: st.user_id }, { limit: 5 });
+  const { items: previous } = await b.asServiceRole.entities.Member.filter({ user_id: userId }, { limit: 5 });
   for (const p of previous) {
     if (p.discord_id !== String(me.id)) await b.asServiceRole.entities.Member.update(p.id, { user_id: '' });
   }
@@ -132,7 +134,7 @@ async function linkFlow(b, st, code): Promise<string> {
 
 // Compute the landing path once, guarded by a lock so two concurrent calls on the
 // same state don't both spend the single-use Discord code.
-async function computeOnce(b, st, code): Promise<string> {
+async function computeOnce(b, st, userId: string, code): Promise<string> {
   const E = b.asServiceRole.entities.OAuthState;
   const token = crypto.randomUUID();
   const LOCK_MS = 30000;
@@ -163,7 +165,7 @@ async function computeOnce(b, st, code): Promise<string> {
   }
 
   try {
-    const path = await linkFlow(b, st, code);
+    const path = await linkFlow(b, userId, code);
     await E.update(st.id, {
       result: path,
       consumed_at: new Date().toISOString(),
@@ -186,24 +188,41 @@ export default async function(req) {
     let p; try { p = await req.json(); } catch { p = {}; }
     const code = String(p.code || '').trim();
     const state = String(p.state || '').trim();
+    const confirmed = p.confirm === true;
     if (!code || !state) return Response.json({ error: 'Missing code or state.' }, { status: 400 });
 
     const { items } = await b.asServiceRole.entities.OAuthState.filter({ state }, { limit: 1 });
     if (items.length === 0) return Response.json({ redirect: '/link-discord?error=state' });
     const st = items[0];
 
-    // SESSION BINDING: the browser session must match the user who started the flow.
-    if (st.user_id !== user.id) {
-      console.log('SESSION BINDING REJECT', JSON.stringify({ state_user: st.user_id, browser_user: user.id }));
-      return Response.json({ redirect: '/link-discord?error=wrong_account' });
-    }
-
     if (new Date(st.expires_at) < new Date()) return Response.json({ redirect: '/link-discord?error=state' });
+
+    // SESSION BINDING. The Discord account is only ever linked to the site account
+    // logged in on THIS browser (the one holding the Discord code) - never to the
+    // account that started the flow. So a link started by someone else can never
+    // attach your Discord to their account.
+    //
+    // The flow can legitimately finish on a different session than it started on
+    // (started in the installed app, Discord returned to Chrome, or the reverse).
+    // In that case nothing is linked until the person on this browser explicitly
+    // confirms they want their Discord linked to the account signed in here.
+    const sameSession = st.user_id === user.id;
+    if (!sameSession) {
+      const { items: mine } = await b.asServiceRole.entities.Member.filter({ user_id: user.id }, { limit: 1 });
+      if (mine[0] && !mine[0].no_access) {
+        // This account is already linked - nothing to do, and nothing is changed.
+        return Response.json({ redirect: '/dashboard' });
+      }
+      if (!confirmed) {
+        console.log('Cross-session link needs confirmation', JSON.stringify({ state_user: st.user_id, browser_user: user.id }));
+        return Response.json({ confirm_needed: true });
+      }
+    }
 
     // Idempotent replay: a second call on the same state returns the same landing path.
     if (st.result) return Response.json({ redirect: st.result });
 
-    const resultPath = await computeOnce(b, st, code);
+    const resultPath = await computeOnce(b, st, user.id, code);
     return Response.json({ redirect: resultPath });
   } catch (e) {
     console.error('discordLinkComplete error', e);

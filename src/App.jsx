@@ -6,7 +6,7 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import GuildLayout from '@/components/GuildLayout';
 import LanternSpinner from '@/components/LanternSpinner';
@@ -26,6 +26,14 @@ import Raffle from '@/pages/Raffle';
 import Guide from '@/pages/Guide';
 import { Privacy, Terms } from '@/pages/Legal';
 // Add page imports here
+
+// Send signed-out visitors to /login but remember where they were going, so a
+// Discord link that returns to a browser that isn't signed in can finish after login.
+const LoginRedirect = () => {
+  const loc = useLocation();
+  const here = loc.pathname + loc.search;
+  return <Navigate to={"/login?returnTo=" + encodeURIComponent(here)} replace />;
+};
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -60,7 +68,7 @@ const AuthenticatedApp = () => {
       <Route path="/" element={<Landing />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
-      <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
+      <Route element={<ProtectedRoute unauthenticatedElement={<LoginRedirect />} />}>
         <Route element={<GuildLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/link-discord" element={<LinkDiscord />} />
