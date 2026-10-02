@@ -4,19 +4,32 @@
   "properties": {
     "state": {
       "type": "string",
-      "description": "Random opaque token sent to Discord and verified on callback"
+      "description": "Random opaque token sent to Discord and verified on return"
     },
-    "user_id": {
+    "nonce_hash": {
       "type": "string",
-      "description": "The Base44 app user id that initiated the link"
+      "description": "SHA-256 of a random value kept by the browser that started the sign-in, so we can tell whether the same browser finished it"
     },
     "expires_at": {
       "type": "string",
       "format": "date-time"
     },
+    "code_hash": {
+      "type": "string",
+      "description": "SHA-256 of the Discord code this state was used with"
+    },
     "result": {
       "type": "string",
-      "description": "Once the callback has run, the landing path it produced (e.g. /dashboard?linked=1 or /link-discord?error=not_in_guild). Replayed on any repeat hit so the callback is idempotent."
+      "description": "Outcome once Discord has been asked: 'ok' or an error code (not_in_guild, no_role, ...)"
+    },
+    "result_member_id": {
+      "type": "string"
+    },
+    "result_name": {
+      "type": "string"
+    },
+    "result_avatar": {
+      "type": "string"
     },
     "consumed_at": {
       "type": "string",
@@ -24,7 +37,7 @@
     },
     "lock_token": {
       "type": "string",
-      "description": "Short-lived lock so two concurrent callbacks can't both spend the single-use Discord code"
+      "description": "Short-lived lock so two concurrent calls can't both spend the single-use Discord code"
     },
     "lock_until": {
       "type": "string",

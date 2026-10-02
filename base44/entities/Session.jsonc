@@ -1,0 +1,27 @@
+{
+  "name": "Session",
+  "type": "object",
+  "properties": {
+    "token_hash": {
+      "type": "string",
+      "description": "SHA-256 of the sign-in token held by the member's device. The token itself is never stored."
+    },
+    "member_id": {
+      "type": "string",
+      "description": "Member row this session belongs to"
+    },
+    "discord_id": {
+      "type": "string"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}
