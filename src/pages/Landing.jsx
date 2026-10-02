@@ -22,8 +22,8 @@ export default function Landing() {
 
         </p>
 
-        <Link to="/login" className="btn-seal mt-8 h-12 px-9 text-base">Link Discord
-
+        <Link to="/login" className="btn-seal mt-8 h-12 px-9 text-base">
+          Continue
         </Link>
         <p className="mt-3 text-sm text-mist/80">INTROBOYS members only. Link your Discord account to verify you're a member.</p>
 
@@ -41,7 +41,6 @@ export default function Landing() {
         </p>
       </main>
     </div>);
-
 }
 
 function Feature({ icon, text }) {
@@ -50,5 +49,4 @@ function Feature({ icon, text }) {
       {icon}
       <span>{text}</span>
     </li>);
-
 }

@@ -191,6 +191,7 @@ export default function Login() {
   return (
     <AuthLayout
       title="INTROBOYS MEMBERS ONLY"
+      compactTitle
       subtitle={problem ? undefined : "Link your Discord account to verify you're a member and gain access to the website and events."}
     >
       {problem && (
