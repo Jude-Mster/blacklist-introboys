@@ -22,8 +22,8 @@ export default function Landing() {
 
         </p>
 
-        <Link to="/login" className="btn-seal mt-8 h-12 px-9 text-base">
-          Enter the guild hall
+        <Link to="/login" className="btn-seal mt-8 h-12 px-9 text-base">ENTER THE GUILD S
+
         </Link>
         <p className="mt-3 text-sm text-mist/80">Members only. Sign in with your Discord account.</p>
 
