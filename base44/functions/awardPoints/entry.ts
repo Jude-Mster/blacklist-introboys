@@ -3,6 +3,8 @@ import {
   getSettings, getMemberByUserId, getMemberByDiscordId, changePoints, withMemberLock,
   awardedLast24h, UserError, errorResponse
 } from '../../shared/points.ts';
+import { announcePoints } from '../../shared/discordPost.ts';
+import { BACKEND_VERSION } from '../../shared/version.ts';
 
 export default async function(req) {
   try {
@@ -14,6 +16,7 @@ export default async function(req) {
     if (!['officer', 'leader'].includes(caller.role)) throw new UserError('Only officers and the leader can award points.', 403);
 
     let payload; try { payload = await req.json(); } catch { payload = {}; }
+    if (payload.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION });
     const { discordId, amount, reason } = payload;
     const amt = Math.floor(Number(amount));
     if (!Number.isInteger(amt) || amt === 0) throw new UserError('Enter a whole number other than 0.');
@@ -36,6 +39,7 @@ export default async function(req) {
     const { balance } = await withMemberLock(b, target.id, () =>
       changePoints(b, target.id, amt, 'award', why, caller.id)
     );
+    await announcePoints(target, amt, balance, why, caller.discord_name || '');
     return Response.json({ ok: true, balance, name: target.discord_name || target.discord_id });
   } catch (e) {
     return errorResponse(e);

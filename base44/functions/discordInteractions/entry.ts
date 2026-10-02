@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { secrets } from 'base44:runtime';
 import nacl from 'npm:tweetnacl@1.0.3';
+import { announcePoints } from '../../shared/discordPost.ts';
 import { getSettings, getMemberByDiscordId, changePoints, withMemberLock, awardedLast24h } from '../../shared/points.ts';
 
 function hexToBytes(hex) {
@@ -118,6 +119,9 @@ export default async function(req) {
       } catch (e) {
         return ephemeral(e.message);
       }
+      // Copy the award into the points channel too, unless the command was run there.
+      const here = String((data.channel && data.channel.name) || '');
+      if (!here.includes('blacklist-points')) await announcePoints(target, amount, balance, reason, callerMember ? callerMember.discord_name || '' : '');
       const sign = amount > 0 ? `+${amount}` : `${amount}`;
       return Response.json({
         type: 4,

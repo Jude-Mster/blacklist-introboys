@@ -3,6 +3,7 @@ import {
   getSettings, getMemberByUserId, getMemberByDiscordId, changePoints, withMemberLock,
   ALL_GAMES, RANK_TITLE, UserError, errorResponse
 } from '../../shared/points.ts';
+import { pointsWebhookUrl, announceRankings } from '../../shared/discordPost.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
 import { postSystem, GUILD_CHANNEL } from '../../shared/chat.ts';
 
@@ -81,6 +82,19 @@ export default async function(req) {
     }
 
     if (action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION });
+
+    if (action === 'discordStatus') return Response.json({ points_channel: !!pointsWebhookUrl() });
+
+    if (action === 'postRankings') {
+      if (!pointsWebhookUrl()) throw new UserError('The points channel is not connected yet. Add the DISCORD_POINTS_WEBHOOK_URL secret first.');
+      const { items } = await b.asServiceRole.entities.Member.filter(
+        { banned: false },
+        { sort: '-points', limit: 15, fields: ['discord_name', 'discord_id', 'points'] }
+      );
+      const sent = await announceRankings(items);
+      if (!sent) throw new UserError('Discord did not accept the message. Check the webhook URL.');
+      return Response.json({ ok: true });
+    }
 
     if (action === 'roster') {
       const { items } = await b.asServiceRole.entities.Member.filter(

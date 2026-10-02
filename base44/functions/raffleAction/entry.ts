@@ -3,6 +3,7 @@ import {
   getMemberByUserId, changePoints, withMemberLock, withRecordLock, randInt, UserError, errorResponse
 } from '../../shared/points.ts';
 import { postSystem, GUILD_CHANNEL } from '../../shared/chat.ts';
+import { announceRaffle } from '../../shared/discordPost.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
 
 // Raffles: the Guild Leader sets prizes, a ticket price and an end time.
@@ -46,6 +47,12 @@ async function draw(b, raffleId) {
     if (winners.length) {
       const list = winners.map((w) => `${w.place}. ${w.name} (${w.prize}${w.points ? ` + ${w.points} points` : ''})`).join(', ');
       await postSystem(b, GUILD_CHANNEL, `Raffle "${r.title}" drawn! ${list}`);
+      const withIds = [];
+      for (const w of winners) {
+        const m = await b.asServiceRole.entities.Member.get(w.member_id).catch(() => null);
+        withIds.push({ ...w, discord_id: m ? m.discord_id : '' });
+      }
+      await announceRaffle(r.title, withIds);
     } else {
       await postSystem(b, GUILD_CHANNEL, `Raffle "${r.title}" ended with no tickets sold.`);
     }
