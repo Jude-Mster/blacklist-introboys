@@ -18,8 +18,8 @@ export default function Landing() {
           <FullLogo className="mx-auto w-full max-w-[22rem] sm:max-w-[30rem]" />
         </h1>
 
-        <p className="mt-6 max-w-md text-base text-mist sm:text-lg">
-          Our guild hall. Earn points in battle, track them here, and see who stands at the top.
+        <p className="mt-6 max-w-md text-base text-mist sm:text-lg">Welcome to our website. 
+
         </p>
 
         <Link to="/login" className="btn-seal mt-8 h-12 px-9 text-base">
@@ -40,8 +40,8 @@ export default function Landing() {
           <Link to="/privacy" className="underline">Privacy</Link> · <Link to="/terms" className="underline">Terms</Link>
         </p>
       </main>
-    </div>
-  );
+    </div>);
+
 }
 
 function Feature({ icon, text }) {
@@ -49,6 +49,6 @@ function Feature({ icon, text }) {
     <li className="flex flex-col items-center gap-2 rounded-md border border-bronze/40 bg-black/25 px-2 py-3 text-center backdrop-blur-sm">
       {icon}
       <span>{text}</span>
-    </li>
-  );
+    </li>);
+
 }
