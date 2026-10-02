@@ -24,15 +24,6 @@ function avatarUrl(me) {
   return `https://cdn.discordapp.com/avatars/${me.id}/${me.avatar}.${ext}?size=128`;
 }
 
-async function isAppAdmin(b, userId) {
-  try {
-    const u = await b.asServiceRole.entities.User.get(userId);
-    return u && u.role === 'admin';
-  } catch {
-    return false;
-  }
-}
-
 // Run the Discord flow once for a state and return the landing path it produced.
 // Never throws for expected outcomes (non-member, rate limit) — those become
 // /link-discord?error=... paths so they can be cached and replayed. Unexpected
@@ -70,9 +61,10 @@ async function discordFlow(b, st, code): Promise<string> {
   const settings = await getSettings(b);
   const guildId = String(settings.guild_id || secret('DISCORD_GUILD_ID') || '').trim();
   const myGuild = Array.isArray(guilds) ? guilds.find((g) => String(g.id) === guildId) : null;
-  const admin = await isAppAdmin(b, st.user_id);
 
-  if (!myGuild && !admin) {
+  // Fail closed: the user must be positively confirmed as a member of our server.
+  // No app-admin bypass — being the app owner does not grant guild access.
+  if (!myGuild) {
     console.log('Guild check failed', JSON.stringify({
       configured_guild_id: guildId || '(not set)',
       user_guild_ids: Array.isArray(guilds) ? guilds.map((g) => String(g.id)) : guilds,
@@ -81,15 +73,21 @@ async function discordFlow(b, st, code): Promise<string> {
     return failPath(guildId ? 'not_in_guild' : 'guild_not_set');
   }
 
-  const isGuildOwner = !!(myGuild && myGuild.owner);
+  const isGuildOwner = !!myGuild.owner;
   const roleId = requiredRoleId(settings);
-  if (roleId && !admin && !isGuildOwner) {
+  // The guild owner is positively confirmed by Discord. Everyone else must hold
+  // the required role — verified from Discord, and fail closed on any error/empty.
+  if (roleId && !isGuildOwner) {
     const mRes = await fetch(`${DISCORD_API}/users/@me/guilds/${guildId}/member`, auth);
     if (mRes.status === 429) return failPath('busy');
-    const gm = mRes.ok ? await mRes.json() : null;
-    const roles = gm && Array.isArray(gm.roles) ? gm.roles.map(String) : [];
-    if (!roles.includes(roleId)) {
-      console.log('Role check failed', JSON.stringify({ discord_user: me.id, required_role: roleId, status: mRes.status }));
+    let roles: string[] = [];
+    if (mRes.ok) {
+      const gm = await mRes.json();
+      roles = gm && Array.isArray(gm.roles) ? gm.roles.map(String) : [];
+    }
+    // Any error, empty result, or missing role → no link.
+    if (!mRes.ok || !roles.includes(roleId)) {
+      console.log('Role check failed', JSON.stringify({ discord_user: me.id, required_role: roleId, status: mRes.status, roles }));
       const { items: prior } = await b.asServiceRole.entities.Member.filter({ discord_id: String(me.id) }, { limit: 1 });
       if (prior[0] && prior[0].role !== 'leader') {
         await b.asServiceRole.entities.Member.update(prior[0].id, { no_access: true, access_checked_at: new Date().toISOString() });
@@ -115,14 +113,15 @@ async function discordFlow(b, st, code): Promise<string> {
   const { items: existing } = await b.asServiceRole.entities.Member.filter({ discord_id: String(me.id) }, { limit: 1 });
   if (existing.length > 0) {
     const m = existing[0];
-    const promote = (admin || isGuildOwner) && m.role !== 'leader';
+    // Leader only when Discord positively says this user owns the guild. Never by default.
+    const promote = isGuildOwner && m.role !== 'leader';
     await b.asServiceRole.entities.Member.update(m.id, { ...profile, ...(promote ? { role: 'leader' } : {}) });
   } else {
     await b.asServiceRole.entities.Member.create({
       ...profile,
       discord_id: String(me.id),
       points: 0,
-      role: admin || isGuildOwner ? 'leader' : 'member',
+      role: isGuildOwner ? 'leader' : 'member',
       banned: false
     });
   }
