@@ -97,8 +97,8 @@ export default function LinkDiscord() {
           <Seal size={56} className="my-2" />
 
           {problem ? (
-            <div role="alert" className="mt-4 w-full rounded-md border border-ember/40 bg-ember/10 p-4 text-left">
-              <p className="font-heading font-bold text-[hsl(var(--foreground))]">{problem.title}</p>
+            <div role="status" className="mt-4 w-full rounded-md border border-bronze/60 bg-panel p-4 text-left">
+              <p className="font-heading font-bold text-gold">{problem.title}</p>
               <p className="mt-1 text-sm text-mist">{problem.body}</p>
               {problem.invite && invite && (
                 <a href={invite} target="_top" rel="noreferrer" className="btn-bronze mt-3 h-10 w-full text-sm">
@@ -115,7 +115,7 @@ export default function LinkDiscord() {
           {error && <p role="alert" className="mt-4 text-sm text-ember">{error}</p>}
 
           <button onClick={start} disabled={busy} className="btn-seal mt-6 h-12 w-full text-base">
-            {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Opening Discord</> : problem ? "Link Discord again" : "Link Discord"}
+            {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Opening Discord</> : problem ? (problem.invite ? "Try again" : "Link Discord again") : "Link Discord"}
           </button>
 
           {denied && (

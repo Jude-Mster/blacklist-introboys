@@ -36,9 +36,31 @@ async function isAppAdmin(b, userId) {
 }
 
 export default async function(req) {
-  const appUrl = (secret('APP_URL') || new URL(req.url).origin).replace(/\/$/, '');
+  // Resolve the app's public origin. Prefer APP_URL (custom domain); otherwise
+  // derive it from the registered Discord redirect URI, which is always the app
+  // domain. NEVER fall back to req.url.origin — inside the dispatcher worker that
+  // is the dispatcher's own host (base44-dispatcher…workers.dev), and redirecting
+  // a browser there makes it hit the secret-protected dispatcher and get raw
+  // {"error":"unauthorized","detail":"invalid dispatcher secret"} JSON.
+  const redirectUri = secret('DISCORD_REDIRECT_URI');
+  let appOrigin = secret('APP_URL');
+  if (!appOrigin) {
+    try { appOrigin = redirectUri ? new URL(redirectUri).origin : ''; } catch { appOrigin = ''; }
+  }
+  const appUrl = appOrigin.replace(/\/$/, '');
+
+  // No app domain configured at all -> we can't safely redirect. Return a friendly
+  // HTML page instead of sending the browser to the dispatcher worker.
+  if (!appUrl) {
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Discord linking isn't ready</title>
+<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#050505;color:#e8e8e8;font-family:system-ui,sans-serif;padding:1.5rem}.c{max-width:30rem;text-align:center;border:1px solid #3a3a3a;border-top:2px solid #C8161D;border-radius:6px;padding:2rem;background:#111}.c h1{font-size:1.15rem;margin:0 0 .6rem;color:#fff}.c p{color:#a8a8a8;font-size:.95rem;line-height:1.5;margin:0}</style></head>
+<body><div class="c"><h1>Discord linking isn't ready yet</h1><p>The guild leader needs to finish Discord setup (app address + redirect URI) before linking works. Go back to the guild site and try again later.</p></div></body></html>`;
+    return new Response(html, { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  }
+
   const back = (path: string) => Response.redirect(appUrl + path, 302);
   const fail = (code: string) => back(`/link-discord?error=${code}`);
+  const isBrowser = (req.headers.get('accept') || '').includes('text/html');
 
   try {
     const b = createClientFromRequest(req);
@@ -46,7 +68,12 @@ export default async function(req) {
     if (u.searchParams.get('error')) return fail('cancelled'); // user pressed Cancel on Discord
     const code = u.searchParams.get('code');
     const state = u.searchParams.get('state');
-    if (!code || !state) return fail('state');
+    if (!code || !state) {
+      // Direct visit to the callback URL with no Discord code/state. Browsers get
+      // a friendly redirect to the linking page; programmatic callers get JSON.
+      if (isBrowser) return fail('state');
+      return Response.json({ error: 'Missing code or state.' }, { status: 400 });
+    }
 
     const { items } = await b.asServiceRole.entities.OAuthState.filter({ state }, { limit: 1 });
     if (items.length === 0) return fail('state');
