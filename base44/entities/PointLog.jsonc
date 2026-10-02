@@ -24,7 +24,9 @@
         "daily",
         "admin",
         "import",
-        "poker"
+        "poker",
+        "duel",
+        "raffle"
       ]
     },
     "reason": {

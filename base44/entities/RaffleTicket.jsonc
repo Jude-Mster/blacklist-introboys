@@ -1,0 +1,31 @@
+{
+  "name": "RaffleTicket",
+  "type": "object",
+  "description": "How many tickets a member holds in a raffle",
+  "properties": {
+    "raffle_id": {
+      "type": "string"
+    },
+    "member_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "avatar": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string"
+    },
+    "count": {
+      "type": "integer"
+    }
+  },
+  "rls": {
+    "read": true,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

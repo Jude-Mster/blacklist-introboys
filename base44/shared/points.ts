@@ -27,6 +27,28 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export const ALL_GAMES = ["coinflip", "dragondice", "lanternslots", "skywheel", "roulette", "poker"];
 
+// Ranks, lowest to highest. "officer" is shown as Vice Guild Member.
+export const RANKS = ["member", "guild_member", "officer", "leader"];
+export const RANK_TITLE = { member: "Member", guild_member: "Guild Member", officer: "Vice Guild Member", leader: "Guild Leader" };
+export const GAME_NAMES = {
+  coinflip: "Blacklist Yin Yang Toss",
+  dragondice: "Blacklist Dragon Dice",
+  lanternslots: "Blacklist Lantern Slots",
+  skywheel: "Blacklist Twelve Skies Wheel",
+  roulette: "Blacklist Jade Roulette",
+  poker: "Poker Room"
+};
+
+// Is this Base44 user the app owner? The owner is always the Guild Leader.
+export async function isAppAdmin(b, userId) {
+  try {
+    const u = await b.asServiceRole.entities.User.get(userId);
+    return !!u && u.role === "admin";
+  } catch {
+    return false;
+  }
+}
+
 export async function getSettings(b) {
   const { items } = await b.asServiceRole.entities.Settings.filter({}, { limit: 1 });
   if (items.length === 0) {

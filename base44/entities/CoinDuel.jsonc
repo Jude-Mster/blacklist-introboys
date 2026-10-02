@@ -1,0 +1,74 @@
+{
+  "name": "CoinDuel",
+  "type": "object",
+  "description": "1v1 Yin Yang Toss challenge",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "done",
+        "cancelled",
+        "expired"
+      ]
+    },
+    "wager": {
+      "type": "integer"
+    },
+    "creator_id": {
+      "type": "string"
+    },
+    "creator_name": {
+      "type": "string"
+    },
+    "creator_avatar": {
+      "type": "string"
+    },
+    "creator_side": {
+      "type": "string",
+      "enum": [
+        "heads",
+        "tails"
+      ]
+    },
+    "acceptor_id": {
+      "type": "string"
+    },
+    "acceptor_name": {
+      "type": "string"
+    },
+    "acceptor_avatar": {
+      "type": "string"
+    },
+    "result_side": {
+      "type": "string"
+    },
+    "winner_id": {
+      "type": "string"
+    },
+    "winner_name": {
+      "type": "string"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "resolved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "lock_token": {
+      "type": "string"
+    },
+    "lock_until": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "rls": {
+    "read": true,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

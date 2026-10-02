@@ -1,0 +1,43 @@
+{
+  "name": "GameFeed",
+  "type": "object",
+  "description": "Public live feed of game results",
+  "properties": {
+    "game": {
+      "type": "string"
+    },
+    "game_name": {
+      "type": "string"
+    },
+    "member_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "avatar": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string"
+    },
+    "wager": {
+      "type": "integer"
+    },
+    "payout": {
+      "type": "integer"
+    },
+    "net": {
+      "type": "integer"
+    },
+    "detail": {
+      "type": "string"
+    }
+  },
+  "rls": {
+    "read": true,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "name": "RouletteBet",
+  "type": "object",
+  "description": "One member's chips for one roulette round",
+  "properties": {
+    "round_no": {
+      "type": "integer"
+    },
+    "member_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "avatar": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string"
+    },
+    "bets": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "amount": {
+      "type": "integer"
+    },
+    "payout": {
+      "type": "integer",
+      "default": 0
+    },
+    "net": {
+      "type": "integer",
+      "default": 0
+    },
+    "settled": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "rls": {
+    "read": true,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

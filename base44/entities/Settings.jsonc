@@ -71,6 +71,15 @@
     "chat_enabled": {
       "type": "boolean",
       "default": true
+    },
+    "roulette_bet_seconds": {
+      "type": "integer",
+      "default": 30
+    },
+    "duel_max_wager": {
+      "type": "integer",
+      "default": 0,
+      "description": "0 = same as max_bet"
     }
   },
   "rls": {

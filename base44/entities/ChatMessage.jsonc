@@ -28,9 +28,11 @@
       "type": "string",
       "enum": [
         "user",
-        "system"
+        "system",
+        "discord"
       ],
-      "default": "user"
+      "default": "user",
+      "description": "discord = relayed from the linked Discord channel"
     },
     "deleted": {
       "type": "boolean",

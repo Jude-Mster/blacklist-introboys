@@ -25,10 +25,12 @@
       "type": "string",
       "enum": [
         "member",
+        "guild_member",
         "officer",
         "leader"
       ],
-      "default": "member"
+      "default": "member",
+      "description": "member = Member, guild_member = Guild Member, officer = Vice Guild Member, leader = Guild Leader"
     },
     "daily_claimed_at": {
       "type": "string",

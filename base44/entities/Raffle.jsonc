@@ -1,0 +1,74 @@
+{
+  "name": "Raffle",
+  "type": "object",
+  "description": "A raffle draw. Members buy tickets with points; the wheel draws a winner per prize.",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "drawn",
+        "cancelled"
+      ]
+    },
+    "ticket_price": {
+      "type": "integer"
+    },
+    "max_tickets_per_member": {
+      "type": "integer",
+      "default": 0
+    },
+    "ends_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "prizes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Prize labels in order: first is the top prize"
+    },
+    "pot_to_first": {
+      "type": "boolean",
+      "default": true
+    },
+    "pot": {
+      "type": "integer",
+      "default": 0
+    },
+    "tickets_sold": {
+      "type": "integer",
+      "default": 0
+    },
+    "winners": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "drawn_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "created_by": {
+      "type": "string"
+    },
+    "lock_token": {
+      "type": "string"
+    },
+    "lock_until": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "rls": {
+    "read": true,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}
