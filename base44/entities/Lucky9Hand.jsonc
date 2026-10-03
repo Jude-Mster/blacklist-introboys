@@ -1,0 +1,58 @@
+{
+  "name": "Lucky9Hand",
+  "type": "object",
+  "properties": {
+    "member_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "playing",
+        "done"
+      ],
+      "default": "playing"
+    },
+    "wager": {
+      "type": "integer"
+    },
+    "deck": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Cards still to be dealt. Never sent to the player."
+    },
+    "player": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "banker": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Hidden from the player until the hand is over"
+    },
+    "result": {
+      "type": "string",
+      "enum": [
+        "win",
+        "tie",
+        "lose"
+      ]
+    },
+    "payout": {
+      "type": "integer",
+      "default": 0
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

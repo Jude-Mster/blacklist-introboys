@@ -25,7 +25,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- Settings + lookups ----------
 
-export const ALL_GAMES = ["coinflip", "dragondice", "lanternslots", "skywheel", "roulette", "blackjack", "poker"];
+export const ALL_GAMES = ["coinflip", "dragondice", "lanternslots", "skywheel", "roulette", "blackjack", "lucky9", "poker"];
 
 // Ranks, lowest to highest. "officer" is shown as Vice Guild Member.
 export const RANKS = ["member", "guild_member", "officer", "leader"];
@@ -37,6 +37,7 @@ export const GAME_NAMES = {
   skywheel: "Blacklist Twelve Skies Wheel",
   roulette: "Blacklist Jade Roulette",
   blackjack: "Blacklist Blackjack",
+  lucky9: "Blacklist Lucky 9",
   poker: "Poker Room"
 };
 

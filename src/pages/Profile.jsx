@@ -33,6 +33,8 @@ function describe(b) {
       return `Backed ${FACTIONS[o.pick]?.name || o.pick}, landed ${FACTIONS[o.landed]?.name || o.landed}`;
     case "blackjack":
       return o.result === "blackjack" ? "Blackjack!" : `${(o.player || []).length} cards against the dealer${o.doubled ? " · doubled" : ""}`;
+    case "lucky9":
+      return `Your ${o.player_total} against the banker's ${o.banker_total}`;
     default:
       return "";
   }

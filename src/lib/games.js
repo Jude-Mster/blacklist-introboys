@@ -11,6 +11,7 @@ export const GAMES = [
   { id: "skywheel", name: "Blacklist Twelve Skies Wheel", blurb: "One shared wheel. Back a faction each round." },
   { id: "roulette", name: "Blacklist Jade Roulette", blurb: "One shared table. A new spin every round." },
   { id: "blackjack", name: "Blacklist Blackjack", blurb: "Beat the dealer to 21. Blackjack pays 6:5." },
+  { id: "lucky9", name: "Blacklist Lucky 9", blurb: "Two cards against the banker. Closest to 9 wins." },
   { id: "poker", name: "Poker Room", blurb: "Texas Hold'em against other members.", href: "/poker" }
 ];
 

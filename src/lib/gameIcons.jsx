@@ -32,6 +32,11 @@ export const GAME_ICONS = {
       21
     </span>
   ),
+  lucky9: (
+    <span className="font-heading text-base font-extrabold leading-none text-ember" aria-hidden="true">
+      9
+    </span>
+  ),
   poker: (
     <span className="text-lg leading-none text-ember" aria-hidden="true">
       ♠
