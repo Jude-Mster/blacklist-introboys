@@ -1,0 +1,55 @@
+{
+  "name": "CardTable",
+  "type": "object",
+  "properties": {
+    "game": {
+      "type": "string",
+      "description": "blackjack or lucky9. One shared table per game."
+    },
+    "round_no": {
+      "type": "integer",
+      "default": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "betting",
+        "playing",
+        "settled"
+      ],
+      "default": "betting"
+    },
+    "bets_close_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set when the first bet of a round is placed"
+    },
+    "act_close_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Players must finish their hands by this time"
+    },
+    "next_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the next round opens"
+    },
+    "dealer": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Dealer's cards. Hidden cards are never sent to players until the round is settled."
+    },
+    "settling_round": {
+      "type": "integer",
+      "description": "Round whose dealer hand is final and is being paid out"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}
