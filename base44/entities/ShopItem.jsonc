@@ -1,0 +1,55 @@
+{
+  "name": "ShopItem",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "description": "Heading the item is listed under in the shop"
+    },
+    "description": {
+      "type": "string"
+    },
+    "image_url": {
+      "type": "string",
+      "description": "Picture shown on the shop card. A site path like /shop/tin-3.png or a full https link."
+    },
+    "value_cp": {
+      "type": "number",
+      "description": "In-game value of ONE piece, in CP (1 CP = 0.5 GP = 1M silver). The shop price is this times the shop price multiplier, rounded up."
+    },
+    "stock": {
+      "type": "integer",
+      "default": 0
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Hidden from members when false"
+    },
+    "require_note": {
+      "type": "boolean",
+      "default": false,
+      "description": "Buyer must fill in the note (e.g. which suit they want)"
+    },
+    "sort": {
+      "type": "integer",
+      "default": 0
+    },
+    "lock_token": {
+      "type": "string"
+    },
+    "lock_until": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

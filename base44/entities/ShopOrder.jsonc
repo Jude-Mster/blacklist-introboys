@@ -1,0 +1,111 @@
+{
+  "name": "ShopOrder",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "item",
+        "points"
+      ],
+      "description": "item = member spends points on a shop item. points = member pays in-game to receive points."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "completed",
+        "rejected",
+        "cancelled"
+      ],
+      "default": "pending"
+    },
+    "member_id": {
+      "type": "string"
+    },
+    "discord_id": {
+      "type": "string"
+    },
+    "member_name": {
+      "type": "string"
+    },
+    "member_avatar": {
+      "type": "string"
+    },
+    "character_name": {
+      "type": "string",
+      "description": "In-game character to deliver to / that will pay"
+    },
+    "note": {
+      "type": "string"
+    },
+    "item_id": {
+      "type": "string"
+    },
+    "item_name": {
+      "type": "string"
+    },
+    "item_image": {
+      "type": "string"
+    },
+    "qty": {
+      "type": "integer"
+    },
+    "unit_price": {
+      "type": "integer"
+    },
+    "subtotal": {
+      "type": "integer"
+    },
+    "tax": {
+      "type": "integer"
+    },
+    "total": {
+      "type": "integer",
+      "description": "Points taken from the member for an item order"
+    },
+    "points": {
+      "type": "integer",
+      "description": "Points the member receives for a points order"
+    },
+    "pay_currency": {
+      "type": "string",
+      "enum": [
+        "cp",
+        "gp",
+        "silver"
+      ]
+    },
+    "pay_cp": {
+      "type": "number",
+      "description": "What the member must pay in-game, in CP, tax included"
+    },
+    "tax_cp": {
+      "type": "number"
+    },
+    "delivery_code": {
+      "type": "string",
+      "description": "Code handed to the buyer (GP codes). Only the buyer and the leader see it."
+    },
+    "admin_note": {
+      "type": "string"
+    },
+    "resolved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "lock_token": {
+      "type": "string"
+    },
+    "lock_until": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

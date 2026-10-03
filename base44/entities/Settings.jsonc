@@ -93,6 +93,30 @@
     "member_role_id": {
       "type": "string",
       "description": "Discord role required to use the site. Empty = anyone in the server."
+    },
+    "shop_enabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "shop_tax_pct": {
+      "type": "number",
+      "default": 10,
+      "description": "Tax added on top of every shop purchase and points purchase, in percent. Removed from circulation."
+    },
+    "shop_price_multiplier": {
+      "type": "number",
+      "default": 2,
+      "description": "Shop price in points for 1 CP of in-game value"
+    },
+    "shop_buy_rate": {
+      "type": "number",
+      "default": 1,
+      "description": "Points a member receives per 1 CP paid in-game (before tax)"
+    },
+    "shop_seeded": {
+      "type": "boolean",
+      "default": false,
+      "description": "True once the starting catalog has been created"
     }
   },
   "rls": {

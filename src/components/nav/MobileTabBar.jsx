@@ -8,7 +8,7 @@ import RankBadge from "@/components/RankBadge";
 import { Points } from "@/components/SealLogo";
 import { useGuild } from "@/lib/GuildContext";
 import { GAME_ICONS } from "@/lib/gameIcons";
-import { HOME, GAMES_HUB, POKER, RANKINGS, CHAT, RAFFLE, GUIDE, PROFILE, ADMIN, gameLinks, isActive, isAdminRole } from "./navConfig";
+import { HOME, GAMES_HUB, POKER, RANKINGS, CHAT, RAFFLE, SHOP, GUIDE, PROFILE, ADMIN, gameLinks, isActive, isAdminRole } from "./navConfig";
 import { cn } from "@/lib/utils";
 
 // Phone navigation. Four destinations within thumb reach plus "More", which
@@ -24,7 +24,7 @@ export default function MobileTabBar({ onChat, chatOpen, unread }) {
   // Close the sheet after moving to another page.
   useEffect(() => setMore(false), [location.pathname, location.search]);
 
-  const secondary = [RAFFLE, GUIDE, RANKINGS, PROFILE, ...(isAdminRole(member) ? [ADMIN] : [])];
+  const secondary = [SHOP, RAFFLE, GUIDE, RANKINGS, PROFILE, ...(isAdminRole(member) ? [ADMIN] : [])];
   const inMore = secondary.some((i) => isActive(i, location));
   const quiet = chatOpen || more;
   const tabs = [

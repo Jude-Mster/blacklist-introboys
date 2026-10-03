@@ -1,4 +1,4 @@
-import { Home, Trophy, ScrollText, Shield, Swords, MessageSquare, Spade, Ticket, BookOpen } from "lucide-react";
+import { Home, Trophy, ScrollText, Shield, Swords, MessageSquare, Spade, Ticket, BookOpen, Store } from "lucide-react";
 import { GAMES } from "@/lib/games";
 
 // One source of truth for every navigation surface.
@@ -21,6 +21,7 @@ export function gameLinks(settings) {
 }
 
 export const RAFFLE = { id: "raffle", to: "/raffle", label: "Raffle", short: "Raffle", icon: Ticket };
+export const SHOP = { id: "shop", to: "/shop", label: "Guild shop", short: "Shop", icon: Store };
 export const GUIDE = { id: "guide", to: "/guide", label: "Game guide", short: "Guide", icon: BookOpen };
 export const isAdminRole = (m) => !!m && (m.role === "officer" || m.role === "leader");
 

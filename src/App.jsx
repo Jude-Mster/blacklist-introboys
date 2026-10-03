@@ -18,6 +18,7 @@ import Profile from '@/pages/Profile';
 import Admin from '@/pages/Admin';
 import Poker from '@/pages/Poker';
 import Raffle from '@/pages/Raffle';
+import Shop from '@/pages/Shop';
 import Guide from '@/pages/Guide';
 import { Privacy, Terms } from '@/pages/Legal';
 // Add page imports here
@@ -47,6 +48,7 @@ const AuthenticatedApp = () => {
           <Route path="/poker" element={<Poker />} />
           <Route path="/poker/:tableId" element={<Poker />} />
           <Route path="/raffle" element={<Raffle />} />
+          <Route path="/shop" element={<Shop />} />
           <Route path="/guide" element={<Guide />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/profile" element={<Profile />} />
