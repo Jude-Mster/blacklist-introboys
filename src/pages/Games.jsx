@@ -9,13 +9,14 @@ import DragonDice from "@/components/games/DragonDice";
 import LanternSlots from "@/components/games/LanternSlots";
 import SkyWheel from "@/components/games/SkyWheel";
 import Roulette from "@/components/games/Roulette";
+import Blackjack from "@/components/games/Blackjack";
 import LiveFeed from "@/components/games/LiveFeed";
 import ChatBox from "@/components/chat/ChatBox";
 import { GAME_ICONS } from "@/lib/gameIcons";
 import { GAMES } from "@/lib/games";
 import { cn } from "@/lib/utils";
 
-const COMPONENTS = { coinflip: CoinFlip, dragondice: DragonDice, lanternslots: LanternSlots, skywheel: SkyWheel, roulette: Roulette };
+const COMPONENTS = { coinflip: CoinFlip, dragondice: DragonDice, lanternslots: LanternSlots, skywheel: SkyWheel, roulette: Roulette, blackjack: Blackjack };
 const ICONS = GAME_ICONS;
 
 export default function Games() {

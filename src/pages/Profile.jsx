@@ -31,6 +31,8 @@ function describe(b) {
       return `Ball on ${o.number} · ${(o.bets || []).length} bet${(o.bets || []).length === 1 ? "" : "s"}`;
     case "skywheel":
       return `Backed ${FACTIONS[o.pick]?.name || o.pick}, landed ${FACTIONS[o.landed]?.name || o.landed}`;
+    case "blackjack":
+      return o.result === "blackjack" ? "Blackjack!" : `${(o.player || []).length} cards against the dealer${o.doubled ? " · doubled" : ""}`;
     default:
       return "";
   }

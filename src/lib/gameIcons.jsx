@@ -27,6 +27,11 @@ export const GAME_ICONS = {
       0
     </span>
   ),
+  blackjack: (
+    <span className="font-heading text-[13px] font-extrabold leading-none text-gold" aria-hidden="true">
+      21
+    </span>
+  ),
   poker: (
     <span className="text-lg leading-none text-ember" aria-hidden="true">
       ♠

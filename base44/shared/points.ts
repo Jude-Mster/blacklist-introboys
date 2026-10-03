@@ -25,7 +25,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- Settings + lookups ----------
 
-export const ALL_GAMES = ["coinflip", "dragondice", "lanternslots", "skywheel", "roulette", "poker"];
+export const ALL_GAMES = ["coinflip", "dragondice", "lanternslots", "skywheel", "roulette", "blackjack", "poker"];
 
 // Ranks, lowest to highest. "officer" is shown as Vice Guild Member.
 export const RANKS = ["member", "guild_member", "officer", "leader"];
@@ -36,6 +36,7 @@ export const GAME_NAMES = {
   lanternslots: "Blacklist Lantern Slots",
   skywheel: "Blacklist Twelve Skies Wheel",
   roulette: "Blacklist Jade Roulette",
+  blackjack: "Blacklist Blackjack",
   poker: "Poker Room"
 };
 
@@ -150,7 +151,6 @@ export async function withRecordLock(b, entity: string, id: string, fn: () => Pr
     return await fn();
   } finally {
     await L.delete(mine.id).catch(() => {});
-   
   }
 }
 

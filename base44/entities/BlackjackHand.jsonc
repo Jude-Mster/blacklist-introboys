@@ -1,0 +1,69 @@
+{
+  "name": "BlackjackHand",
+  "type": "object",
+  "properties": {
+    "member_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "playing",
+        "done"
+      ],
+      "default": "playing"
+    },
+    "wager": {
+      "type": "integer",
+      "description": "The opening wager"
+    },
+    "staked": {
+      "type": "integer",
+      "description": "Total points put on this hand (twice the wager after a double)"
+    },
+    "doubled": {
+      "type": "boolean",
+      "default": false
+    },
+    "deck": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Cards still to be dealt. Never sent to the player."
+    },
+    "player": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "dealer": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "result": {
+      "type": "string",
+      "enum": [
+        "blackjack",
+        "win",
+        "push",
+        "lose",
+        "bust",
+        "dealer_blackjack"
+      ]
+    },
+    "payout": {
+      "type": "integer",
+      "default": 0
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}
