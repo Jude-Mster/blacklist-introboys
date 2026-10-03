@@ -41,6 +41,14 @@
       },
       "description": "Dealer's cards. Hidden cards are never sent to players until the round is settled."
     },
+    "seats": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "description": "The six chairs. Each is {} when empty, or { member_id, name, avatar, role, active_at }."
+    },
     "settling_round": {
       "type": "integer",
       "description": "Round whose dealer hand is final and is being paid out"

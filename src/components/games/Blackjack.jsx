@@ -17,7 +17,7 @@ export default function Blackjack({ settings, balance }) {
       actions={ACTIONS}
       settings={settings}
       balance={balance}
-      rules="Everyone at the table plays against the same dealer. The first bet starts a 15 second countdown so others can join, then you have 25 seconds to play your hand. Closest to 21 without going over wins. Blackjack pays 6:5. The dealer draws to 17 and hits a soft 17. You can double on your first two cards."
+      rules="Six seats, one dealer. Sit down, then bet each round from your seat. The first bet starts a 15 second countdown so others can join, then you have 25 seconds to play your hand. Closest to 21 without going over wins. Blackjack pays 6:5. The dealer draws to 17 and hits a soft 17. You can double on your first two cards. A seat with no bet for 10 minutes is freed."
     />
   );
 }

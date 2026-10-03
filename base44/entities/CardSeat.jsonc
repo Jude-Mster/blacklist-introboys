@@ -8,6 +8,10 @@
     "round_no": {
       "type": "integer"
     },
+    "seat_no": {
+      "type": "integer",
+      "description": "Which chair (0-5) the member was sitting in"
+    },
     "member_id": {
       "type": "string"
     },

@@ -2,7 +2,8 @@
 // One table per game. Everyone at the table plays their own hand against the
 // same dealer, and all hands are settled together.
 //
-//   betting  - the first bet starts a countdown; anyone can join until it ends
+// Members first SIT in one of the six chairs, then bet from their chair each round.
+//   betting  - the first bet starts a countdown; anyone seated can join until it ends
 //   playing  - cards are dealt; every player plays their own hand at the same
 //              time, inside one shared time limit (no waiting for turns)
 //   settled  - the dealer plays, every hand is paid, results stay up a few seconds
@@ -27,7 +28,8 @@ export const BET_SECONDS = 15;      // countdown after the first bet
 export const RESULT_SECONDS = 6;    // how long results stay up
 const CLOSE_MARGIN_MS = 1500;       // bets stop a moment before the deadline
 const SETTLE_LOCK_MS = 120000;
-const MAX_SEATS = 12;
+export const SEAT_COUNT = 6;         // chairs at each table
+const IDLE_MS = 10 * 60 * 1000;     // a chair with no bet for this long is given up
 
 const RANKS = '23456789TJQKA';
 const SUITS = 'shdc';
@@ -75,7 +77,21 @@ export function cardTableHandler(game: CardGame) {
       const getTable = async () => {
         const { items } = await T.filter({ game: game.id }, { sort: 'created_date', limit: 1 });
         if (items[0]) return items[0];
-        return await T.create({ game: game.id, round_no: 1, status: 'betting', dealer: [] });
+        return await T.create({ game: game.id, round_no: 1, status: 'betting', dealer: [], seats: Array(SEAT_COUNT).fill({}) });
+      };
+      // The six chairs. Empty chairs are stored as {} (entity arrays can't hold null).
+      const chairsOf = (t) => Array.from({ length: SEAT_COUNT }, (_, i) => { const c = (t.seats || [])[i]; return c && c.member_id ? c : null; });
+      const chairIndex = (t, memberId) => chairsOf(t).findIndex((c) => c && c.member_id === memberId);
+      const saveChairs = (t, chairs) => T.update(t.id, { seats: chairs.map((c) => c || {}) });
+      // Give up chairs whose owner hasn't bet for a while (and has no hand in play).
+      const sweepChairs = (chairs, inPlay: Set<string>) => {
+        const cutoff = Date.now() - IDLE_MS;
+        let changed = false;
+        for (let i = 0; i < chairs.length; i++) {
+          const c = chairs[i];
+          if (c && !inPlay.has(c.member_id) && (!c.active_at || Date.parse(c.active_at) < cutoff)) { chairs[i] = null; changed = true; }
+        }
+        return changed;
       };
       const seatsOf = async (round: number) => (await S.filter({ game: game.id, round_no: round }, { limit: 100 })).items || [];
       const allDone = (seats) => seats.length > 0 && seats.every((s) => s.status === 'done' || s.settled);
@@ -153,7 +169,9 @@ export function cardTableHandler(game: CardGame) {
             const timeUp = !t.act_close_at || Date.parse(t.act_close_at) <= now;
             if (timeUp || allDone(await seatsOf(t.round_no))) t = await settle(t, now);
           } else if (t.status === 'settled' && (!t.next_at || Date.parse(t.next_at) <= now)) {
-            t = await T.update(t.id, { round_no: (t.round_no || 0) + 1, status: 'betting', bets_close_at: null, act_close_at: null, next_at: null, dealer: [] });
+            const chairs = chairsOf(t);
+            sweepChairs(chairs, new Set());
+            t = await T.update(t.id, { round_no: (t.round_no || 0) + 1, status: 'betting', bets_close_at: null, act_close_at: null, next_at: null, dealer: [], seats: chairs.map((c) => c || {}) });
           }
           return t;
         }, SETTLE_LOCK_MS);
@@ -179,10 +197,15 @@ export function cardTableHandler(game: CardGame) {
           table: {
             round_no: t.round_no, status: t.status, bets_close_at: t.bets_close_at || null, act_close_at: t.act_close_at || null,
             next_at: t.next_at || null, server_now: iso(Date.now()), bet_seconds: BET_SECONDS, act_seconds: game.actSeconds,
-            dealer: t.status === 'betting' ? { cards: [], hidden: 0, total: null } : game.dealerView(t.dealer || [], revealed),
-            max_seats: MAX_SEATS
+            dealer: t.status === 'betting' ? { cards: [], hidden: 0, total: null } : game.dealerView(t.dealer || [], revealed)
           },
-          seats: seats.map(seatView).sort((a, c) => Number(c.mine) - Number(a.mine)),
+          // The six chairs, in order. `hand` is that member's hand this round, if they bet.
+          chairs: chairsOf(t).map((c, i) => {
+            if (!c) return { seat: i, empty: true };
+            const hand = seats.find((x) => x.member_id === c.member_id);
+            return { seat: i, empty: false, name: c.name, avatar: c.avatar, role: c.role, mine: c.member_id === me.id, hand: hand ? seatView(hand) : null };
+          }),
+          my_seat: chairIndex(t, me.id),
           mine: mine ? seatView(mine) : null,
           ...(game.extra ? game.extra(settings) : {}),
           ...extra
@@ -218,6 +241,40 @@ export function cardTableHandler(game: CardGame) {
         return Response.json(await stateOf(t));
       }
 
+      if (action === 'sit') {
+        if (!open) throw new UserError(`${NAME} is closed right now.`);
+        if (me.banned) throw new UserError('You are banned from the games.', 403);
+        const first = await advance();
+        const t = await withRecordLock(b, 'CardTable', first.id, async () => {
+          const live = await T.get(first.id);
+          const chairs = chairsOf(live);
+          if (chairs.some((c) => c && c.member_id === me.id)) throw new UserError("You're already sitting at this table.");
+          const inPlay = new Set((await seatsOf(live.round_no)).filter((x) => !x.settled).map((x) => x.member_id));
+          sweepChairs(chairs, inPlay);
+          const want = Number.isInteger(p.seat) ? p.seat : chairs.findIndex((c) => !c);
+          if (want < 0 || want >= SEAT_COUNT) throw new UserError('The table is full. Wait for a chair to open.');
+          if (chairs[want]) throw new UserError('That chair was just taken. Pick another.');
+          chairs[want] = { member_id: me.id, name: me.discord_name || me.discord_id, avatar: me.avatar_url || '', role: me.role, active_at: iso(Date.now()) };
+          return await saveChairs(live, chairs);
+        });
+        return Response.json(await stateOf(t));
+      }
+
+      if (action === 'leave') {
+        const first = await getTable();
+        const t = await withRecordLock(b, 'CardTable', first.id, async () => {
+          const live = await T.get(first.id);
+          const chairs = chairsOf(live);
+          const i = chairs.findIndex((c) => c && c.member_id === me.id);
+          if (i < 0) return live;
+          const mineNow = (await seatsOf(live.round_no)).find((x) => x.member_id === me.id);
+          if (mineNow && !mineNow.settled) throw new UserError('Finish this round before you stand up.');
+          chairs[i] = null;
+          return await saveChairs(live, chairs);
+        });
+        return Response.json(await stateOf(t));
+      }
+
       if (action === 'bet') {
         if (!open) throw new UserError(`${NAME} is closed right now.`);
         if (me.banned) throw new UserError('You are banned from the games.', 403);
@@ -229,6 +286,7 @@ export function cardTableHandler(game: CardGame) {
         let t = await advance();
         const closed = (x) => x.status !== 'betting' || (x.bets_close_at && Date.parse(x.bets_close_at) - CLOSE_MARGIN_MS <= Date.now());
         if (closed(t)) throw new UserError('This round has started. Bet on the next one.');
+        if (chairIndex(t, me.id) < 0) throw new UserError('Sit down at the table first.');
         const round = t.round_no;
 
         const balance = await withMemberLock(b, me.id, async () => {
@@ -237,7 +295,6 @@ export function cardTableHandler(game: CardGame) {
           if (wager > (member.points || 0)) throw new UserError('Not enough points for that wager.');
           const seats = await seatsOf(round);
           if (seats.some((s) => s.member_id === me.id)) throw new UserError('You already have a bet on this round.');
-          if (seats.length >= MAX_SEATS) throw new UserError('The table is full this round. Join the next one.');
           const today = todayStr();
           const used = member.daily_bet_date === today ? member.daily_bet_total || 0 : 0;
           if (used + wager > settings.daily_bet_cap) {
@@ -247,22 +304,17 @@ export function cardTableHandler(game: CardGame) {
           // The round may have closed while we waited for the lock.
           const live = await T.get(t.id);
           if (live.round_no !== round || closed(live)) throw new UserError('This round has started. Bet on the next one.');
+          const seatNo = chairIndex(live, me.id);
+          if (seatNo < 0) throw new UserError('Sit down at the table first.');
 
           const { balance } = await changePoints(b, me.id, -wager, 'game', `${NAME} round ${round} bet`, null);
           try {
             await b.asServiceRole.entities.Member.update(me.id, { daily_bet_total: used + wager, daily_bet_date: today });
-            const seat = await S.create({
-              game: game.id, round_no: round, member_id: me.id, name: member.discord_name || member.discord_id,
+            await S.create({
+              game: game.id, round_no: round, seat_no: seatNo, member_id: me.id, name: member.discord_name || member.discord_id,
               avatar: member.avatar_url || '', role: member.role, wager, staked: wager, doubled: false, cards: [],
               status: 'waiting', note: '', payout: 0, settled: false
             });
-            // Several members can sit down in the same instant. If that pushed the table
-            // past its limit, the latest arrivals give their seat back.
-            const order = (await seatsOf(round)).sort((a, c) => String(a.created_date || '').localeCompare(String(c.created_date || '')) || String(a.id).localeCompare(String(c.id)));
-            if (order.findIndex((x) => x.id === seat.id) >= MAX_SEATS) {
-              await S.delete(seat.id);
-              throw new UserError('The table is full this round. Join the next one.');
-            }
           } catch (e) {
             await changePoints(b, me.id, wager, 'game', `${NAME} bet returned`, null).catch(() => {});
             throw e;
@@ -273,10 +325,13 @@ export function cardTableHandler(game: CardGame) {
         // The first bet of a round starts the countdown.
         t = await withRecordLock(b, 'CardTable', t.id, async () => {
           const live = await T.get(t.id);
-          if (live.status === 'betting' && live.round_no === round && !live.bets_close_at) {
-            return await T.update(live.id, { bets_close_at: iso(Date.now() + BET_SECONDS * 1000) });
-          }
-          return live;
+          // Betting keeps your chair: note when this member was last active.
+          const chairs = chairsOf(live);
+          const i = chairs.findIndex((c) => c && c.member_id === me.id);
+          const update: Record<string, unknown> = {};
+          if (i >= 0) { chairs[i] = { ...chairs[i], active_at: iso(Date.now()) }; update.seats = chairs.map((c) => c || {}); }
+          if (live.status === 'betting' && live.round_no === round && !live.bets_close_at) update.bets_close_at = iso(Date.now() + BET_SECONDS * 1000);
+          return Object.keys(update).length ? await T.update(live.id, update) : live;
         });
         return Response.json(await stateOf(t, { balance }));
       }
