@@ -19,13 +19,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { sessionUser } from './session.ts';
 import {
   getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, todayStr, randInt, GAME_NAMES,
-  UserError, errorResponse
+  UserError, errorResponse, nullSafe
 } from './points.ts';
 import { postFeed } from './feed.ts';
 import { BACKEND_VERSION } from './version.ts';
 
 export const BET_SECONDS = 15;      // countdown after the first bet
-export const RESULT_SECONDS = 6;    // how long results stay up
+export const RESULT_SECONDS = 8;    // how long results stay up
 const CLOSE_MARGIN_MS = 1500;       // bets stop a moment before the deadline
 const SETTLE_LOCK_MS = 120000;
 export const SEAT_COUNT = 6;         // chairs at each table
@@ -71,7 +71,7 @@ export function cardTableHandler(game: CardGame) {
       if (!me) throw new UserError('Link your Discord first.', 401);
       const settings = await getSettings(b);
       const open = (settings.games_enabled || []).includes(game.id);
-      const T = b.asServiceRole.entities.CardTable;
+      const T = nullSafe(b.asServiceRole.entities.CardTable, ['bets_close_at', 'act_close_at', 'next_at']);
       const S = b.asServiceRole.entities.CardSeat;
 
       const getTable = async () => {

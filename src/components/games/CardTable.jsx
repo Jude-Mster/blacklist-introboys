@@ -3,7 +3,7 @@ import { Loader2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import LanternSpinner from "@/components/LanternSpinner";
-import PlayingCard from "@/components/poker/PlayingCard";
+import DealtCards, { DEAL_STEP_MS } from "@/components/DealtCards";
 import Avatar from "@/components/Avatar";
 import WagerInput from "./WagerInput";
 import { Points } from "@/components/SealLogo";
@@ -25,7 +25,7 @@ const RESULT_TEXT = {
 const NOTE = { stood: "Stayed", bust: "Bust", blackjack: "Blackjack", drew: "Drew", doubled: "Doubled", timeout: "Timed out", dealer: "" };
 
 // One chair at the table: empty (tap to sit) or a member with this round's hand.
-function Chair({ chair, canSit, busy, onSit }) {
+function Chair({ chair, canSit, busy, onSit, hideResult }) {
   if (chair.empty) {
     return (
       <button
@@ -44,7 +44,7 @@ function Chair({ chair, canSit, busy, onSit }) {
     );
   }
   const h = chair.hand;
-  const r = h && h.result ? RESULT_TEXT[h.result] : null;
+  const r = h && h.result && !hideResult ? RESULT_TEXT[h.result] : null;
   return (
     <div className={cn(
       "flex min-h-[112px] flex-col items-center rounded-md border bg-black/30 px-1 py-2 text-center",
@@ -56,7 +56,7 @@ function Chair({ chair, canSit, busy, onSit }) {
       {h ? (
         <>
           <div className="mt-1 flex min-h-[30px] flex-wrap items-center justify-center gap-0.5">
-            {h.cards.map((c, i) => <PlayingCard key={i + c} card={c} size="xs" />)}
+            <DealtCards cards={h.cards} size="xs" offset={chair.seat * 150} />
           </div>
           <p className="mt-1 text-[11px] leading-tight text-mist">
             <Points value={h.staked} iconSize={10} />
@@ -64,7 +64,7 @@ function Chair({ chair, canSit, busy, onSit }) {
           </p>
           <p className={cn("text-[11px] font-bold leading-tight", r ? (r.win === true ? "text-gold" : r.win === false ? "text-ember" : "text-mist") : "text-mist")}>
             {r ? (h.net > 0 ? `+${h.net.toLocaleString()}` : h.net < 0 ? h.net.toLocaleString() : "Tie")
-              : h.status === "playing" ? "Playing" : h.status === "done" ? (NOTE[h.note] || "") : "Bet placed"}
+              : h.status === "playing" ? "Playing" : h.status === "done" ? (NOTE[h.note] || "Done") : "Bet placed"}
           </p>
         </>
       ) : (
@@ -77,8 +77,7 @@ function Chair({ chair, canSit, busy, onSit }) {
 function Cards({ cards, hidden = 0, size = "lg", empty }) {
   return (
     <div className={cn("flex flex-wrap items-center gap-1.5", size === "lg" && "min-h-[88px]")}>
-      {cards.map((c, i) => <PlayingCard key={i + c} card={c} size={size} />)}
-      {Array.from({ length: hidden }, (_, i) => <PlayingCard key={"b" + i} back size={size} />)}
+      <DealtCards cards={cards} hidden={hidden} size={size} />
       {cards.length === 0 && hidden === 0 && empty && <span className="text-sm text-mist/60">{empty}</span>}
     </div>
   );
@@ -94,6 +93,9 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
   const [wager, setWager] = useState(settings.min_bet);
   const first = useRef(true);
   const paidRound = useRef(0);
+  // The dealer's last cards are dealt one at a time; results wait until they're all down.
+  const [shownRound, setShownRound] = useState(0);
+  const dealerSeen = useRef({ round: 0, count: -1 });
   const busyRef = useRef("");
   busyRef.current = busy;
 
@@ -102,11 +104,7 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
     setData(d);
     setOffset(Date.parse(d.table.server_now) - Date.now());
     if (typeof d.balance === "number") setBalance(d.balance);
-    // When a round I played is settled, refresh my points once.
-    if (d.table.status === "settled" && d.mine && paidRound.current !== d.table.round_no) {
-      paidRound.current = d.table.round_no;
-      reload();
-    }
+    if (d.table.status !== "settled") dealerSeen.current = { round: d.table.round_no, count: d.table.dealer.cards.length };
   }, [setBalance, reload]);
 
   const refresh = useCallback(async () => {
@@ -141,6 +139,22 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
     }
   }, [fn, take]);
 
+  // Hold the result back while the dealer's new cards are being dealt, then show it
+  // and refresh the member's points.
+  const settledRound = data && data.table.status === "settled" ? data.table.round_no : 0;
+  const dealerCards = data ? data.table.dealer.cards.length : 0;
+  const iPlayed = !!(data && data.mine);
+  useEffect(() => {
+    if (!settledRound || shownRound === settledRound) return undefined;
+    const seen = dealerSeen.current;
+    const fresh = seen.round === settledRound && seen.count >= 0 ? Math.max(0, dealerCards - seen.count) : 0;
+    const timer = setTimeout(() => {
+      setShownRound(settledRound);
+      if (iPlayed && paidRound.current !== settledRound) { paidRound.current = settledRound; reload(); }
+    }, fresh ? fresh * DEAL_STEP_MS + 500 : 0);
+    return () => clearTimeout(timer);
+  }, [settledRound, shownRound, dealerCards, iPlayed, reload]);
+
   if (!data) return <Panel title={title}>{error ? <p role="alert" className="py-6 text-center text-sm text-ember">{error}</p> : <LanternSpinner label="Finding the table" className="py-12" />}</Panel>;
 
   const { table, chairs, mine } = data;
@@ -153,9 +167,10 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
   const actLeft = table.status === "playing" ? left(table.act_close_at) : null;
   const nextLeft = table.status === "settled" ? left(table.next_at) : null;
   const myTurn = table.status === "playing" && mine && mine.status === "playing";
-  const res = mine && mine.result ? RESULT_TEXT[mine.result] : null;
+  const drawing = table.status === "settled" && shownRound !== table.round_no;
+  const res = mine && mine.result && !drawing ? RESULT_TEXT[mine.result] : null;
   const canBet = seated && table.status === "betting" && !mine && (betLeft === null || betLeft > 1) && wager >= settings.min_bet && wager <= settings.max_bet && wager <= balance;
-  const inHand = mine && !mine.result;
+  const inHand = mine && (!mine.result || drawing);
   const Spin = <Loader2 className="h-4 w-4 animate-spin" />;
 
   let banner;
@@ -164,7 +179,7 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
   } else if (table.status === "playing") {
     banner = myTurn ? `Play your hand: ${actLeft}s left.` : `Hands are being played: ${actLeft}s left.`;
   } else {
-    banner = nextLeft ? `Next round in ${nextLeft}s.` : "Next round is opening.";
+    banner = drawing ? `${dealerLabel} is drawing.` : nextLeft ? `Next round in ${nextLeft}s.` : "Next round is opening.";
   }
 
   return (
@@ -180,20 +195,19 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
         <div className="flex flex-col items-center">
           <p className="mb-1.5 text-xs uppercase tracking-wide text-mist">
             {dealerLabel}
-            {table.dealer.total !== null && (
+            {table.dealer.total !== null && !drawing && (
               <span className="ml-2 font-heading text-sm font-bold normal-case text-gold">{table.dealer.total}{table.dealer.hidden ? " showing" : ""}</span>
             )}
           </p>
           <div className="flex min-h-[88px] flex-wrap items-center justify-center gap-1.5">
-            {table.dealer.cards.map((c, i) => <PlayingCard key={i + c} card={c} size="lg" />)}
-            {Array.from({ length: table.dealer.hidden }, (_, i) => <PlayingCard key={"b" + i} back size="lg" />)}
+            <DealtCards cards={table.dealer.cards} hidden={table.dealer.hidden} size="lg" />
             {table.dealer.cards.length === 0 && table.dealer.hidden === 0 && <span className="text-sm text-mist/60">Waiting for bets</span>}
           </div>
         </div>
 
         <div className="grid grid-cols-3 gap-2">
           {chairs.map((c) => (
-            <Chair key={c.seat} chair={c} canSit={!seated && data.open !== false} busy={busy} onSit={(seat) => send("sit", { seat })} />
+            <Chair key={c.seat} chair={c} canSit={!seated && data.open !== false} busy={busy} onSit={(seat) => send("sit", { seat })} hideResult={drawing} />
           ))}
         </div>
 
@@ -254,7 +268,7 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
         <p className="rounded-md border border-bronze/40 bg-black/25 px-3 py-3 text-center text-sm text-mist">
           {table.status === "betting" ? "You're in. Waiting for betting to close."
             : table.status === "playing" ? (mine ? "Your hand is finished. Waiting for the others." : "A round is in progress. You can bet on the next one.")
-            : "Round over."}
+            : drawing ? `${dealerLabel} is drawing.` : "Round over."}
         </p>
       )}
 

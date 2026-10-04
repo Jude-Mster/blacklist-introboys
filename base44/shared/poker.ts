@@ -149,7 +149,14 @@ export const dealable = (t) =>
 
 // Start a new hand if at least two players can play. Returns true if dealt.
 export function startHand(t, secret, now: number) {
-  // Clear seats of players who left during the last hand.
+  // Clear seats of players who left during the last hand. Anything still in front of
+  // them (they left while all in, then won) is queued to be paid back to their points.
+  t.seats.forEach((s, i) => {
+    if (s && s.left && s.stack > 0) {
+      t.cashouts = [...(t.cashouts || []), { member_id: s.member_id, name: s.name, amount: s.stack, ref: `h${t.hand_no || 0}s${i}` }];
+      s.stack = 0;
+    }
+  });
   t.seats = t.seats.map((s) => (s && s.left ? null : s));
   for (const i of occupied(t)) {
     Object.assign(t.seats[i], { bet: 0, committed: 0, in_hand: false, folded: false, all_in: false, acted: false, last_action: "" });
@@ -287,12 +294,14 @@ function advance(t, secret, now: number, justDealt: boolean) {
   t.min_raise = t.big_blind;
 
   if (t.phase === "river") return showdown(t, secret, now);
+  const boardBefore = (t.board || []).length;
   dealStreet(t, secret);
 
   // Nobody (or only one player) can still bet: run the board out.
   if (canAct(t).length <= 1) {
     while (t.phase !== "river") dealStreet(t, secret);
-    return showdown(t, secret, now);
+    // The table shows these cards one at a time, so the result stays up longer.
+    return showdown(t, secret, now, t.board.length - boardBefore);
   }
   t.turn = nextSeat(t, t.dealer, (i) => canAct(t).includes(i));
   t.deadline = iso(now + ACTION_SECONDS * 1000);
@@ -315,7 +324,7 @@ function dealStreet(t, secret) {
 function winUncontested(t, winner: number, now: number) {
   const pot = potTotal(t);
   t.seats[winner].stack += pot;
-  t.showdown = { revealed: {}, winners: [{ seat: winner, amount: pot, hand: "" }], pot };
+  t.showdown = { revealed: {}, winners: [{ seat: winner, amount: pot, hand: "" }], pot, hand_no: t.hand_no, run_out: 0 };
   log(t, `${t.seats[winner].name} wins ${pot}.`);
   endHand(t, now, FOLD_WIN_SECONDS);
 }
@@ -340,7 +349,7 @@ export function buildPots(t) {
   return pots;
 }
 
-function showdown(t, secret, now: number) {
+function showdown(t, secret, now: number, runOut = 0) {
   t.phase = "showdown";
   t.turn = -1;
   const live = inHand(t);
@@ -375,9 +384,9 @@ function showdown(t, secret, now: number) {
   const revealed = {};
   for (const i of live) revealed[i] = { cards: secret.holes[i], hand: hands[i].name, best: hands[i].cards };
   const winners = Object.entries(won).map(([seat, amount]) => ({ seat: Number(seat), amount, hand: hands[seat].name }));
-  t.showdown = { revealed, winners, pot: potTotal(t) };
+  t.showdown = { revealed, winners, pot: potTotal(t), hand_no: t.hand_no, run_out: runOut };
   for (const w of winners) log(t, `${t.seats[w.seat].name} wins ${w.amount} with ${w.hand.toLowerCase()}.`);
-  endHand(t, now, SHOWDOWN_SECONDS);
+  endHand(t, now, SHOWDOWN_SECONDS + runOut);
 }
 
 function endHand(t, now: number, pauseSeconds: number) {

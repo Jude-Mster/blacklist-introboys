@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { sessionUser } from '../../shared/session.ts';
-import { getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, UserError, errorResponse } from '../../shared/points.ts';
+import { getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, UserError, errorResponse, nullSafe } from '../../shared/points.ts';
 import { postFeed } from '../../shared/feed.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
 import { SEATS, HAND_SIZE, START_SECONDS, FULL_START_SECONDS, deal, play, pass, forfeit, tick, viewFor, seatedCount, maxLoss } from '../../shared/pusoy.ts';
@@ -43,7 +43,7 @@ export default async function(req) {
     if (!me) throw new UserError('Link your Discord first.', 401);
     const settings = await getSettings(b);
     const open = (settings.games_enabled || []).includes('pusoy');
-    const T = b.asServiceRole.entities.PusoyTable;
+    const T = nullSafe(b.asServiceRole.entities.PusoyTable, ['deadline', 'start_at', 'next_at', 'empty_since']);
     const M = b.asServiceRole.entities.Member;
     const limits = stakeLimits(settings);
 

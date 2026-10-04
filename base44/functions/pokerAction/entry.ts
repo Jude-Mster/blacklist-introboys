@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { sessionUser } from '../../shared/session.ts';
 import {
-  getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, UserError, errorResponse
+  getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, UserError, errorResponse, nullSafe
 } from '../../shared/points.ts';
 import { act, forceFold, tick, newSeat, viewFor } from '../../shared/poker.ts';
 import { postSystem, tableChannel, announceBigWin } from '../../shared/chat.ts';
@@ -17,7 +17,15 @@ const PUBLIC_FIELDS = [
 ];
 
 // Empty seats are stored as {} (entity arrays can't hold null); the engine uses null.
-const load = (row) => ({ ...row, seats: (row.seats || []).map((s) => (s && s.member_id ? { ...s } : null)) });
+// A finished hand's result is stored as {} when there is none (and is only valid for
+// the hand it belongs to), so a result can never be shown during a later hand.
+const load = (row) => ({
+  ...row,
+  seats: (row.seats || []).map((s) => (s && s.member_id ? { ...s } : null)),
+  showdown: row.showdown && row.showdown.winners && (row.showdown.hand_no === undefined || row.showdown.hand_no === row.hand_no) && row.phase === 'showdown' ? row.showdown : null,
+  cashouts: Array.isArray(row.cashouts) ? row.cashouts : []
+});
+const tables = (b) => nullSafe(b.asServiceRole.entities.PokerTable, ['deadline', 'next_hand_at']);
 const publicView = (t) => Object.fromEntries(PUBLIC_FIELDS.map((k) => [k, t[k]]));
 const seatOf = (t, memberId) => t.seats.findIndex((s) => s && s.member_id === memberId && !s.left);
 
@@ -30,18 +38,20 @@ async function getSecret(b, tableId) {
 async function save(b, t, secret) {
   const data = Object.fromEntries(PUBLIC_FIELDS.filter((k) => k !== 'id').map((k) => [k, t[k]]));
   data.seats = t.seats.map((s) => s || {});
-  await b.asServiceRole.entities.PokerTable.update(t.id, data);
+  data.showdown = t.showdown || {};
+  data.cashouts = t.cashouts || [];
+  await tables(b).update(t.id, data);
   if (secret) {
     await b.asServiceRole.entities.PokerHand.update(secret.id, { hand_no: secret.hand_no, deck: secret.deck, holes: secret.holes });
   }
 }
 
 async function ensureTables(b) {
-  const { items } = await b.asServiceRole.entities.PokerTable.filter({}, { limit: 50 });
+  const { items } = await tables(b).filter({}, { limit: 50 });
   if (items.length) return items;
   const created = [];
   for (const d of DEFAULT_TABLES) {
-    created.push(await b.asServiceRole.entities.PokerTable.create({
+    created.push(await tables(b).create({
       ...d, active: true, max_seats: 6, seats: Array(6).fill({}), phase: 'waiting', hand_no: 0, dealer: -1, turn: -1,
       current_bet: 0, min_raise: d.big_blind, board: [], showdown: {}, log: []
     }));
@@ -49,18 +59,47 @@ async function ensureTables(b) {
   return created;
 }
 
+// Points owed to players who have left the table. Each one is written on the table
+// first and only removed once it is paid, so a failed request can't lose it: the next
+// request to the table tries again. The points log is checked first so the same
+// cash-out can never be paid twice.
+async function settleCashouts(b, t) {
+  for (const c of [...(t.cashouts || [])]) {
+    if (!(c.amount > 0)) { t.cashouts = t.cashouts.filter((x) => x !== c); continue; }
+    const reason = `Poker cash-out from ${t.name} [${t.id}:${c.ref}]`;
+    try {
+      await withMemberLock(b, c.member_id, async () => {
+        const { items } = await b.asServiceRole.entities.PointLog.filter({ member_id: c.member_id, reason }, { limit: 1 });
+        if (items.length === 0) await changePoints(b, c.member_id, c.amount, 'poker', reason, null);
+      });
+    } catch (e) {
+      console.error('poker cash-out will be retried', c, e);
+      continue;
+    }
+    t.cashouts = t.cashouts.filter((x) => x !== c);
+    await tables(b).update(t.id, { cashouts: t.cashouts });
+  }
+}
+const cashoutRef = () => `c${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
+
 // Run the table under its lock: load, tick (timeouts / next hand), apply fn, save.
 async function withTable(b, tableId, settings, fn) {
   return withRecordLock(b, 'PokerTable', tableId, async () => {
-    const t = load(await b.asServiceRole.entities.PokerTable.get(tableId));
+    const t = load(await tables(b).get(tableId));
     const secret = await getSecret(b, tableId);
+    const owedBefore = t.cashouts.length;
     const before = { phase: t.phase, hand: t.hand_no };
     const now = Date.now();
     const ticked = tick(t, secret, now);
     const out = await fn(t, secret, now);
-    if (out && out.dirty === false && !ticked) return { t, secret, out };
+    if (out && out.dirty === false && !ticked) {
+      if (owedBefore) await settleCashouts(b, t);
+      return { t, secret, out };
+    }
     tick(t, secret, Date.now()); // e.g. deal a hand now that a second player sat down
     await save(b, t, secret);
+    // Pay anyone who left, only AFTER the table has been saved without their chips.
+    if (t.cashouts.length) await settleCashouts(b, t);
     // Announce finished hands in the table chat.
     if (t.phase === 'showdown' && (before.phase !== 'showdown' || before.hand !== t.hand_no) && t.showdown && t.showdown.winners) {
       for (const w of t.showdown.winners) {
@@ -83,6 +122,7 @@ function needsTick(row) {
   const now = Date.now();
   if (BETTING.includes(row.phase) && row.deadline && Date.parse(row.deadline) <= now) return true;
   if (row.phase === 'showdown' && row.next_hand_at && Date.parse(row.next_hand_at) <= now) return true;
+  if (Array.isArray(row.cashouts) && row.cashouts.length) return true; // a cash-out is still owed
   return false;
 }
 
@@ -116,7 +156,7 @@ export default async function(req) {
     if (!tableId && action !== 'createTable') throw new UserError('Choose a table.');
 
     if (action === 'state') {
-      let row = await b.asServiceRole.entities.PokerTable.get(tableId);
+      let row = await tables(b).get(tableId);
       if (needsTick(row)) {
         const { t } = await withTable(b, tableId, settings, async () => ({ dirty: true }));
         row = t;
@@ -131,7 +171,7 @@ export default async function(req) {
       if (me.banned) throw new UserError('You are banned from the games.', 403);
       const buyin = Math.floor(Number(p.buyin));
       // One table at a time.
-      const { items: all } = await b.asServiceRole.entities.PokerTable.filter({}, { limit: 50 });
+      const { items: all } = await tables(b).filter({}, { limit: 50 });
       for (const row of all) {
         if (row.id !== tableId && seatOf(load(row), me.id) >= 0) throw new UserError(`You're already seated at ${row.name}. Leave it first.`);
       }
@@ -155,25 +195,31 @@ export default async function(req) {
     if (action === 'leave') {
       let refund = 0;
       let seated = false;
+      let pending = false;
       const { t } = await withTable(b, tableId, settings, async (t, secret, now) => {
         const i = seatOf(t, me.id);
         if (i < 0) return { dirty: false };
         seated = true;
         const s = t.seats[i];
-        if (s.in_hand && !s.folded && BETTING.includes(t.phase)) forceFold(t, secret, i, now, 'Left');
+        const midHand = s.in_hand && !s.folded && BETTING.includes(t.phase);
+        if (midHand && s.all_in) {
+          // All in and leaving: the hand plays out with their cards. Whatever they win
+          // is paid back to their points when the hand ends.
+          s.left = true;
+          pending = true;
+          return {};
+        }
+        if (midHand) forceFold(t, secret, i, now, 'Left');
         refund = s.stack;
         s.stack = 0;
-        if (s.in_hand && BETTING.includes(t.phase)) s.left = true; // seat clears when the hand ends
+        if (refund > 0) t.cashouts = [...t.cashouts, { member_id: me.id, name: s.name, amount: refund, ref: cashoutRef() }];
+        // A seat that was dealt into this hand stays until the hand ends, so the pot still adds up.
+        if (s.in_hand && (BETTING.includes(t.phase) || t.phase === 'showdown')) s.left = true;
         else t.seats[i] = null;
         return {};
       });
-      // Pay the cash-out only AFTER the table has been saved with the seat emptied,
-      // so the same chips can never be cashed out twice.
-      if (refund > 0) {
-        await withMemberLock(b, me.id, () => changePoints(b, me.id, refund, 'poker', `Poker cash-out from ${t.name}`, null));
-      }
-      if (seated) await postSystem(b, tableChannel(tableId), `${me.discord_name} left the table${refund ? ` with ${refund}` : ''}.`);
-      return Response.json({ ok: true, refund, table: publicView(t) });
+      if (seated) await postSystem(b, tableChannel(tableId), pending ? `${me.discord_name} left the table while all in.` : `${me.discord_name} left the table${refund ? ` with ${refund}` : ''}.`);
+      return Response.json({ ok: true, refund, pending, table: publicView(t) });
     }
 
     if (action === 'act') {
@@ -232,31 +278,24 @@ export default async function(req) {
         if (!(d.small_blind > 0 && d.big_blind >= d.small_blind && d.min_buyin >= d.big_blind * 10 && d.max_buyin >= d.min_buyin)) {
           throw new UserError('Blinds must be above 0, the minimum buy-in at least 10 big blinds, and the maximum at least the minimum.');
         }
-        const row = await b.asServiceRole.entities.PokerTable.create({
+        const row = await tables(b).create({
           ...d, active: true, max_seats: 6, seats: Array(6).fill({}), phase: 'waiting', hand_no: 0, dealer: -1, turn: -1,
           current_bet: 0, min_raise: d.big_blind, board: [], showdown: {}, log: []
         });
         return Response.json({ ok: true, table: publicView(load(row)) });
       }
       // closeTable: only between hands; everyone gets their chips back.
-      const cashouts = [];
-      let closedName = '';
       await withTable(b, tableId, settings, async (t) => {
         if (BETTING.includes(t.phase)) throw new UserError('Wait for the current hand to finish.');
-        closedName = t.name;
         for (let i = 0; i < t.seats.length; i++) {
           const s = t.seats[i];
-          if (s && s.stack > 0) cashouts.push({ member_id: s.member_id, amount: s.stack });
+          if (s && s.stack > 0) t.cashouts = [...t.cashouts, { member_id: s.member_id, name: s.name, amount: s.stack, ref: cashoutRef() }];
           t.seats[i] = null;
         }
         t.active = false;
         t.phase = 'waiting';
         return {};
       });
-      // Pay everyone only AFTER the table has been saved empty.
-      for (const c of cashouts) {
-        await withMemberLock(b, c.member_id, () => changePoints(b, c.member_id, c.amount, 'poker', `Poker cash-out: ${closedName} closed`, null));
-      }
       return Response.json({ ok: true });
     }
 

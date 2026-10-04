@@ -329,6 +329,11 @@
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-6px); }
 }
+@keyframes card-deal {
+  from { opacity: 0; transform: translateY(-18px) scale(0.85); }
+  to { opacity: 1; transform: none; }
+}
+.card-deal { animation: card-deal 0.4s ease-out both; }
 @keyframes chat-fly {
   from { transform: translateX(100vw); }
   to { transform: translateX(-100%); }
