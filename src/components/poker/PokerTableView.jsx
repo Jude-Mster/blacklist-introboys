@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Loader2, LogOut, Coffee, Plus } from "lucide-react";
 import Panel from "@/components/Panel";
@@ -8,6 +8,7 @@ import ChatBox from "@/components/chat/ChatBox";
 import { Ingot } from "@/components/SealLogo";
 import { useGuild, errorText } from "@/lib/GuildContext";
 import PlayingCard from "./PlayingCard";
+import DealtCards, { Dealt } from "@/components/DealtCards";
 import BuyIn from "./BuyIn";
 import usePokerTable from "./usePokerTable";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,22 @@ export default function PokerTableView({ tableId }) {
   const { state, error, now, send } = usePokerTable(tableId);
   const [sitAt, setSitAt] = useState(null);
 
+  // Community cards are turned over one at a time, even when the server deals several
+  // at once (everyone all in). The result is held back until the last one is down.
+  const BOARD_STEP_MS = 800;
+  const live = state && state.table;
+  const boardLen = live && live.board ? live.board.length : 0;
+  const handNo = live ? live.hand_no : 0;
+  const [shown, setShown] = useState(0);
+  const shownHand = useRef(handNo);
+  useEffect(() => {
+    if (shownHand.current !== handNo) { shownHand.current = handNo; setShown(0); return undefined; }
+    if (shown > boardLen) { setShown(boardLen); return undefined; }
+    if (shown === boardLen) return undefined;
+    const timer = setTimeout(() => setShown((n) => n + 1), BOARD_STEP_MS);
+    return () => clearTimeout(timer);
+  }, [shown, boardLen, handNo]);
+
   if (!state) return <LanternSpinner label="Taking you to the table" className="py-24" />;
   const t = state.table;
   const mySeat = state.my_seat ?? -1;
@@ -37,9 +54,14 @@ export default function PokerTableView({ tableId }) {
   const me = seated ? t.seats[mySeat] : null;
   const anchor = seated ? mySeat : 0;
   const pot = t.seats.reduce((a, s) => a + (s && s.in_hand ? s.committed || 0 : 0), 0);
-  const winners = t.phase === "showdown" && t.showdown && t.showdown.winners ? t.showdown.winners : [];
+  const dealing = Math.min(shown, boardLen) < boardLen; // cards still being turned over
+  const result = t.phase === "showdown" && t.showdown && t.showdown.winners ? t.showdown : null;
+  const winners = result && !dealing ? result.winners : [];
   const winnerSeats = new Set(winners.map((w) => w.seat));
-  const revealed = (t.showdown && t.showdown.revealed) || {};
+  // Hands are only face up at a showdown, never during play.
+  const revealed = (result && result.revealed) || {};
+  // Until the last card is down, stacks are shown as they were before the pot was awarded.
+  const notYetPaid = result && dealing ? Object.fromEntries(result.winners.map((w) => [w.seat, w.amount])) : {};
   const winningCards = new Set(winners.flatMap((w) => (revealed[w.seat] && revealed[w.seat].best) || []));
   const left = t.deadline ? Math.max(0, (Date.parse(t.deadline) - now) / 1000) : 0;
   const seatEmpty = (s) => !s || !s.member_id;
@@ -83,8 +105,8 @@ export default function PokerTableView({ tableId }) {
             </p>
             <div className="flex gap-1" aria-label="Community cards">
               {[0, 1, 2, 3, 4].map((i) =>
-                t.board && t.board[i] ? (
-                  <PlayingCard key={i} card={t.board[i]} size="sm" highlight={winningCards.has(t.board[i])} />
+                t.board && t.board[i] && i < shown ? (
+                  <span key={i} className="card-deal inline-flex"><PlayingCard card={t.board[i]} size="sm" highlight={winningCards.has(t.board[i])} /></span>
                 ) : (
                   <div key={i} className="h-12 w-[34px] rounded-[5px] border border-dashed border-[hsl(0_0%_80%/0.18)]" />
                 )
@@ -93,7 +115,7 @@ export default function PokerTableView({ tableId }) {
             <p className="text-center text-xs text-[hsl(0_0%_88%/0.85)]" aria-live="polite">
               {winners.length
                 ? winners.map((w) => `${t.seats[w.seat]?.name || "Someone"} wins ${w.amount.toLocaleString()}${w.hand ? ` · ${w.hand}` : ""}`).join(" · ")
-                : PHASE_LABEL[t.phase]}
+                : dealing && result ? "All in. Dealing the board." : PHASE_LABEL[t.phase]}
             </p>
           </div>
 
@@ -128,7 +150,8 @@ export default function PokerTableView({ tableId }) {
             return (
               <React.Fragment key={i}>
                 <Seat
-                  s={s}
+                  s={notYetPaid[i] ? { ...s, stack: s.stack - notYetPaid[i] } : s}
+                  handNo={t.hand_no}
                   x={x}
                   y={y}
                   isTurn={isTurn}
@@ -171,7 +194,7 @@ export default function PokerTableView({ tableId }) {
           <p className="text-center text-sm text-mist">You're watching. Tap an empty seat to sit down.</p>
         )}
 
-        {seated && <MyControls t={t} me={me} mySeat={mySeat} cards={state.my_cards} send={send} reload={reload} best={winningCards} />}
+        {seated && <MyControls t={t} me={notYetPaid[mySeat] ? { ...me, stack: me.stack - notYetPaid[mySeat] } : me} mySeat={mySeat} cards={state.my_cards} send={send} reload={reload} best={winningCards} />}
 
         {t.log && t.log.length > 0 && (
           <details className="rounded-md border border-bronze/40 bg-black/20 px-3 py-2">
@@ -192,7 +215,7 @@ export default function PokerTableView({ tableId }) {
   );
 }
 
-function Seat({ s, x, y, isTurn, left, dealer, mine, winner, cards, hidden, best }) {
+function Seat({ s, x, y, isTurn, left, dealer, mine, winner, cards, hidden, best, handNo }) {
   const pct = Math.max(0, Math.min(1, left / ACTION_SECONDS));
   return (
     <div
@@ -201,7 +224,9 @@ function Seat({ s, x, y, isTurn, left, dealer, mine, winner, cards, hidden, best
     >
       {(cards || hidden) && (
         <div className="mb-[-10px] flex gap-0.5">
-          {cards ? cards.map((c) => <PlayingCard key={c} card={c} size="xs" highlight={best.has(c)} />) : [0, 1].map((k) => <PlayingCard key={k} back size="xs" />)}
+          {cards
+            ? cards.map((c) => <PlayingCard key={c} card={c} size="xs" highlight={best.has(c)} />)
+            : [0, 1].map((k) => <Dealt key={`${handNo}-${k}`} delay={k * 350}><PlayingCard back size="xs" /></Dealt>)}
         </div>
       )}
       <div className="relative">
@@ -283,7 +308,7 @@ function MyControls({ t, me, mySeat, cards, send, reload, best }) {
       <div className="flex items-center gap-4">
         <div className="flex gap-1.5">
           {cards && cards.length ? (
-            cards.map((c) => <PlayingCard key={c} card={c} size="lg" dim={me.folded} highlight={best.has(c)} />)
+            <DealtCards key={t.hand_no} cards={cards} size="lg" step={400} cardProps={(c) => ({ dim: me.folded, highlight: best.has(c) })} />
           ) : (
             <>
               <PlayingCard back size="lg" className="opacity-40" />

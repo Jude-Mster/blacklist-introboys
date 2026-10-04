@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
+
 import { getSettings, errorResponse } from '../../shared/points.ts';
 import { hasRoleNow } from '../../shared/access.ts';
 

@@ -5,6 +5,7 @@ import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import LanternSpinner from "@/components/LanternSpinner";
 import PlayingCard from "@/components/poker/PlayingCard";
+import { Dealt, useDealDelays } from "@/components/DealtCards";
 import Avatar from "@/components/Avatar";
 import { Points } from "@/components/SealLogo";
 import { useGuild, errorText } from "@/lib/GuildContext";
@@ -126,6 +127,8 @@ export default function PusoyTableView({ tableId }) {
   }, [tableId, take]);
 
   const hand = useMemo(() => (data ? (bySuit ? sortBySuit(data.hand) : sortByRank(data.hand)) : []), [data, bySuit]);
+  // The 13 cards are dealt into the hand one at a time.
+  const dealDelay = useDealDelays(hand.map((c) => `${data ? data.table.game_no : 0}:${c}`), 160);
 
   if (gone) {
     return (
@@ -224,7 +227,7 @@ export default function PusoyTableView({ tableId }) {
               <div className="flex max-w-full flex-wrap items-end justify-center pl-1" aria-label={`${table.pile.length} cards on the table`}>
                 {table.pile.map((c, i) => {
                   const newest = i === table.pile.length - 1;
-                  return <PlayingCard key={c} card={c} size={newest ? "md" : "xs"} highlight={newest && !!top} className={cn("mb-1", newest ? "ml-1.5" : "-ml-1 opacity-80")} />;
+                  return <span key={c} className={newest ? "card-deal inline-flex" : "inline-flex"}><PlayingCard card={c} size={newest ? "md" : "xs"} highlight={newest && !!top} className={cn("mb-1", newest ? "ml-1.5" : "-ml-1 opacity-80")} /></span>;
                 })}
               </div>
             ) : (
@@ -263,9 +266,11 @@ export default function PusoyTableView({ tableId }) {
               {hand.map((c) => {
                 const ok = canFollow(c, top);
                 return (
-                  <button key={c} type="button" onClick={() => toggle(c)} aria-pressed={picked.includes(c)} className="rounded-[5px] pt-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold">
-                    <PlayingCard card={c} size="md" highlight={picked.includes(c)} dim={myTurn && !ok} className="!h-[60px] !w-[40px]" />
-                  </button>
+                  <Dealt key={c} delay={dealDelay(`${table.game_no}:${c}`)}>
+                    <button type="button" onClick={() => toggle(c)} aria-pressed={picked.includes(c)} className="rounded-[5px] pt-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold">
+                      <PlayingCard card={c} size="md" highlight={picked.includes(c)} dim={myTurn && !ok} className="!h-[60px] !w-[40px]" />
+                    </button>
+                  </Dealt>
                 );
               })}
             </div>

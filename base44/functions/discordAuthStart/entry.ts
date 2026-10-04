@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
+
 import { secrets } from 'base44:runtime';
 import { getSettings } from '../../shared/points.ts';
 import { sha256Hex } from '../../shared/session.ts';

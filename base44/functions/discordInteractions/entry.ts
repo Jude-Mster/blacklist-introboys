@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
+
 import { secrets } from 'base44:runtime';
 import nacl from 'npm:tweetnacl@1.0.3';
 import { announcePoints } from '../../shared/discordPost.ts';

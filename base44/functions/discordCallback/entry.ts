@@ -1,5 +1,6 @@
 import { secrets } from 'base44:runtime';
 
+
 // Dumb redirector. Discord redirects here with ?code&state (or ?error). Nothing is
 // verified or signed in here. We just forward code+state to the /login page, which
 // calls discordLogin to verify guild membership and issue a session.
