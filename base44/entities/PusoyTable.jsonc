@@ -1,0 +1,90 @@
+{
+  "name": "PusoyTable",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "stake": {
+      "type": "integer",
+      "description": "Points a loser pays for each card left in hand"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "waiting",
+        "playing",
+        "finished"
+      ],
+      "default": "waiting"
+    },
+    "game_no": {
+      "type": "integer",
+      "default": 0
+    },
+    "seats": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "description": "Four seats. {} when empty, or { member_id, name, avatar, role, in_game, count, passed, auto, left, timeouts, escrow, due }."
+    },
+    "hands": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Cards by seat number. Server only: a player is only ever sent their own."
+    },
+    "turn": {
+      "type": "integer",
+      "default": -1
+    },
+    "deadline": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "The play to beat: { seat, cards, label }. Empty when the turn player leads."
+    },
+    "first": {
+      "type": "boolean",
+      "description": "True until the opening play, which must include low_card"
+    },
+    "low_card": {
+      "type": "string"
+    },
+    "start_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the next game is dealt"
+    },
+    "next_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the result screen closes"
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "log": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "empty_since": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

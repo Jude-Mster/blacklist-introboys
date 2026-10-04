@@ -105,7 +105,7 @@ export function errorResponse(e) {
 }
 
 // ---------- Record locks ----------
-// A real mutex (Lamort's bakery algorithm) on top of the Lock entity. It needs
+// A real mutex (Lamport's bakery algorithm) on top of the Lock entity. It needs
 // nothing atomic from the platform, only that a row we wrote can be read back.
 //   1. Add a row for the record, marked "choosing".
 //   2. Read every row for that record and take a ticket number one higher than the
