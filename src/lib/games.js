@@ -12,7 +12,8 @@ export const GAMES = [
   { id: "roulette", name: "Blacklist Jade Roulette", blurb: "One shared table. A new spin every round." },
   { id: "blackjack", name: "Blacklist Blackjack", blurb: "One shared table. Beat the dealer to 21 together." },
   { id: "lucky9", name: "Blacklist Lucky 9", blurb: "One shared table. Closest to 9 beats the banker." },
-  { id: "poker", name: "Poker Room", blurb: "Texas Hold'em against other members.", href: "/poker" }
+  { id: "poker", name: "Poker Room", blurb: "Texas Hold'em against other members.", href: "/poker" },
+  { id: "pusoy", name: "Pusoy Dos", blurb: "Empty your hand first. Losers pay per card left.", href: "/pusoy" }
 ];
 
 export const coinMultiplier = (edge) => round2(2 * (1 - edge));

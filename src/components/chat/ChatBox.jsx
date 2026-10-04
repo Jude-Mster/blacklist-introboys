@@ -8,7 +8,7 @@ import RankBadge from "@/components/RankBadge";
 import { cn } from "@/lib/utils";
 
 const PAGE = 40;
-const POLL_MS = 10000;
+const POLL_MS = 5000;
 const ROLE_COLOR = { leader: "text-[#FF4D55]", officer: "text-gold", guild_member: "text-[#FF6B70]", member: "text-[hsl(var(--foreground))]" };
 
 const rows = (res) => (Array.isArray(res) ? res : (res && res.items) || []);
@@ -46,16 +46,31 @@ export default function ChatBox({ channels = [{ id: "guild", label: "Guild" }], 
     });
   }, []);
 
+  // Tell the page about messages it hasn't seen before, however they arrived
+  // (live update, the poll, or our own send). The first load of a channel is history.
+  const seen = useRef({});
+  const note = useCallback((channel, incoming, history) => {
+    const known = (seen.current[channel] ||= new Set());
+    for (const m of incoming) {
+      if (!m || !m.id || known.has(m.id)) continue;
+      known.add(m.id);
+      if (!history && incomingRef.current) incomingRef.current(m);
+    }
+  }, []);
+  const loaded = useRef({});
+
   const load = useCallback(
     async (channel) => {
       try {
         const res = await base44.functions.invoke("getChatMessages", { channel, limit: PAGE });
+        note(channel, rows(res.data), !loaded.current[channel]);
+        loaded.current[channel] = true;
         merge(channel, rows(res.data));
       } catch {
         /* chat is best effort */
       }
     },
-    [merge]
+    [merge, note]
   );
 
   // Initial load, live updates, and a slow poll as a safety net.
@@ -71,7 +86,7 @@ export default function ChatBox({ channels = [{ id: "guild", label: "Guild" }], 
         if (ev.type === "create" && msg.channel !== activeRef.current) {
           setUnread((u) => ({ ...u, [msg.channel]: (u[msg.channel] || 0) + 1 }));
         }
-        if (ev.type === "create" && incomingRef.current) incomingRef.current(msg);
+        if (ev.type === "create") note(msg.channel, [{ ...msg, id: msg.id || ev.id }], false);
       });
     } catch {
       /* realtime unavailable: polling covers it */
@@ -81,7 +96,7 @@ export default function ChatBox({ channels = [{ id: "guild", label: "Guild" }], 
       clearInterval(poll);
       unsub && unsub();
     };
-  }, [channelIds, load, merge]);
+  }, [channelIds, load, merge, note]);
 
   const list = messages[active] || [];
 
@@ -107,7 +122,7 @@ export default function ChatBox({ channels = [{ id: "guild", label: "Guild" }], 
     setError("");
     try {
       const res = await base44.functions.invoke("chatSend", { channel: active, text: t });
-      if (res.data && res.data.message) merge(active, [res.data.message]);
+      if (res.data && res.data.message) { note(active, [res.data.message], false); merge(active, [res.data.message]); }
       setText("");
     } catch (err) {
       setError(errorText(err, "Message not sent."));

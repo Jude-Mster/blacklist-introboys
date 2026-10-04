@@ -329,6 +329,11 @@
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-6px); }
 }
+@keyframes chat-fly {
+  from { transform: translateX(100vw); }
+  to { transform: translateX(-100%); }
+}
+.chat-floater { animation: chat-fly 9s linear forwards; will-change: transform; }
 @keyframes count-pop {
   0% { transform: scale(1); }
   40% { transform: scale(1.08); }

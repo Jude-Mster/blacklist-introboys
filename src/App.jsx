@@ -17,6 +17,7 @@ import Leaderboard from '@/pages/Leaderboard';
 import Profile from '@/pages/Profile';
 import Admin from '@/pages/Admin';
 import Poker from '@/pages/Poker';
+import Pusoy from '@/pages/Pusoy';
 import Raffle from '@/pages/Raffle';
 import Shop from '@/pages/Shop';
 import Guide from '@/pages/Guide';
@@ -47,6 +48,8 @@ const AuthenticatedApp = () => {
           <Route path="/games" element={<Games />} />
           <Route path="/poker" element={<Poker />} />
           <Route path="/poker/:tableId" element={<Poker />} />
+          <Route path="/pusoy" element={<Pusoy />} />
+          <Route path="/pusoy/:tableId" element={<Pusoy />} />
           <Route path="/raffle" element={<Raffle />} />
           <Route path="/shop" element={<Shop />} />
           <Route path="/guide" element={<Guide />} />

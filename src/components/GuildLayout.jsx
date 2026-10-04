@@ -7,9 +7,14 @@ import TopBar from "./nav/TopBar";
 import Sidebar from "./nav/Sidebar";
 import MobileTabBar from "./nav/MobileTabBar";
 import ChatDrawer from "./nav/ChatDrawer";
+import ChatFloaters from "./chat/ChatFloaters";
 import { cn } from "@/lib/utils";
 
 const COLLAPSE_KEY = "bi.nav.collapsed";
+// Pages where chat messages fly across the screen.
+const PLAY_PAGES = /^\/(games|poker|pusoy)(\/|$)/;
+const MAX_FLOATERS = 6;
+const LANES = 6;
 
 function readCollapsed() {
   try {
@@ -36,6 +41,12 @@ function Shell() {
   const myId = account && account.member ? account.member.id : null;
   const openRef = useRef(chatOpen);
   openRef.current = chatOpen;
+  const [floaters, setFloaters] = useState([]);
+  const lane = useRef(0);
+  const playing = PLAY_PAGES.test(location.pathname);
+  const playingRef = useRef(playing);
+  playingRef.current = playing;
+  const dropFloater = useCallback((key) => setFloaters((f) => f.filter((x) => x.key !== key)), []);
 
   const toggleCollapsed = () => {
     setCollapsed((c) => {
@@ -56,6 +67,14 @@ function Shell() {
   // Count messages that arrive while chat is closed.
   const onIncoming = useCallback(
     (msg) => {
+      // While playing, members' messages (your own too) fly across the screen.
+      const text = String(msg.text || "").trim();
+      if (playingRef.current && !openRef.current && msg.kind !== "system" && !msg.deleted && text) {
+        const shown = text.length > 90 ? text.slice(0, 89) + "…" : text;
+        lane.current = (lane.current + 1) % LANES;
+        const item = { key: `${msg.id}-${Date.now()}`, name: msg.name || "Member", text: shown, lane: lane.current, seconds: 8 + Math.min(6, shown.length / 15) };
+        setFloaters((f) => [...f.slice(-(MAX_FLOATERS - 1)), item]);
+      }
       if (msg.member_id && msg.member_id === myId) return;
       if (!openRef.current) setUnread((u) => u + 1);
     },
@@ -87,6 +106,7 @@ function Shell() {
         </div>
       </main>
       {account && account.linked && <ChatDrawer open={chatOpen} onClose={closeChat} onIncoming={onIncoming} />}
+      {playing && <ChatFloaters items={floaters} onDone={dropFloater} />}
       <AppPrompt />
       <MobileTabBar onChat={toggleChat} chatOpen={chatOpen} unread={unread} />
     </div>

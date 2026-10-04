@@ -41,5 +41,10 @@ export const GAME_ICONS = {
     <span className="text-lg leading-none text-ember" aria-hidden="true">
       ♠
     </span>
+  ),
+  pusoy: (
+    <span className="font-heading text-base font-extrabold leading-none text-gold" aria-hidden="true">
+      2
+    </span>
   )
 };

@@ -99,9 +99,11 @@ export default function Games() {
           {Game ? (
             <Game key={current.id} settings={settings} balance={member.points} />
           ) : (
-            <Panel title="Poker only today">
-              <p className="text-center text-mist">The other games are closed. The poker room is open.</p>
-              <Link to="/poker" className="btn-seal mx-auto mt-4 h-11 w-full max-w-xs">Go to the poker room</Link>
+            <Panel title="Live tables only today">
+              <p className="text-center text-mist">The other games are closed. The live tables are open.</p>
+              {enabled.filter((g) => g.href).map((g) => (
+                <Link key={g.id} to={g.href} className="btn-seal mx-auto mt-4 h-11 w-full max-w-xs">Go to {g.name}</Link>
+              ))}
             </Panel>
           )}
         </div>

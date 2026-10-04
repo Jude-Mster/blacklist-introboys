@@ -12,6 +12,7 @@ const CHECKS = [
   { fn: "wheelAction", label: "Live Twelve Skies Wheel" },
   { fn: "blackjackAction", label: "Blackjack table" },
   { fn: "lucky9Action", label: "Lucky 9 table" },
+  { fn: "pusoyAction", label: "Pusoy Dos tables" },
   { fn: "duelAction", label: "Coin duels" },
   { fn: "shopAction", label: "Guild shop" },
   { fn: "raffleAction", label: "Raffle" },
