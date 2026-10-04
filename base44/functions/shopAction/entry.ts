@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { sessionUser } from '../../shared/session.ts';
 import {
-  getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, UserError, errorResponse
+  getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, UserError, errorResponse, clearSettingsCache
 } from '../../shared/points.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
 
@@ -91,6 +91,7 @@ async function seedCatalog(b, settings) {
   if (settings.shop_seeded) return;
   // Flag first so two requests at once can't both seed.
   await b.asServiceRole.entities.Settings.update(settings.id, { shop_seeded: true });
+  clearSettingsCache();
   const { items } = await b.asServiceRole.entities.ShopItem.filter({}, { limit: 1 });
   if (items.length > 0) return;
   let sort = 10;
@@ -282,6 +283,7 @@ export default async function(req) {
       await b.asServiceRole.entities.Settings.update(settings.id, {
         shop_tax_pct: tax, shop_price_multiplier: mult, shop_enabled: d.enabled !== false
       });
+      clearSettingsCache();
       return Response.json({ ok: true });
     }
 

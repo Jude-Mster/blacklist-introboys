@@ -212,8 +212,8 @@ export default async function(req) {
       let row;
       try { row = await T.get(tableId); } catch { throw new UserError('That table has closed.', 404); }
       const t = needsTick(row) ? await withTable(tableId) : load(row);
-      const m = await M.get(me.id);
-      return Response.json({ open, ...viewFor(t, me.id, Date.now()), balance: m.points || 0 });
+      // No extra read for the balance: the page refreshes it when a game ends.
+      return Response.json({ open, ...viewFor(t, me.id, Date.now()) });
     }
 
     if (action === 'sit') {

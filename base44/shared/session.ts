@@ -33,20 +33,43 @@ async function readToken(req): Promise<string> {
 // Who is calling? Returns { id, member, session } or null when there is no valid
 // session. `id` is the Member id. The member is returned even when no_access is
 // set; getMemberByUserId() is what refuses those.
+// To stay under the platform's request limit, a session that was just looked up is
+// remembered for a short while by this running copy of the function. The member row
+// is still read fresh on every call, so losing access or a ban applies at once.
+const SESSION_CACHE_MS = 30000;
+const sessionCache = new Map<string, { s: any; at: number }>();
+const memberSeen = new Map<string, { m: any; at: number }>();
+
+// The member row sessionUser() read a moment ago in this same request, so the
+// function doesn't have to read it a second time.
+export function recentMember(id: string) {
+  const hit = memberSeen.get(id);
+  return hit && Date.now() - hit.at < 1000 ? hit.m : null;
+}
+
 export async function sessionUser(b, req) {
   const token = await readToken(req);
   if (!TOKEN_RE.test(token)) return null;
   const hash = await sha256Hex(token);
-  const { items } = await b.asServiceRole.entities.Session.filter({ token_hash: hash }, { limit: 1 });
-  const s = items[0];
-  if (!s) return null;
+  const cached = sessionCache.get(hash);
+  let s = cached && Date.now() - cached.at < SESSION_CACHE_MS ? cached.s : null;
+  if (!s) {
+    const { items } = await b.asServiceRole.entities.Session.filter({ token_hash: hash }, { limit: 1 });
+    s = items[0];
+    if (!s) return null;
+    if (sessionCache.size > 500) sessionCache.clear();
+    sessionCache.set(hash, { s, at: Date.now() });
+  }
   if (!s.expires_at || Date.parse(s.expires_at) < Date.now()) {
+    sessionCache.delete(hash);
     await b.asServiceRole.entities.Session.delete(s.id).catch(() => {});
     return null;
   }
   let member = null;
   try { member = await b.asServiceRole.entities.Member.get(s.member_id); } catch { member = null; }
-  if (!member) return null;
+  if (!member) { sessionCache.delete(hash); return null; }
+  if (memberSeen.size > 500) memberSeen.clear();
+  memberSeen.set(member.id, { m: member, at: Date.now() });
   return { id: member.id, member, session: s };
 }
 
@@ -68,6 +91,7 @@ export async function createSession(b, member) {
 }
 
 export async function destroySession(b, session) {
+  for (const [k, v] of sessionCache) if (session && v.s.id === session.id) sessionCache.delete(k);
   if (session && session.id) await b.asServiceRole.entities.Session.delete(session.id).catch(() => {});
 }
 
@@ -76,6 +100,7 @@ export async function destroyMemberSessions(b, memberId: string) {
   try {
     const E = b.asServiceRole.entities.Session;
     const { items } = await E.filter({ member_id: memberId }, { limit: 100 });
+    for (const [k, v] of sessionCache) if (v.s.member_id === memberId) sessionCache.delete(k);
     for (const s of items) await E.delete(s.id).catch(() => {});
   } catch { /* best effort */ }
 }

@@ -28,13 +28,13 @@ export default function PusoyLobby() {
       setPot((s) => (s === "" ? String(res.data.limits.pot_min) : s));
       setStake((s) => (s === "" ? "1" : s));
     } catch (e) {
-      setError(errorText(e, "Couldn't open the Pusoy Dos tables."));
-      setData((d) => d || { tables: [], limits: { pot_min: 1, pot_max: 1, card_max: 1 } });
+      // A missed background refresh isn't worth an error: keep showing the last list.
+      setData((d) => { if (!d) setError(errorText(e, "Couldn't open the Pusoy Dos tables.")); return d || { tables: [], limits: { pot_min: 1, pot_max: 1, card_max: 1 } }; });
     }
   };
   useEffect(() => {
     load();
-    const t = setInterval(load, 6000);
+    const t = setInterval(load, 10000);
     return () => clearInterval(t);
   }, []);
 

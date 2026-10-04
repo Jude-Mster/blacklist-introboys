@@ -1,3 +1,4 @@
+import { recentMember } from './session.ts';
 // Shared points + game logic for BLACKLIST INTROBOYS.
 // Every points change goes through changePoints so balances never go below 0
 // and a PointLog row is written together with the balance update.
@@ -42,7 +43,20 @@ export const GAME_NAMES = {
   pusoy: "Pusoy Dos"
 };
 
-export async function getSettings(b) {
+// Settings change rarely but are needed by every request, so each running copy of a
+// function remembers them for a few seconds instead of reading them every time.
+const SETTINGS_CACHE_MS = Number((globalThis as any).__settingsCacheMs ?? 10000); // tests set this to 0
+let settingsCache: { v: any; at: number } | null = null;
+export function clearSettingsCache() { settingsCache = null; }
+
+export async function getSettings(b, fresh = false) {
+  if (!fresh && settingsCache && Date.now() - settingsCache.at < SETTINGS_CACHE_MS) return settingsCache.v;
+  const v = await readSettings(b);
+  settingsCache = { v, at: Date.now() };
+  return v;
+}
+
+async function readSettings(b) {
   const { items } = await b.asServiceRole.entities.Settings.filter({}, { limit: 1 });
   if (items.length === 0) {
     return await b.asServiceRole.entities.Settings.create({
@@ -71,6 +85,8 @@ export function houseEdge(settings) {
 // `userId` is the id from sessionUser(), which is the Member id.
 export async function getMemberRecordByUserId(b, userId) {
   if (!userId) return null;
+  const seen = recentMember(userId); // just read by sessionUser() for this request
+  if (seen) return seen;
   try {
     return (await b.asServiceRole.entities.Member.get(userId)) || null;
   } catch {
@@ -105,7 +121,7 @@ export function errorResponse(e) {
 }
 
 // ---------- Record locks ----------
-// A real mutex (Lamort's bakery algorithm) on top of the Lock entity. It needs
+// A real mutex (Lamport's bakery algorithm) on top of the Lock entity. It needs
 // nothing atomic from the platform, only that a row we wrote can be read back.
 //   1. Add a row for the record, marked "choosing".
 //   2. Read every row for that record and take a ticket number one higher than the
@@ -153,7 +169,6 @@ export async function withRecordLock(b, entity: string, id: string, fn: () => Pr
     return await fn();
   } finally {
     await L.delete(mine.id).catch(() => {});
-   
   }
 }
 

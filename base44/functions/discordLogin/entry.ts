@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { secrets } from 'base44:runtime';
-import { getSettings } from '../../shared/points.ts';
+import { getSettings, clearSettingsCache } from '../../shared/points.ts';
 import { requiredRoleId, markAccessDenied } from '../../shared/access.ts';
 import { sha256Hex, createSession } from '../../shared/session.ts';
 
@@ -122,6 +122,7 @@ async function verifyMember(b, code: string): Promise<Outcome> {
 
   if (!settings.guild_id && isGuildOwner) {
     await b.asServiceRole.entities.Settings.update(settings.id, { guild_id: guildId });
+    clearSettingsCache();
   }
 
   return { result: 'ok', member_id: member.id, name: profile.discord_name, avatar: profile.avatar_url };

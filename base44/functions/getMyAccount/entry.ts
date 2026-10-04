@@ -15,7 +15,7 @@ export default async function(req) {
     const user = await sessionUser(b, req);
     if (!user) return Response.json({ error: 'Link your Discord first.' }, { status: 401 });
 
-    const settings = await getSettings(b);
+    const settings = await getSettings(b, true);
     // Keep access in step with the member's Discord role.
     const member = await refreshAccess(b, settings, user.member, false);
     if (!member || member.no_access) {

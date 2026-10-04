@@ -14,7 +14,7 @@ import SuitOrder from "./SuitOrder";
 
 // A live Pusoy Dos table. The server deals, checks every play and runs the clock;
 // this page shows what it is told and asks again every second or so.
-const POLL_MS = 1500;
+const POLL_MS = 2000;
 
 function Seat({ s, table, left, canSit, busy, onSit }) {
   if (s.empty) {

@@ -2,7 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { sessionUser } from '../../shared/session.ts';
 import {
   getSettings, getMemberByUserId, getMemberByDiscordId, changePoints, withMemberLock,
-  ALL_GAMES, RANK_TITLE, UserError, errorResponse
+  ALL_GAMES, RANK_TITLE, UserError, errorResponse, clearSettingsCache
 } from '../../shared/points.ts';
 import { pointsWebhookUrl, announceRankings } from '../../shared/discordPost.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
@@ -80,6 +80,7 @@ export default async function(req) {
       const maxB = (update.max_bet ?? s.max_bet) as number;
       if (minB > maxB) throw new UserError("Minimum wager can't be above the maximum.");
       await b.asServiceRole.entities.Settings.update(s.id, update);
+      clearSettingsCache();
       return Response.json({ ok: true });
     }
 

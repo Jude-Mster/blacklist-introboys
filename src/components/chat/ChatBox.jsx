@@ -8,7 +8,7 @@ import RankBadge from "@/components/RankBadge";
 import { cn } from "@/lib/utils";
 
 const PAGE = 40;
-const POLL_MS = 5000;
+const POLL_MS = 8000;
 const ROLE_COLOR = { leader: "text-[#FF4D55]", officer: "text-gold", guild_member: "text-[#FF6B70]", member: "text-[hsl(var(--foreground))]" };
 
 const rows = (res) => (Array.isArray(res) ? res : (res && res.items) || []);
