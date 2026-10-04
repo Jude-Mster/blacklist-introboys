@@ -173,7 +173,7 @@ export default function PusoyTableView({ tableId }) {
     <div className="mx-auto max-w-xl space-y-4">
       <div className="flex items-center justify-between gap-3">
         <Link to="/pusoy" className="flex items-center gap-1 text-sm text-mist hover:text-gold"><ArrowLeft className="h-4 w-4" /> Tables</Link>
-        <p className="text-sm text-mist">Stake <Points value={table.stake} iconSize={12} className="font-bold text-gold" /> per card</p>
+        <p className="text-right text-sm text-mist">Pot money <Points value={table.ante} iconSize={12} className="font-bold text-gold" />{table.stake > 0 && <> · <Points value={table.stake} iconSize={12} className="font-bold text-gold" /> per card</>}</p>
       </div>
 
       <Panel title={table.name}>
@@ -200,7 +200,7 @@ export default function PusoyTableView({ tableId }) {
               <>
                 <p className="font-heading text-lg font-bold text-gold">{myRow && myRow.net > 0 ? "You win!" : `${res.winner_name} wins`}</p>
                 <p className="text-sm text-mist">
-                  {myRow ? (myRow.net > 0 ? <>You won <Points value={myRow.net} className="font-bold text-gold" /></> : <>You pay <Points value={-myRow.net} className="font-bold text-ember" /> for {myRow.left} card{myRow.left === 1 ? "" : "s"}</>) : <>The winner collects <Points value={res.win} className="font-bold text-gold" /></>}
+                  {myRow ? (myRow.net > 0 ? <>You won <Points value={myRow.net} className="font-bold text-gold" /></> : <>You lose <Points value={-myRow.net} className="font-bold text-ember" />{table.stake > 0 && <> (pot money + {myRow.left} card{myRow.left === 1 ? "" : "s"})</>}</>) : <>The winner collects <Points value={res.win} className="font-bold text-gold" /></>}
                 </p>
               </>
             ) : (
@@ -224,7 +224,7 @@ export default function PusoyTableView({ tableId }) {
                 <span className={cn("w-16 shrink-0 text-right font-heading font-bold tabular-nums", r.net > 0 ? "text-gold" : "text-ember")}>{r.net > 0 ? "+" : ""}{r.net.toLocaleString()}</span>
               </li>
             ))}
-            <li className="py-2 text-xs text-mist">Pot {res.pot.toLocaleString()} · {table.cut_pct}% removed from circulation ({res.cut.toLocaleString()})</li>
+            <li className="py-2 text-xs text-mist">Winnings {res.pot.toLocaleString()} · {table.cut_pct}% removed from circulation ({res.cut.toLocaleString()})</li>
           </ul>
         )}
 
@@ -254,11 +254,11 @@ export default function PusoyTableView({ tableId }) {
 
         {!seated && (
           <p className="mt-3 rounded-md border border-bronze/40 bg-black/25 px-3 py-3 text-center text-sm text-mist">
-            {players >= table.seats.length ? "You're watching. The table is full." : `You're watching. Tap an empty seat to join (you need ${(table.stake * 13).toLocaleString()} points).`}
+            {players >= table.seats.length ? "You're watching. The table is full." : `You're watching. Tap an empty seat to join (you need ${table.need.toLocaleString()} points).`}
           </p>
         )}
         {seated && table.status === "playing" && me.in_game && me.out && (
-          <p className="mt-3 rounded-md border border-ember/40 bg-ember/10 px-3 py-3 text-center text-sm text-ember">You ran out of time three turns in a row and forfeited this game. You pay for the cards you held when it ends.</p>
+          <p className="mt-3 rounded-md border border-ember/40 bg-ember/10 px-3 py-3 text-center text-sm text-ember">You ran out of time three turns in a row and forfeited this game.</p>
         )}
         {seated && table.status === "playing" && !me.in_game && (
           <p className="mt-3 rounded-md border border-bronze/40 bg-black/25 px-3 py-3 text-center text-sm text-mist">You're seated. You'll be dealt in when this game ends.</p>
@@ -267,7 +267,7 @@ export default function PusoyTableView({ tableId }) {
         {seated && (
           <>
             <button onClick={standUp} disabled={!!busy} className={cn("btn-bronze mt-3 h-10 w-full text-sm", inGame && confirmLeave && "border-ember text-ember")}>
-              {busy === "leave" ? Spin : inGame ? (confirmLeave ? `Tap again to forfeit and pay ${(hand.length * table.stake).toLocaleString()}` : "Leave and forfeit") : "Stand up"}
+              {busy === "leave" ? Spin : inGame ? (confirmLeave ? `Tap again to forfeit and lose ${(table.ante + hand.length * table.stake).toLocaleString()}` : "Leave and forfeit") : "Stand up"}
             </button>
             {inGame && confirmLeave && (
               <button onClick={() => setConfirmLeave(false)} className="mt-2 w-full text-center text-xs text-mist underline hover:text-gold">Keep playing</button>
@@ -276,7 +276,7 @@ export default function PusoyTableView({ tableId }) {
         )}
 
         <p className="mt-4 text-xs text-mist/80">
-          First to empty their hand wins. Everyone else pays {table.stake.toLocaleString()} for each card left, and {table.cut_pct}% of the winnings is removed from circulation. When a game is dealt, {(table.stake * 13).toLocaleString()} points are held from each player and whatever isn't lost comes straight back. You have {table.turn_seconds} seconds a turn; run out three times in a row, or leave mid-game, and you forfeit and pay for every card you hold.
+          Everyone puts in {table.ante.toLocaleString()} pot money and the first to empty their hand takes it.{table.stake > 0 ? ` Each loser also pays ${table.stake.toLocaleString()} for every card left.` : ""} {table.cut_pct}% of the winnings is removed from circulation. When a game is dealt, {table.need.toLocaleString()} points are held from each player and whatever isn't lost comes straight back. You have {table.turn_seconds} seconds a turn; run out three times in a row, or leave mid-game, and you forfeit: you lose your pot money{table.stake > 0 ? " and pay for every card you hold" : ""}.
         </p>
       </Panel>
     </div>

@@ -5,9 +5,15 @@
     "name": {
       "type": "string"
     },
+    "ante": {
+      "type": "integer",
+      "default": 0,
+      "description": "Pot money: what every player puts in each game. The winner takes it all."
+    },
     "stake": {
       "type": "integer",
-      "description": "Points a loser pays for each card left in hand"
+      "default": 0,
+      "description": "Optional. Points a loser also pays for each card left in hand (0 = pot only)"
     },
     "status": {
       "type": "string",
