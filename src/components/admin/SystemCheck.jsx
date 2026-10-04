@@ -4,13 +4,16 @@ import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import { errorText } from "@/lib/GuildContext";
 
-export const SITE_VERSION = "5.0";
+export const SITE_VERSION = "5.1";
 const CHECKS = [
   { fn: "getMyAccount", label: "Accounts and ranks" },
   { fn: "playGame", label: "Toss, dice, slots and wheel" },
   { fn: "rouletteAction", label: "Live roulette" },
   { fn: "wheelAction", label: "Live Twelve Skies Wheel" },
+  { fn: "blackjackAction", label: "Blackjack table" },
+  { fn: "lucky9Action", label: "Lucky 9 table" },
   { fn: "duelAction", label: "Coin duels" },
+  { fn: "shopAction", label: "Guild shop" },
   { fn: "raffleAction", label: "Raffle" },
   { fn: "chatSend", label: "Chat" },
   { fn: "chatBridge", label: "Discord chat bridge" },
@@ -25,19 +28,29 @@ export default function SystemCheck() {
 
   const run = async () => {
     setRunning(true);
-    const out = await Promise.all(
-      CHECKS.map(async (c) => {
+    // One at a time: asking all of them at once trips the rate limit.
+    const out = [];
+    for (const c of CHECKS) {
+      let row;
+      for (let attempt = 0; attempt < 3 && !row; attempt++) {
         try {
           const res = await base44.functions.invoke(c.fn, { action: "ping" });
           const v = res.data && res.data.version;
-          if (v === SITE_VERSION) return { ...c, ok: true, note: `Up to date (${v})` };
-          return { ...c, ok: false, note: v ? `Running version ${v}, the site needs ${SITE_VERSION}` : "Running an older version" };
+          row = v === SITE_VERSION
+            ? { ...c, ok: true, note: `Up to date (${v})` }
+            : { ...c, ok: false, note: v ? `Running version ${v}, the site needs ${SITE_VERSION}` : "Running an older version" };
         } catch (e) {
           const status = e && e.response && e.response.status;
-          return { ...c, ok: false, note: status === 404 ? "Not published yet" : `Older version or not published (${errorText(e, "no reply")})` };
+          const text = errorText(e, "no reply");
+          const limited = status === 429 || /rate limit/i.test(text);
+          if (limited && attempt < 2) { await new Promise((r) => setTimeout(r, 2000)); continue; }
+          row = { ...c, ok: false, note: limited ? "Too many requests right now. Wait a minute and check again." : status === 404 ? "Not published yet" : `Older version or not published (${text})` };
         }
-      })
-    );
+      }
+      out.push(row);
+      setRows([...out]);
+      await new Promise((r) => setTimeout(r, 300));
+    }
     setRows(out);
     setRunning(false);
   };
