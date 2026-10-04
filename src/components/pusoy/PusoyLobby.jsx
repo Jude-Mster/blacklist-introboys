@@ -15,6 +15,8 @@ export default function PusoyLobby() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const [pot, setPot] = useState("");
+  const [perCard, setPerCard] = useState(false);
   const [stake, setStake] = useState("");
   const [busy, setBusy] = useState("");
   const balance = account.member.points;
@@ -23,15 +25,16 @@ export default function PusoyLobby() {
     try {
       const res = await base44.functions.invoke("pusoyAction", { action: "list" });
       setData(res.data);
-      setStake((s) => (s === "" ? String(res.data.limits.min) : s));
+      setPot((s) => (s === "" ? String(res.data.limits.pot_min) : s));
+      setStake((s) => (s === "" ? "1" : s));
     } catch (e) {
-      setError(errorText(e, "Couldn't open the Pusoy Dos tables."));
-      setData((d) => d || { tables: [], limits: { min: 1, max: 1 } });
+      // A missed background refresh isn't worth an error: keep showing the last list.
+      setData((d) => { if (!d) setError(errorText(e, "Couldn't open the Pusoy Dos tables.")); return d || { tables: [], limits: { pot_min: 1, pot_max: 1, card_max: 1 } }; });
     }
   };
   useEffect(() => {
     load();
-    const t = setInterval(load, 6000);
+    const t = setInterval(load, 10000);
     return () => clearInterval(t);
   }, []);
 
@@ -49,8 +52,12 @@ export default function PusoyLobby() {
 
   if (!data) return <LanternSpinner label="Shuffling the deck" className="py-24" />;
   const { tables, limits } = data;
-  const n = Math.floor(Number(stake));
-  const stakeOk = Number.isInteger(n) && n >= limits.min && n <= limits.max;
+  const a = Math.floor(Number(pot));
+  const potOk = Number.isInteger(a) && a >= limits.pot_min && a <= limits.pot_max;
+  const n = perCard ? Math.floor(Number(stake)) : 0;
+  const stakeOk = !perCard || (Number.isInteger(n) && n >= 1 && n <= limits.card_max);
+  const formOk = potOk && stakeOk;
+  const needNew = a + n * 13;
   const mine = tables.find((t) => t.seated_here);
 
   return (
@@ -58,7 +65,7 @@ export default function PusoyLobby() {
       <header>
         <h1 className="font-heading text-3xl font-extrabold gilt-text">Pusoy Dos</h1>
         <p className="mt-1 text-sm text-mist">
-          Play other members live, 2 to 4 at a table. First to empty their hand wins, and everyone else pays the table stake for each card they still hold.
+          Play other members live, 2 to 4 at a table. Everyone puts in the pot money and the first to empty their hand takes it. Some tables also make the losers pay for each card they still hold.
         </p>
       </header>
 
@@ -72,14 +79,15 @@ export default function PusoyLobby() {
       )}
 
       {tables.map((t) => {
-        const need = t.stake * 13;
+        const need = t.need;
         return (
           <Panel key={t.id} title={t.name}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <dl className="grid grid-cols-3 gap-4 text-sm">
                 <div>
-                  <dt className="text-xs text-mist">Per card</dt>
-                  <dd><Points value={t.stake} className="font-heading font-bold text-gold" /></dd>
+                  <dt className="text-xs text-mist">Pot money</dt>
+                  <dd><Points value={t.ante} className="font-heading font-bold text-gold" /></dd>
+                  <dd className="text-xs text-mist">{t.stake ? <>+ {t.stake.toLocaleString()} per card</> : "Pot only"}</dd>
                 </div>
                 <div>
                   <dt className="text-xs text-mist">Players</dt>
@@ -105,24 +113,45 @@ export default function PusoyLobby() {
                 </div>
               )}
             </div>
-            {!t.seated_here && balance < need && <p className="mt-2 text-xs text-mist">You need {need.toLocaleString()} points to sit here (13 cards × {t.stake}).</p>}
+            {!t.seated_here && balance < need && <p role="alert" className="mt-2 rounded-md border border-ember/40 bg-ember/10 px-3 py-2 text-xs text-ember">You need {need.toLocaleString()} points to play at this table ({t.stake ? <>{t.ante.toLocaleString()} pot money + 13 cards × {t.stake.toLocaleString()}</> : "the pot money"}) and you have {balance.toLocaleString()}.</p>}
           </Panel>
         );
       })}
 
       {!mine && (
         <Panel title="Open a table">
-          <form onSubmit={(e) => { e.preventDefault(); if (stakeOk) run("create", { action: "create", stake: n }); }} className="space-y-3">
+          <form onSubmit={(e) => { e.preventDefault(); if (formOk) run("create", { action: "create", ante: a, stake: n }); }} className="space-y-4">
             <div>
-              <label className="label" htmlFor="pd-stake">Points per card left in hand</label>
-              <input id="pd-stake" type="number" inputMode="numeric" min={limits.min} max={limits.max} className="field" value={stake} onChange={(e) => setStake(e.target.value)} required />
-              <p className="mt-1 text-xs text-mist">
-                Between {limits.min.toLocaleString()} and {limits.max.toLocaleString()}.
-                {stakeOk && <> The most anyone can lose in one game is {(n * 13).toLocaleString()}, and you need that much to sit down.</>}
-              </p>
+              <label className="label" htmlFor="pd-pot">Pot money (each player puts this in)</label>
+              <input id="pd-pot" type="number" inputMode="numeric" min={limits.pot_min} max={limits.pot_max} className="field" value={pot} onChange={(e) => setPot(e.target.value)} required />
+              <p className="mt-1 text-xs text-mist">Between {limits.pot_min.toLocaleString()} and {limits.pot_max.toLocaleString()}. The winner takes everyone's pot money.</p>
             </div>
-            <button type="submit" disabled={!!busy || !stakeOk || balance < n * 13 || data.open === false} className="btn-seal h-11 w-full text-sm">
-              {busy === "create" ? <Loader2 className="h-4 w-4 animate-spin" /> : balance < n * 13 ? "Not enough points for that stake" : "Open table and sit down"}
+            <div className="rounded-md border border-bronze/40 bg-black/25 p-3">
+              <label className="flex cursor-pointer items-start gap-2.5 text-sm">
+                <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#C8161D]" checked={perCard} onChange={(e) => setPerCard(e.target.checked)} />
+                <span>
+                  <span className="font-bold">Losers also pay for cards left in hand</span>
+                  <span className="block text-xs text-mist">Leave this off for a pot-only game.</span>
+                </span>
+              </label>
+              {perCard && (
+                <div className="mt-3">
+                  <label className="label" htmlFor="pd-stake">Value per card left</label>
+                  <input id="pd-stake" type="number" inputMode="numeric" min={1} max={limits.card_max} className="field" value={stake} onChange={(e) => setStake(e.target.value)} required />
+                  <p className="mt-1 text-xs text-mist">Between 1 and {limits.card_max.toLocaleString()}.</p>
+                </div>
+              )}
+            </div>
+            {formOk && (
+              <p className="text-xs text-mist">
+                The most anyone can lose in one game is <span className="font-bold text-[hsl(var(--foreground))]">{needNew.toLocaleString()}</span>{perCard ? <> ({a.toLocaleString()} pot money + 13 cards × {n.toLocaleString()})</> : null}. Every player needs that much to sit down.
+              </p>
+            )}
+            {formOk && balance < needNew && (
+              <p role="alert" className="rounded-md border border-ember/40 bg-ember/10 px-3 py-2 text-xs text-ember">You need {needNew.toLocaleString()} points for this table and you have {balance.toLocaleString()}.</p>
+            )}
+            <button type="submit" disabled={!!busy || !formOk || balance < needNew || data.open === false} className="btn-seal h-11 w-full text-sm">
+              {busy === "create" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Open table and sit down"}
             </button>
           </form>
         </Panel>
@@ -130,13 +159,13 @@ export default function PusoyLobby() {
 
       <Panel title="How to play">
         <ul className="list-disc space-y-1.5 pl-5 text-sm text-mist">
-          <li>Everyone is dealt 13 cards. Whoever holds the lowest card dealt goes first and must play it.</li>
-          <li>Play a single card, a pair, three of a kind, or a five-card hand. The next player must beat it with the same number of cards, or pass.</li>
-          <li>Five-card hands, low to high: straight, flush, full house, four of a kind (plus any card), straight flush. Straights run from 3 up to Ace; a 2 can't be in a straight.</li>
-          <li>Ties on rank are settled by suit: Spade beats Heart beats Club beats Diamond.</li>
-          <li>When everyone else passes, the last player to play leads anything they like.</li>
-          <li>You have 20 seconds a turn. Run out and your turn is skipped. Three times in a row, or leaving mid-game, forfeits: you're out of the game and pay for every card you hold.</li>
-          <li>The first player out wins. Everyone else pays the stake for each card left, and 2% of the winnings is removed from circulation.</li>
+          <li>Everyone is dealt 13 cards. Each player's highest card is shown on the table, and whoever shows the highest goes first. The cards stay in their hands.</li>
+          <li>You play one card at a time. The first card sets the suit in game.</li>
+          <li>The next player must play a card of that suit, or the same number in another suit, which changes the suit. Example: on the 4♠ you can play any spade, or the 4♣ to switch everyone to clubs.</li>
+          <li>Nothing to play? Pass. When everyone else passes, the last player to play leads any card and sets a new suit.</li>
+          <li>Every card played stays on the table so you can see what's gone.</li>
+          <li>You have 20 seconds a turn. Run out and your turn is skipped. Three times in a row, or leaving mid-game, forfeits: you're out of the game, lose your pot money and pay for any cards you hold.</li>
+          <li>The first player out wins the pot: everyone else's pot money. At tables with a card value, each loser also pays that value for every card left. 2% of the winnings is removed from circulation.</li>
         </ul>
       </Panel>
     </div>

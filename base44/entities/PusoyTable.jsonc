@@ -5,9 +5,15 @@
     "name": {
       "type": "string"
     },
+    "ante": {
+      "type": "integer",
+      "default": 0,
+      "description": "Pot money: what every player puts in each game. The winner takes it all."
+    },
     "stake": {
       "type": "integer",
-      "description": "Points a loser pays for each card left in hand"
+      "default": 0,
+      "description": "Optional. Points a loser also pays for each card left in hand (0 = pot only)"
     },
     "status": {
       "type": "string",
@@ -46,7 +52,23 @@
     "last": {
       "type": "object",
       "additionalProperties": true,
-      "description": "The play to beat: { seat, cards, label }. Empty when the turn player leads."
+      "description": "The card on top: { seat, cards: [card], label }. Empty when the turn player leads."
+    },
+    "pile": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "description": "Every card played this game, in order: { seat, card }"
+    },
+    "opening": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "description": "Each player's highest card, shown at the deal to decide who goes first: { seat, card }"
     },
     "first": {
       "type": "boolean",

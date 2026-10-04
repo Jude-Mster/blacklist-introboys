@@ -1,7 +1,14 @@
-// Pusoy Dos rules. Pure functions: no database, no clock except the `now` passed in.
+// Pusoy Dos, guild rules. Pure functions: no database, no clock except the `now` passed in.
 // Cards are two characters, rank then suit: "3d", "Ts", "2h".
-//   Rank order, low to high: 3 4 5 6 7 8 9 10 J Q K A 2
-//   Suit order, low to high: Diamond, Club, Heart, Spade
+//   - Singles only. Everyone is dealt 13 cards.
+//   - Each player's highest card is shown; the highest of those goes first. (This is
+//     the only place card and suit ranking matter: 2 high ... 3 low, then
+//     Spade > Heart > Club > Diamond.) The cards stay in their hands.
+//   - The first card played sets the suit in game. The next player must play a card
+//     of that suit, or the same number in another suit, which changes the suit.
+//   - Can't or won't play: pass. When everyone else passes, the last player to play
+//     leads any card and sets a new suit.
+//   - Every card played stays on the table (the pile). First to empty their hand wins.
 import { randInt } from './points.ts';
 
 export const RANK_ORDER = '3456789TJQKA2';
@@ -21,44 +28,11 @@ export const cardValue = (c: string) => rankOf(c) * 4 + suitOf(c);
 export const sortCards = (cards: string[]) => [...cards].sort((a, b) => cardValue(a) - cardValue(b));
 const validCard = (c) => typeof c === 'string' && c.length === 2 && rankOf(c) >= 0 && suitOf(c) >= 0;
 
-const FIVE = ['', 'Straight', 'Flush', 'Full house', 'Four of a kind', 'Straight flush'];
-
-// What a set of cards is, or null if it isn't a legal play.
-// { type: 'single'|'pair'|'triple'|'five', cat (five-card hands: 1..5), key (higher wins), label }
-export function classify(input: string[]) {
-  if (!Array.isArray(input) || !input.every(validCard) || new Set(input).size !== input.length) return null;
-  const cards = sortCards(input);
-  const n = cards.length;
-  const top = cards[n - 1];
-  const sameRank = cards.every((c) => c[0] === cards[0][0]);
-  if (n === 1) return { type: 'single', cat: 0, key: cardValue(top), label: 'Single' };
-  if (n === 2) return sameRank ? { type: 'pair', cat: 0, key: cardValue(top), label: 'Pair' } : null;
-  if (n === 3) return sameRank ? { type: 'triple', cat: 0, key: rankOf(top), label: 'Three of a kind' } : null;
-  if (n !== 5) return null;
-
-  const counts: Record<string, number> = {};
-  for (const c of cards) counts[c[0]] = (counts[c[0]] || 0) + 1;
-  const groups = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  const flush = cards.every((c) => c[1] === cards[0][1]);
-  // A straight runs in rank order from 3 up to Ace. A 2 can't be part of one.
-  const ranks = cards.map(rankOf);
-  const straight = groups.length === 5 && !ranks.includes(RANK_ORDER.indexOf('2')) && ranks[4] - ranks[0] === 4;
-  let cat = 0, key = 0;
-  if (straight && flush) { cat = 5; key = cardValue(top); }
-  else if (groups[0][1] === 4) { cat = 4; key = RANK_ORDER.indexOf(groups[0][0]); }
-  else if (groups[0][1] === 3 && groups[1][1] === 2) { cat = 3; key = RANK_ORDER.indexOf(groups[0][0]); }
-  else if (flush) { cat = 2; key = cardValue(top); }
-  else if (straight) { cat = 1; key = cardValue(top); }
-  else return null;
-  return { type: 'five', cat, key, label: FIVE[cat] };
+// May `card` be played on `top`? Same suit, or the same number (which changes the suit).
+export function canFollow(card: string, top: string) {
+  return validCard(card) && validCard(top) && card !== top && (card[1] === top[1] || card[0] === top[0]);
 }
-
-// Does play `a` beat play `b`? Same number of cards only.
-export function beats(a, b) {
-  if (!a || !b || a.type !== b.type) return false;
-  if (a.cat !== b.cat) return a.cat > b.cat;
-  return a.key > b.key;
-}
+export const highestOf = (cards: string[]) => sortCards(cards)[cards.length - 1];
 
 export function shuffledDeck() {
   const deck: string[] = [];
@@ -72,6 +46,8 @@ const taken = (s) => !!(s && s.member_id);
 const playing = (s) => taken(s) && s.in_game;
 // Still holding cards and taking turns (not forfeited).
 const active = (s) => playing(s) && !s.out;
+// The most one player can lose in a game: the pot money plus all 13 cards.
+export const maxLoss = (t) => (t.ante || 0) + HAND_SIZE * (t.stake || 0);
 export const seatedCount = (t) => t.seats.filter((s) => taken(s) && !s.left).length;
 
 function pushLog(t, entry) {
@@ -86,23 +62,29 @@ function setTurn(t, seat: number, now: number) {
 // Deal a new game to the seats in `seatNos` (already charged their escrow).
 export function deal(t, seatNos: number[], now: number, deck = shuffledDeck()) {
   t.hands = {};
-  let low = null, lowSeat = -1;
+  // Everyone shows their highest card; the highest of those goes first.
+  const opening = [];
+  let best = null, bestSeat = -1;
   seatNos.forEach((i, k) => {
     const hand = sortCards(deck.slice(k * HAND_SIZE, (k + 1) * HAND_SIZE));
     t.hands[i] = hand;
     Object.assign(t.seats[i], { in_game: true, count: HAND_SIZE, passed: false, out: false, left: false, timeouts: 0, due: 0 });
-    if (low === null || cardValue(hand[0]) < cardValue(low)) { low = hand[0]; lowSeat = i; }
+    const high = highestOf(hand);
+    opening.push({ seat: i, card: high });
+    if (best === null || cardValue(high) > cardValue(best)) { best = high; bestSeat = i; }
   });
+  t.opening = opening;
+  t.pile = [];
   t.status = 'playing';
   t.game_no = (t.game_no || 0) + 1;
   t.last = {};
-  t.first = true;
-  t.low_card = low;
+  t.first = false;
+  t.low_card = null;
   t.result = {};
   t.start_at = null;
   t.next_at = null;
   t.log = [];
-  setTurn(t, lowSeat, now);
+  setTurn(t, bestSeat, now);
 }
 
 function finish(t, winner: number, now: number) {
@@ -112,7 +94,8 @@ function finish(t, winner: number, now: number) {
     const s = t.seats[i];
     if (!playing(s)) continue;
     const left = (t.hands[i] || []).length;
-    const owes = i === winner ? 0 : left * t.stake;
+    // A loser gives up their pot money, plus the card value for each card left (if the table has one).
+    const owes = i === winner ? 0 : (t.ante || 0) + left * (t.stake || 0);
     pot += owes;
     rows.push({ seat: i, member_id: s.member_id, name: s.name, left, owes, cards: t.hands[i] || [] });
   }
@@ -156,33 +139,34 @@ export function forfeit(t, seat: number, now: number) {
   const rest = t.seats.map((x, i) => (active(x) ? i : -1)).filter((i) => i >= 0);
   if (rest.length === 1) return finish(t, rest[0], now);
   if (t.turn === seat) {
-    if (t.first) t.first = false; // the opener left: no opening-card rule
     advance(t, seat, now);
   }
 }
+
+const SUIT_NAME = { s: 'Spades', h: 'Hearts', c: 'Clubs', d: 'Diamonds' };
 
 // Throws Error(message) for an illegal move; the message is shown to the player.
 export function play(t, seat: number, cards: string[], now: number, byTimer = false) {
   if (t.status !== 'playing') throw new Error('No game is being played.');
   if (t.turn !== seat) throw new Error("It isn't your turn.");
   const hand: string[] = t.hands[seat] || [];
-  const kind = classify(cards);
-  if (!kind) throw new Error("That isn't a valid play. Play a single, a pair, three of a kind, or a five-card hand.");
-  if (!cards.every((c) => hand.includes(c))) throw new Error("You don't hold those cards.");
-  if (t.first && !cards.includes(t.low_card)) throw new Error('The opening play must include the lowest card dealt.');
-  const toBeat = t.last && t.last.cards ? classify(t.last.cards) : null;
-  if (toBeat) {
-    if (cards.length !== t.last.cards.length) throw new Error(`Play ${t.last.cards.length} card${t.last.cards.length > 1 ? 's' : ''} to beat this, or pass.`);
-    if (!beats(kind, toBeat)) throw new Error("That doesn't beat the cards on the table.");
+  if (!Array.isArray(cards) || cards.length !== 1 || !validCard(cards[0])) throw new Error('Play one card at a time.');
+  const card = cards[0];
+  if (!hand.includes(card)) throw new Error("You don't hold that card.");
+  const top = t.last && t.last.cards ? t.last.cards[0] : null;
+  if (top && !canFollow(card, top)) {
+    const rank = top[0] === 'T' ? '10' : top[0];
+    throw new Error(`${SUIT_NAME[top[1]]} are in game. Play one, or play a ${rank} of another suit to change the suit.`);
   }
-  t.hands[seat] = hand.filter((c) => !cards.includes(c));
+  t.hands[seat] = hand.filter((c) => c !== card);
   const s = t.seats[seat];
   s.count = t.hands[seat].length;
   if (!byTimer) s.timeouts = 0;
   for (const x of t.seats) if (taken(x)) x.passed = false;
-  t.first = false;
-  t.last = { seat, cards: sortCards(cards), label: kind.label };
-  pushLog(t, { seat, name: s.name, cards: t.last.cards, label: kind.label });
+  const label = !top ? 'Lead' : card[1] === top[1] ? 'Followed suit' : 'Changed suit';
+  t.last = { seat, cards: [card], label };
+  t.pile = [...(t.pile || []), { seat, card }]; // every card played stays on the table
+  pushLog(t, { seat, name: s.name, cards: [card], label });
   if (s.count === 0) return finish(t, seat, now);
   advance(t, seat, now);
 }
@@ -190,7 +174,7 @@ export function play(t, seat: number, cards: string[], now: number, byTimer = fa
 export function pass(t, seat: number, now: number, byTimer = false) {
   if (t.status !== 'playing') throw new Error('No game is being played.');
   if (t.turn !== seat) throw new Error("It isn't your turn.");
-  if (!(t.last && t.last.cards)) throw new Error("You're leading: play something.");
+  if (!(t.last && t.last.cards)) throw new Error("You're leading: play a card.");
   const s = t.seats[seat];
   s.passed = true;
   if (!byTimer) s.timeouts = 0;
@@ -206,7 +190,6 @@ export function timeoutMove(t, now: number) {
   s.timeouts = (s.timeouts || 0) + 1;
   if (s.timeouts >= MAX_TIMEOUTS) return forfeit(t, seat, now);
   if (t.last && t.last.cards) return pass(t, seat, now, true);
-  t.first = false;
   pushLog(t, { seat, name: s.name, skipped: true });
   advance(t, seat, now);
 }
@@ -225,7 +208,7 @@ export function tick(t, now: number): boolean | 'deal' {
     if (t.next_at && Date.parse(t.next_at) <= now) {
       // Back to waiting. Players who left or went idle give up their seats.
       t.seats = t.seats.map((s) => (taken(s) && !s.left && !s.out ? { member_id: s.member_id, name: s.name, avatar: s.avatar, role: s.role } : {}));
-      Object.assign(t, { status: 'waiting', hands: {}, last: {}, turn: -1, deadline: null, next_at: null, start_at: null, first: false });
+      Object.assign(t, { status: 'waiting', hands: {}, pile: [], opening: [], last: {}, turn: -1, deadline: null, next_at: null, start_at: null, first: false });
       changed = true;
     } else return false;
   }
@@ -243,9 +226,10 @@ export function viewFor(t, memberId: string, now: number) {
   const done = t.status === 'finished';
   return {
     table: {
-      id: t.id, name: t.name, stake: t.stake, status: t.status, game_no: t.game_no || 0, turn: t.turn,
+      id: t.id, name: t.name, ante: t.ante || 0, stake: t.stake || 0, need: maxLoss(t), status: t.status, game_no: t.game_no || 0, turn: t.turn,
       deadline: t.deadline || null, start_at: t.start_at || null, next_at: t.next_at || null, server_now: iso(now),
-      first: !!t.first, low_card: t.status === 'playing' && t.first ? t.low_card : null,
+      suit: t.status === 'playing' && t.last && t.last.cards ? t.last.cards[0][1] : null,
+      pile: t.status === 'waiting' ? [] : (t.pile || []).map((x) => x.card), opening: t.status === 'waiting' ? [] : (t.opening || []),
       last: t.last && t.last.cards ? t.last : null, log: t.log || [], turn_seconds: TURN_SECONDS, cut_pct: HOUSE_CUT_PCT,
       seats: t.seats.map((s, i) => (taken(s)
         ? { seat: i, empty: false, name: s.name, avatar: s.avatar, role: s.role, mine: i === mySeat, in_game: !!s.in_game, count: s.in_game ? s.count : null, passed: !!s.passed, out: !!s.out, left: !!s.left }

@@ -1,7 +1,7 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 
-// The card order for this table, shown wherever the game is played.
+// The card order, shown wherever the game is played. It only decides who goes first.
 export default function SuitOrder({ className }) {
   return (
     <div className={cn("rounded-md border border-bronze/40 bg-black/30 px-3 py-2 text-center text-xs text-mist", className)}>
@@ -17,7 +17,7 @@ export default function SuitOrder({ className }) {
           <span className="text-ember">♦ Diamond</span>
         </span>
       </p>
-      <p className="mt-0.5">Cards: 2 is highest, then A, K, Q, J, 10 … down to 3.</p>
+      <p className="mt-0.5">Cards: 2 is highest, then A, K, Q, J, 10 … down to 3. This order only decides who goes first.</p>
     </div>
   );
 }
