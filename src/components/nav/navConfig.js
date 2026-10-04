@@ -8,6 +8,12 @@ export const PROFILE = { id: "profile", to: "/profile", label: "Profile", short:
 export const ADMIN = { id: "admin", to: "/admin", label: "Admin hall", short: "Admin", icon: Shield };
 export const GAMES_HUB = { id: "games", to: "/games", label: "Games", short: "Games", icon: Swords };
 export const POKER = { id: "poker", to: "/poker", label: "Poker room", short: "Poker", icon: Spade };
+export const PUSOY = { id: "pusoy", to: "/pusoy", label: "Pusoy Dos", short: "Pusoy", icon: Spade };
+// Live tables with their own pages, shown after the other games when they're open.
+export function tableLinks(settings) {
+  const open = (settings && settings.games_enabled) || ["poker", "pusoy"];
+  return [POKER, PUSOY].filter((t) => open.includes(t.id));
+}
 export const CHAT = { id: "chat", label: "Chat", short: "Chat", icon: MessageSquare };
 
 // Games shown in the sidebar, in the order members see them.

@@ -8,7 +8,7 @@ import RankBadge from "@/components/RankBadge";
 import { Points } from "@/components/SealLogo";
 import { useGuild } from "@/lib/GuildContext";
 import { GAME_ICONS } from "@/lib/gameIcons";
-import { HOME, GAMES_HUB, POKER, RANKINGS, CHAT, RAFFLE, SHOP, GUIDE, PROFILE, ADMIN, gameLinks, isActive, isAdminRole } from "./navConfig";
+import { HOME, GAMES_HUB, POKER, RANKINGS, CHAT, RAFFLE, SHOP, GUIDE, PROFILE, ADMIN, gameLinks, isActive, isAdminRole, tableLinks } from "./navConfig";
 import { cn } from "@/lib/utils";
 
 // Phone navigation. Four destinations within thumb reach plus "More", which
@@ -116,7 +116,7 @@ export default function MobileTabBar({ onChat, chatOpen, unread }) {
 
             <p className="mb-1.5 mt-5 text-xs font-medium uppercase tracking-wider text-mist">Games</p>
             <ul className="overflow-hidden rounded-lg border border-bronze">
-              {[...gameLinks(settings), { ...POKER, label: "Poker Room", id: "poker" }].map((g) => (
+              {[...gameLinks(settings), ...tableLinks(settings).map((t) => (t.id === "poker" ? { ...t, label: "Poker Room" } : t))].map((g) => (
                 <li key={g.id} className="border-b border-bronze/60 last:border-b-0">
                   <Link to={g.to} className="flex h-[52px] items-center gap-3 bg-black/40 px-3 active:bg-white/10">
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center">{GAME_ICONS[g.id]}</span>

@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useGuild } from "@/lib/GuildContext";
 import { GAME_ICONS } from "@/lib/gameIcons";
-import { HOME, RANKINGS, PROFILE, ADMIN, POKER, CHAT, RAFFLE, SHOP, GUIDE, gameLinks, isActive, isAdminRole } from "./navConfig";
+import { HOME, RANKINGS, PROFILE, ADMIN, CHAT, RAFFLE, SHOP, GUIDE, gameLinks, isActive, isAdminRole, tableLinks } from "./navConfig";
 import { cn } from "@/lib/utils";
 import { base44 } from "@/api/base44Client";
 
@@ -15,7 +15,6 @@ export default function Sidebar({ collapsed, onToggle, onChat, chatOpen, unread 
   const member = account && account.linked ? account.member : null;
   const wide = !collapsed; // labels show only on lg+ and only when not collapsed
   const games = gameLinks(settings);
-  const pokerOpen = !settings || (settings.games_enabled || []).includes("poker");
   const [raffleOpen, setRaffleOpen] = useState(false);
 
   useEffect(() => {
@@ -44,7 +43,9 @@ export default function Sidebar({ collapsed, onToggle, onChat, chatOpen, unread 
           {games.map((g) => (
             <Item key={g.id} item={g} glyph={GAME_ICONS[g.id]} active={isActive(g, location)} wide={wide} />
           ))}
-          {pokerOpen && <Item item={POKER} glyph={GAME_ICONS.poker} active={isActive(POKER, location)} wide={wide} />}
+          {tableLinks(settings).map((t) => (
+            <Item key={t.id} item={t} glyph={GAME_ICONS[t.id]} active={isActive(t, location)} wide={wide} />
+          ))}
         </Group>
 
         <Group label="Guild" wide={wide}>
