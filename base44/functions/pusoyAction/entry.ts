@@ -3,14 +3,13 @@ import { sessionUser } from '../../shared/session.ts';
 import { getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, UserError, errorResponse } from '../../shared/points.ts';
 import { postFeed } from '../../shared/feed.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
-import { SEATS, HAND_SIZE, START_SECONDS, FULL_START_SECONDS, deal, play, pass, forfeit, tick, viewFor, seatedCount, maxLoss } from '../../shared/pusoy.ts';
+import { SEATS, HAND_SIZE, START_SECONDS, FULL_START_SECONDS, deal, play, pass, forfeit, tick, viewFor, seatedCount } from '../../shared/pusoy.ts';
 
 // Pusoy Dos: members play each other. The loser pays the winner for every card
 // left in hand; 2% of what the winner collects is removed from circulation.
 //
-// Two kinds of table: pot only, or pot plus a value per card left in hand.
-// Money: when a game is dealt every player puts aside the most they can lose (the pot
-// money plus 13 x the card value). When it ends each player gets that back, less what they owe or plus what
+// Money: when a game is dealt every player puts 13 x stake aside (the most they can
+// lose). When it ends each player gets that back, less what they owe or plus what
 // they won. Nothing is ever paid from a balance that might not be there.
 //
 // Everything that changes a table runs under that table's lock. Lock order is
@@ -22,13 +21,12 @@ const LOCK_MS = 60000;
 const iso = (ms: number) => new Date(ms).toISOString();
 const taken = (s) => !!(s && s.member_id);
 const load = (row) => ({ ...row, seats: Array.from({ length: SEATS }, (_, i) => ({ ...((row.seats || [])[i] || {}) })), hands: { ...(row.hands || {}) }, last: row.last || {}, result: row.result || {}, log: row.log || [] });
-const FIELDS = ['name', 'ante', 'stake', 'status', 'game_no', 'seats', 'hands', 'turn', 'deadline', 'last', 'first', 'low_card', 'start_at', 'next_at', 'result', 'log', 'empty_since'];
+const FIELDS = ['name', 'stake', 'status', 'game_no', 'seats', 'hands', 'turn', 'deadline', 'last', 'first', 'low_card', 'start_at', 'next_at', 'result', 'log', 'empty_since'];
 
-// Pot money follows the site's wager limits. The card value is optional (0 = pot only).
 export const stakeLimits = (settings) => {
-  const potMax = Math.max(1, Math.floor(Number(settings.max_bet) || 0));
-  const potMin = Math.min(potMax, Math.max(1, Math.ceil(Number(settings.min_bet) || 0)));
-  return { pot_min: potMin, pot_max: potMax, card_max: Math.max(1, Math.floor(potMax / HAND_SIZE)) };
+  const max = Math.max(1, Math.floor((Number(settings.max_bet) || 0) / HAND_SIZE));
+  const min = Math.min(max, Math.max(1, Math.ceil((Number(settings.min_bet) || 0) / HAND_SIZE)));
+  return { min, max };
 };
 
 export default async function(req) {
@@ -70,7 +68,7 @@ export default async function(req) {
     // Take 13 x stake from everyone seated, then deal. Anyone who can't cover it stands up.
     const dealGame = async (t, now) => {
       if (!open) { t.start_at = null; await save(t); return; }
-      const escrow = maxLoss(t);
+      const escrow = HAND_SIZE * t.stake;
       const inSeats: number[] = [];
       for (let i = 0; i < SEATS; i++) {
         const s = t.seats[i];
@@ -113,7 +111,7 @@ export default async function(req) {
         const wager = row.net < 0 ? -row.net : 0;
         await postFeed(b, { id: s.member_id, discord_name: s.name, avatar_url: s.avatar, role: s.role }, {
           game: 'pusoy', game_name: NAME, wager, payout: row.net > 0 ? row.net : 0,
-          detail: row.net > 0 ? `Won at ${t.name}` : `Lost with ${row.left} card${row.left === 1 ? '' : 's'} left`
+          detail: row.net > 0 ? `Won at ${t.name}` : `${row.left} card${row.left === 1 ? '' : 's'} left`
         });
       }
     };
@@ -155,14 +153,9 @@ export default async function(req) {
       }
     };
     const chair = () => ({ member_id: me.id, name: me.discord_name || me.discord_id, avatar: me.avatar_url || '', role: me.role });
-    // Nobody sits down unless they can cover the most they could lose.
-    const canAfford = async (t) => {
+    const canAfford = async (stake: number) => {
       const m = await M.get(me.id);
-      const need = maxLoss(t), have = m.points || 0;
-      if (have < need) {
-        const parts = t.stake ? `${t.ante.toLocaleString()} pot money + 13 cards × ${t.stake.toLocaleString()}` : `the pot money`;
-        throw new UserError(`You need ${need.toLocaleString()} points to play at this table (${parts}) and you have ${have.toLocaleString()}.`);
-      }
+      if ((m.points || 0) < stake * HAND_SIZE) throw new UserError(`You need ${(stake * HAND_SIZE).toLocaleString()} points to sit here (13 cards × ${stake}).`);
     };
 
     // ---------- lobby ----------
@@ -180,27 +173,25 @@ export default async function(req) {
           }).catch(() => {});
           continue;
         }
-        tables.push({ id: row.id, name: row.name, ante: row.ante || 0, stake: row.stake || 0, need: maxLoss(row), status: row.status, players: (row.seats || []).filter((s) => taken(s) && !s.left).length, max_seats: SEATS, seated_here: seatedAt(row, me.id) });
+        tables.push({ id: row.id, name: row.name, stake: row.stake, status: row.status, players: (row.seats || []).filter((s) => taken(s) && !s.left).length, max_seats: SEATS, seated_here: seatedAt(row, me.id) });
       }
-      tables.sort((x, y) => x.need - y.need);
+      tables.sort((x, y) => x.stake - y.stake);
       return Response.json({ open, tables, limits, max_tables: MAX_TABLES });
     }
 
     if (action === 'create') {
       if (!open) throw new UserError(`${NAME} is closed right now.`);
       if (me.banned) throw new UserError('You are banned from the games.', 403);
-      const ante = Math.floor(Number(p.ante));
-      if (!Number.isInteger(ante) || ante < limits.pot_min || ante > limits.pot_max) throw new UserError(`Set the pot money between ${limits.pot_min} and ${limits.pot_max} points.`);
-      const stake = p.stake === undefined || p.stake === null || p.stake === '' ? 0 : Math.floor(Number(p.stake));
-      if (!Number.isInteger(stake) || stake < 0 || stake > limits.card_max) throw new UserError(`Set the card value between 1 and ${limits.card_max} points, or leave it off.`);
-      await canAfford({ ante, stake });
+      const stake = Math.floor(Number(p.stake));
+      if (!Number.isInteger(stake) || stake < limits.min || stake > limits.max) throw new UserError(`Set the stake between ${limits.min} and ${limits.max} points per card.`);
+      await canAfford(stake);
       // One at a time, so two members can't both take the last table slot or one member open two.
       const row = await withRecordLock(b, 'PusoyLobby', 'all', async () => {
         await oneTableOnly();
         if ((await allTables()).length >= MAX_TABLES) throw new UserError('Every table is in use. Join one, or wait for a table to close.');
         const seats = Array.from({ length: SEATS }, () => ({}));
         seats[0] = chair();
-        return await T.create({ name: `${chair().name}'s table`.slice(0, 40), ante, stake, status: 'waiting', game_no: 0, seats, hands: {}, turn: -1, last: {}, first: false, result: {}, log: [] });
+        return await T.create({ name: `${chair().name}'s table`.slice(0, 40), stake, status: 'waiting', game_no: 0, seats, hands: {}, turn: -1, last: {}, first: false, result: {}, log: [] });
       });
       return Response.json({ ok: true, id: row.id });
     }
@@ -212,8 +203,8 @@ export default async function(req) {
       let row;
       try { row = await T.get(tableId); } catch { throw new UserError('That table has closed.', 404); }
       const t = needsTick(row) ? await withTable(tableId) : load(row);
-      // No extra read for the balance: the page refreshes it when a game ends.
-      return Response.json({ open, ...viewFor(t, me.id, Date.now()) });
+      const m = await M.get(me.id);
+      return Response.json({ open, ...viewFor(t, me.id, Date.now()), balance: m.points || 0 });
     }
 
     if (action === 'sit') {
@@ -223,7 +214,7 @@ export default async function(req) {
         await oneTableOnly(tableId);
         return withTable(tableId, async (t, now) => {
           if (t.seats.some((s) => taken(s) && s.member_id === me.id)) throw new UserError("You're already at this table.");
-          await canAfford(t);
+          await canAfford(t.stake);
           const want = Number.isInteger(p.seat) ? p.seat : t.seats.findIndex((s) => !taken(s));
           if (want < 0 || want >= SEATS) throw new UserError('The table is full.');
           if (taken(t.seats[want])) throw new UserError('That seat was just taken. Pick another.');

@@ -72,8 +72,6 @@ const taken = (s) => !!(s && s.member_id);
 const playing = (s) => taken(s) && s.in_game;
 // Still holding cards and taking turns (not forfeited).
 const active = (s) => playing(s) && !s.out;
-// The most one player can lose in a game: the pot money plus all 13 cards.
-export const maxLoss = (t) => (t.ante || 0) + HAND_SIZE * (t.stake || 0);
 export const seatedCount = (t) => t.seats.filter((s) => taken(s) && !s.left).length;
 
 function pushLog(t, entry) {
@@ -114,8 +112,7 @@ function finish(t, winner: number, now: number) {
     const s = t.seats[i];
     if (!playing(s)) continue;
     const left = (t.hands[i] || []).length;
-    // A loser gives up their pot money, plus the card value for each card left (if the table has one).
-    const owes = i === winner ? 0 : (t.ante || 0) + left * (t.stake || 0);
+    const owes = i === winner ? 0 : left * t.stake;
     pot += owes;
     rows.push({ seat: i, member_id: s.member_id, name: s.name, left, owes, cards: t.hands[i] || [] });
   }
@@ -246,7 +243,7 @@ export function viewFor(t, memberId: string, now: number) {
   const done = t.status === 'finished';
   return {
     table: {
-      id: t.id, name: t.name, ante: t.ante || 0, stake: t.stake || 0, need: maxLoss(t), status: t.status, game_no: t.game_no || 0, turn: t.turn,
+      id: t.id, name: t.name, stake: t.stake, status: t.status, game_no: t.game_no || 0, turn: t.turn,
       deadline: t.deadline || null, start_at: t.start_at || null, next_at: t.next_at || null, server_now: iso(now),
       first: !!t.first, low_card: t.status === 'playing' && t.first ? t.low_card : null,
       last: t.last && t.last.cards ? t.last : null, log: t.log || [], turn_seconds: TURN_SECONDS, cut_pct: HOUSE_CUT_PCT,
