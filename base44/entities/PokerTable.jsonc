@@ -25,6 +25,13 @@
       "type": "integer",
       "default": 6
     },
+    "cashouts": {
+      "type": "array",
+      "description": "Points owed to players who left: { member_id, name, amount, ref }. Removed once paid.",
+      "items": {
+        "type": "object"
+      }
+    },
     "seats": {
       "type": "array",
       "description": "One object per seat; an empty object is an open seat. Never contains hole cards.",
