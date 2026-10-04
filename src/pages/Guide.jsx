@@ -22,7 +22,13 @@ const PAGES = [
   { id: "daily-quest", label: "Daily Quest" },
   { id: "login-reward", label: "Monthly Login Reward" },
   { id: "mount", label: "Mount" },
-  { id: "pet", label: "Pets" }
+  { id: "pet", label: "Pets" },
+  { id: "golden-charm", label: "Gold Plate Scroll" },
+  { id: "outpost-capture", label: "Dragonfall Outpost" },
+  { id: "highland-capture", label: "Highlands" },
+  { id: "title", label: "Title" },
+  { id: "halo", label: "Halo" },
+  { id: "costume", label: "Costume" }
 ];
 
 // The official Wuxen2 wiki, shown inside the guild site, with the live war clock on top.
