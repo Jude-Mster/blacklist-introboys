@@ -48,7 +48,7 @@ export default function usePokerTable(tableId) {
     } catch {
       /* polling below keeps things moving */
     }
-    const poll = setInterval(refresh, 5000);
+    const poll = setInterval(refresh, 2000); // live updates aren't guaranteed, so this is what keeps the table moving
     return () => {
       clearInterval(poll);
       clearTimeout(timer);

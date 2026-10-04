@@ -120,6 +120,32 @@ export function errorResponse(e) {
   return Response.json({ error: e && e.message ? e.message : "Something went wrong." }, { status: 500 });
 }
 
+// ---------- Clearing a saved date ----------
+// Saving "no date" as null is not reliable on every store: a field set to null can be
+// left holding its old value. So an empty date is written as the year-1970 date and
+// read back as null. Wrap an entity with this and the rest of the code can keep using null.
+const NO_DATE = new Date(0).toISOString();
+export function nullSafe(E, dateFields: string[]) {
+  const out = (row) => {
+    if (!row || typeof row !== 'object') return row;
+    const r = { ...row };
+    for (const f of dateFields) if (r[f] && !(Date.parse(r[f]) > 0)) r[f] = null;
+    return r;
+  };
+  const inn = (d) => {
+    const r = { ...d };
+    for (const f of dateFields) if (f in r && !r[f]) r[f] = NO_DATE;
+    return r;
+  };
+  return {
+    get: async (id) => out(await E.get(id)),
+    filter: async (q, o) => { const res = await E.filter(q, o); return { ...res, items: (res.items || []).map(out) }; },
+    create: async (d) => out(await E.create(inn(d))),
+    update: async (id, d) => out(await E.update(id, inn(d))),
+    delete: (id) => E.delete(id)
+  };
+}
+
 // ---------- Record locks ----------
 // A real mutex (Lamport's bakery algorithm) on top of the Lock entity. It needs
 // nothing atomic from the platform, only that a row we wrote can be read back.
