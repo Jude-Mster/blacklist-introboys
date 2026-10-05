@@ -17,7 +17,8 @@ const GAME = 'dragondice';
 const BET_SECONDS = 15;
 const ROLL_SECONDS = 4;   // length of the dice animation on the page (ROLL_MS in SicBo.jsx)
 const RESULT_SECONDS = ROLL_SECONDS + 4;
-const CLOSE_MARGIN_MS = 1500; // bets stop a moment before the deadline
+const ARRIVE_MARGIN_MS = 200; // a chip must reach the server this long before the close
+const CLOSE_MARGIN_MS = 1500; // (kept for reference: the old cut-off, measured when the bet was processed) // bets stop a moment before the deadline
 const SETTLE_LOCK_MS = 120000; // paying out a full table can take a while; nobody else may settle meanwhile
 const NAME = SICBO_NAME;
 
@@ -44,6 +45,16 @@ async function advance(b, settings) {
     if (t.status === 'betting' && Date.parse(t.bets_close_at) <= now) {
       t = await settle(b, t, now, settings);
     } else if (t.status === 'settled' && (!t.next_at || Date.parse(t.next_at) <= now)) {
+      // Safety net: a bet that slipped in while the round was being settled is handed back in full.
+      const { items: late } = await b.asServiceRole.entities.SicBoBet.filter({ round_no: t.round_no, settled: false }, { limit: 100 });
+      for (const lb of late) {
+        await withMemberLock(b, lb.member_id, async () => {
+          let cur; try { cur = await b.asServiceRole.entities.SicBoBet.get(lb.id); } catch { return; }
+          if (!cur || cur.settled) return;
+          await b.asServiceRole.entities.SicBoBet.update(cur.id, { settled: true, payout: cur.amount, net: 0 });
+          await changePoints(b, cur.member_id, cur.amount, 'game', `${NAME} round ${t.round_no} late bet returned`, null);
+        });
+      }
       const seconds = BET_SECONDS;
       t = await b.asServiceRole.entities.SicBoTable.update(t.id, {
         round_no: (t.round_no || 0) + 1,
@@ -69,16 +80,20 @@ async function settle(b, t, now: number, settings) {
   }
   const { items: bets } = await b.asServiceRole.entities.SicBoBet.filter({ round_no: t.round_no, settled: false }, { limit: 500 });
   for (const listed of bets) {
-    // Read the bet again right now: it may have been changed or taken off at the last moment.
-    let rb; try { rb = await b.asServiceRole.entities.SicBoBet.get(listed.id); } catch { continue; }
-    if (!rb || rb.settled) continue;
+    // Each bet is settled under its owner's lock, so a chip going down or coming off at the
+    // last moment can never cross with the payout. The bet is read again inside the lock.
+    const rb = await withMemberLock(b, listed.member_id, async () => {
+      let cur; try { cur = await b.asServiceRole.entities.SicBoBet.get(listed.id); } catch { return null; }
+      if (!cur || cur.settled) return null;
+      const pay = sicboPayout(cur.bets, dice);
+      // Mark the bet settled BEFORE paying, so it can never be paid twice.
+      await b.asServiceRole.entities.SicBoBet.update(cur.id, { payout: pay, net: pay - cur.amount, settled: true });
+      if (pay > 0) await changePoints(b, cur.member_id, pay, 'game', `${NAME} round ${t.round_no} win`, null);
+      return cur;
+    });
+    if (!rb) continue;
     const payout = sicboPayout(rb.bets, dice);
     const net = payout - rb.amount;
-    // Mark the bet settled BEFORE paying, so it can never be paid twice.
-    await b.asServiceRole.entities.SicBoBet.update(rb.id, { payout, net, settled: true });
-    if (payout > 0) {
-      await withMemberLock(b, rb.member_id, () => changePoints(b, rb.member_id, payout, 'game', `${NAME} round ${t.round_no} win`, null));
-    }
     await b.asServiceRole.entities.Bet.create({
       member_id: rb.member_id, discord_id: '', game: GAME, wager: rb.amount, payout, won: payout > rb.amount,
       outcome: { dice, total: dice[0] + dice[1] + dice[2], round: t.round_no, bets: rb.bets }
@@ -110,6 +125,9 @@ const publicTable = (t) => ({
 
 export default async function(req) {
   try {
+    // When this request reached the server. A chip counts if it ARRIVED before bets closed,
+    // however long the checks and the lock take afterwards.
+    const arrived = Date.now();
     const b = resilient(createClientFromRequest(req));
     const user = await sessionUser(b, req);
     if (!user) throw new UserError('Link your Discord first.', 401);
@@ -119,6 +137,7 @@ export default async function(req) {
     const me = await getMemberByUserId(b, user.id);
     if (!me) throw new UserError('Link your Discord first.');
     const settings = await getSettings(b);
+    const inTime = (x) => x.status === 'betting' && x.settling_round !== x.round_no && Date.parse(x.bets_close_at) - ARRIVE_MARGIN_MS > arrived;
     if (!(settings.games_enabled || []).includes(GAME)) throw new UserError('Dragon Sic Bo is closed right now.');
 
     if (p.action === 'state') {
@@ -141,8 +160,9 @@ export default async function(req) {
       if (!chips.every((x) => validSicboBet(x) && Number.isInteger(x.amount) && x.amount > 0)) throw new UserError('One of those bets is not valid.');
       const total = chips.reduce((a, x) => a + x.amount, 0);
 
-      let t = await advance(b, settings);
-      if (t.status !== 'betting' || Date.parse(t.bets_close_at) - CLOSE_MARGIN_MS <= Date.now()) {
+      let t = await getTable(b);
+      if (!inTime(t)) t = await advance(b, settings);
+      if (!inTime(t)) {
         throw new UserError('Bets are closed for this roll. Wait for the next round.');
       }
       const round = t.round_no;
@@ -151,12 +171,13 @@ export default async function(req) {
         if (member.banned) throw new UserError('You are banned from the games.', 403);
         // The round may have closed while we waited for the lock.
         const live = await b.asServiceRole.entities.SicBoTable.get(t.id);
-        if (live.status !== 'betting' || live.round_no !== round || Date.parse(live.bets_close_at) - 500 <= Date.now()) {
+        if (live.round_no !== round || !inTime(live)) {
           throw new UserError('Bets are closed for this roll. Wait for the next round.');
         }
         if (total > (member.points || 0)) throw new UserError('Not enough points for those chips.');
         const { items } = await b.asServiceRole.entities.SicBoBet.filter({ round_no: round, member_id: me.id }, { limit: 1 });
         const existing = items[0];
+        if (existing && existing.settled) throw new UserError('Bets are closed for this roll. Wait for the next round.');
         const already = existing ? existing.amount : 0;
         if (already + total > settings.max_bet) throw new UserError(`You can bet up to ${settings.max_bet} per roll (${settings.max_bet - already} left).`);
         if (already + total < settings.min_bet) throw new UserError(`Put at least ${settings.min_bet} on the table.`);
@@ -200,12 +221,13 @@ export default async function(req) {
       const chips = raw.map((x) => ({ type: String(x.type), amount: Math.floor(Number(x.amount)) }));
       if (!all && (!chips.length || !chips.every((x) => validSicboBet(x) && Number.isInteger(x.amount) && x.amount > 0))) throw new UserError('Nothing to take back.');
       const CLOSED = 'Bets are closed. Your chips stay on the table.';
-      let t = await advance(b, settings);
-      if (t.status !== 'betting' || Date.parse(t.bets_close_at) - CLOSE_MARGIN_MS <= Date.now()) throw new UserError(CLOSED);
+      let t = await getTable(b);
+      if (!inTime(t)) t = await advance(b, settings);
+      if (!inTime(t)) throw new UserError(CLOSED);
       const round = t.round_no;
       const result = await withMemberLock(b, me.id, async () => {
         const live = await b.asServiceRole.entities.SicBoTable.get(t.id);
-        if (live.status !== 'betting' || live.round_no !== round || Date.parse(live.bets_close_at) - CLOSE_MARGIN_MS <= Date.now()) throw new UserError(CLOSED);
+        if (live.round_no !== round || !inTime(live)) throw new UserError(CLOSED);
         const { items } = await b.asServiceRole.entities.SicBoBet.filter({ round_no: round, member_id: me.id }, { limit: 1 });
         const existing = items[0];
         if (!existing || existing.settled) throw new UserError('You have no chips on the table.');
