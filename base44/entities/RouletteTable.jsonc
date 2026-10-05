@@ -42,6 +42,10 @@
         "type": "integer"
       }
     },
+    "layout": {
+      "type": "string",
+      "description": "v2 = the 30-pocket guild wheel (red, black, green, dragon, tiger)"
+    },
     "total_bet": {
       "type": "integer",
       "default": 0

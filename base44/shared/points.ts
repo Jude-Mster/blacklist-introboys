@@ -26,7 +26,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- Settings + lookups ----------
 
-export const ALL_GAMES = ["coinflip", "dragondice", "lanternslots", "skywheel", "roulette", "blackjack", "lucky9", "poker", "pusoy"];
+export const ALL_GAMES = ["coinflip", "dragondice", "lanternslots", "skywheel", "roulette", "blackjack", "lucky9", "poker", "pusoy", "fortune"];
 
 // Ranks, lowest to highest. "officer" is shown as Vice Guild Member.
 export const RANKS = ["member", "guild_member", "officer", "leader"];
@@ -40,7 +40,8 @@ export const GAME_NAMES = {
   blackjack: "Blacklist Blackjack",
   lucky9: "Blacklist Lucky 9",
   poker: "Poker Room",
-  pusoy: "Pusoy Dos"
+  pusoy: "Pusoy Dos",
+  fortune: "Blacklist Dragon's Fortune"
 };
 
 // Settings change rarely but are needed by every request, so each running copy of a
@@ -120,6 +121,70 @@ export function errorResponse(e) {
   return Response.json({ error: e && e.message ? e.message : "Something went wrong." }, { status: 500 });
 }
 
+// ---------- Riding out the platform's request limit ----------
+// The data store refuses calls when too many arrive at once ("Rate limit exceeded").
+// A refused call was not carried out, so it is safe to wait a moment and send it again.
+// resilient(client) makes every entity call do that, instead of failing the whole
+// request (and showing the member an error) because of one busy moment.
+const RETRY_BASE_MS = Number((globalThis as any).__retryBaseMs ?? 250); // tests set this lower
+const RETRIES = 5;
+const isRateLimit = (e) => {
+  const status = e && (e.status || (e.response && e.response.status));
+  const text = `${(e && e.message) || ""} ${(e && e.response && e.response.data && e.response.data.error) || ""}`;
+  return status === 429 || /rate limit|too many requests/i.test(text);
+};
+async function withRetry(fn: () => Promise<any>) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (attempt >= RETRIES || !isRateLimit(e)) throw e;
+      await sleep(RETRY_BASE_MS * 2 ** attempt + randInt(Math.max(1, RETRY_BASE_MS)));
+    }
+  }
+}
+const wrapEntities = (entities) => {
+  const cache = new Map();
+  return new Proxy({}, {
+    get(_, name) {
+      if (typeof name !== "string") return undefined;
+      if (!cache.has(name)) {
+        const E = entities[name];
+        cache.set(name, new Proxy({}, {
+          get(__, method) {
+            const f = E[method];
+            return typeof f === "function" ? (...args) => withRetry(() => f.apply(E, args)) : f;
+          }
+        }));
+      }
+      return cache.get(name);
+    }
+  });
+};
+export function resilient(b) {
+  let service = null;
+  return new Proxy(b, {
+    get(target, key) {
+      if (key === "asServiceRole") {
+        if (!service) {
+          const real = target.asServiceRole;
+          const entities = wrapEntities(real.entities);
+          service = new Proxy(real, {
+            get(t, k) {
+              if (k === "entities") return entities;
+              const v = Reflect.get(t, k, t);
+              return typeof v === "function" ? v.bind(t) : v;
+            }
+          });
+        }
+        return service;
+      }
+      const v = Reflect.get(target, key, target);
+      return typeof v === "function" ? v.bind(target) : v;
+    }
+  });
+}
+
 // ---------- Clearing a saved date ----------
 // Saving "no date" as null is not reliable on every store: a field set to null can be
 // left holding its old value. So an empty date is written as the year-1970 date and
@@ -127,7 +192,7 @@ export function errorResponse(e) {
 const NO_DATE = new Date(0).toISOString();
 export function nullSafe(E, dateFields: string[]) {
   const out = (row) => {
-    if (!row || typeof row !== 'object') return row;
+    if (!row || typeof row !== "object") return row;
     const r = { ...row };
     for (const f of dateFields) if (r[f] && !(Date.parse(r[f]) > 0)) r[f] = null;
     return r;
@@ -147,7 +212,7 @@ export function nullSafe(E, dateFields: string[]) {
 }
 
 // ---------- Record locks ----------
-// A real mutex (Lamport's bakery algorithm) on top of the Lock entity. It needs
+// A real mutex (Lamort's bakery algorithm) on top of the Lock entity. It needs
 // nothing atomic from the platform, only that a row we wrote can be read back.
 //   1. Add a row for the record, marked "choosing".
 //   2. Read every row for that record and take a ticket number one higher than the
@@ -185,16 +250,23 @@ export async function withRecordLock(b, entity: string, id: string, fn: () => Pr
     const number = 1 + seen.reduce((m, r) => Math.max(m, Number(r.number) || 0), 0);
     await L.update(mine.id, { number, choosing: false });
     const ahead = (r) => r.choosing || (Number(r.number) || 0) < number || ((Number(r.number) || 0) === number && String(r.id) < String(mine.id));
+    // Waiting politely matters: checking many times a second is itself what trips the
+    // platform's request limit. Start quick and ease off to about 3 checks a second.
+    let pause = 70;
     while (true) {
       const rows = await others(mine.id);
       if (!rows.some(ahead)) break;
       if (Date.now() - started > LOCK_WAIT_MS) throw new UserError("Your last action is still finishing. Try again in a moment.", 409);
-      await sleep(30 + randInt(40));
+      await sleep(pause + randInt(60));
+      pause = Math.min(300, Math.round(pause * 1.4));
     }
     entered = true;
     return await fn();
   } finally {
-    await L.delete(mine.id).catch(() => {});
+    // A lock that isn't removed blocks everyone else on this record until it expires,
+    // so make sure it really goes.
+    await L.delete(mine.id).catch(async () => { await sleep(400); await L.delete(mine.id).catch(() => {}); });
+
   }
 }
 
@@ -341,56 +413,33 @@ export function resolveSkyWheel(wager, pick, edge) {
   const payout = won ? payoutOf(multiplier, wager) : 0;
   return { won, payout, outcome: { index, landed, pick, multiplier } };
 }
-// European roulette: single zero. Bets is a list of { type, value, amount }.
-// Pays the true-odds minus the zero, so the edge is 1/37 (about 2.7%).
-export const ROULETTE_ORDER = [
-  0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10,
-  5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26
+// Jade Roulette (guild rules): a wheel of 30 pockets.
+//   14 red, 14 black, 2 green. Four of the reds carry the Dragon and four of the
+//   blacks carry the Tiger.
+//   Red or Black returns 2x, Green 14x, Dragon 7x, Tiger 7x (the stake included).
+//   A Dragon pocket is still red and a Tiger pocket is still black, so colour bets win on them too.
+// Every bet returns 14/15 of what is staked over time (about 93.3%).
+export const ROULETTE_POCKETS = [
+  "green", "red", "black", "dragon", "black", "red", "tiger", "red", "black", "red",
+  "black", "dragon", "black", "red", "tiger", "green", "black", "red", "tiger", "red",
+  "black", "dragon", "black", "red", "black", "red", "tiger", "red", "black", "dragon"
 ];
-export const ROULETTE_RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
-const ROULETTE_PAYS = { straight: 35, color: 1, parity: 1, half: 1, dozen: 2, column: 2 };
-
+export const ROULETTE_RETURNS = { red: 2, black: 2, green: 14, dragon: 7, tiger: 7 };
+export const ROULETTE_SPOTS = Object.keys(ROULETTE_RETURNS);
+export const pocketColor = (kind: string) => (kind === "dragon" ? "red" : kind === "tiger" ? "black" : kind);
 export function validRouletteBet(bet) {
-  if (!bet || !(bet.type in ROULETTE_PAYS)) return false;
-  const v = bet.value;
-  switch (bet.type) {
-    case "straight": return Number.isInteger(v) && v >= 0 && v <= 36;
-    case "color": return v === "red" || v === "black";
-    case "parity": return v === "odd" || v === "even";
-    case "half": return v === "low" || v === "high";
-    case "dozen":
-    case "column": return v === 1 || v === 2 || v === 3;
-  }
-  return false;
+  return !!bet && ROULETTE_SPOTS.includes(bet.type);
 }
-
-export function rouletteWins(bet, n) {
-  if (bet.type === "straight") return bet.value === n;
-  if (n === 0) return false;
-  switch (bet.type) {
-    case "color": return (bet.value === "red") === ROULETTE_RED.has(n);
-    case "parity": return (bet.value === "even") === (n % 2 === 0);
-    case "half": return (bet.value === "low") === (n <= 18);
-    case "dozen": return Math.ceil(n / 12) === bet.value;
-    case "column": return ((n - 1) % 3) + 1 === bet.value;
-  }
-  return false;
+// Does a chip on `spot` win when the ball lands in a pocket of this kind?
+export function rouletteWins(spot: string, kind: string) {
+  return spot === kind || spot === pocketColor(kind);
 }
-
-export function resolveRoulette(bets) {
-  const number = randInt(37);
+// What a set of chips returns for a pocket. Chips from the old table layout are handed back.
+export function roulettePayout(bets, kind: string) {
   let payout = 0;
-  const hits = [];
-  for (const bet of bets) {
-    if (rouletteWins(bet, number)) {
-      const back = bet.amount * (ROULETTE_PAYS[bet.type] + 1);
-      payout += back;
-      hits.push({ ...bet, back });
-    }
+  for (const x of bets || []) {
+    if (!ROULETTE_SPOTS.includes(x.type)) payout += x.amount;
+    else if (rouletteWins(x.type, kind)) payout += x.amount * ROULETTE_RETURNS[x.type];
   }
-  return {
-    won: payout > 0,
-    payout,
-    outcome: { number, index: ROULETTE_ORDER.indexOf(number), color: number === 0 ? "green" : ROULETTE_RED.has(number) ? "red" : "black", bets, hits }
-  };
+  return payout;
 }

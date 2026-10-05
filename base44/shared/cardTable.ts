@@ -23,8 +23,9 @@ import {
 } from './points.ts';
 import { postFeed } from './feed.ts';
 import { BACKEND_VERSION } from './version.ts';
+import { resilient } from './points.ts';
 
-export const BET_SECONDS = 15;      // countdown after the first bet
+export const BET_SECONDS = 10;      // countdown after the first bet
 export const RESULT_SECONDS = 8;    // how long results stay up
 const CLOSE_MARGIN_MS = 1500;       // bets stop a moment before the deadline
 const SETTLE_LOCK_MS = 120000;
@@ -60,7 +61,7 @@ export function cardTableHandler(game: CardGame) {
 
   return async function(req) {
     try {
-      const b = createClientFromRequest(req);
+      const b = resilient(createClientFromRequest(req));
       const user = await sessionUser(b, req);
       if (!user) throw new UserError('Link your Discord first.', 401);
       let p; try { p = await req.json(); } catch { p = {}; }
@@ -168,31 +169,26 @@ export function cardTableHandler(game: CardGame) {
           } else if (t.status === 'playing') {
             const timeUp = !t.act_close_at || Date.parse(t.act_close_at) <= now;
             if (timeUp || allDone(await seatsOf(t.round_no))) t = await settle(t, now);
-          } else if (t.status === 'settled' && (!t.next_at || Date.parse(t.next_at) <= now)) {
-            const chairs = chairsOf(t);
-            sweepChairs(chairs, new Set());
-            t = await T.update(t.id, { round_no: (t.round_no || 0) + 1, status: 'betting', bets_close_at: null, act_close_at: null, next_at: null, dealer: [], seats: chairs.map((c) => c || {}) });
+          } else if (t.status === 'settled') {
+            t = await T.update(t.id, { status: 'betting', round_no: t.round_no + 1, bets_close_at: null, act_close_at: null, next_at: null, dealer: [], settling_round: null });
           }
           return t;
-        }, SETTLE_LOCK_MS);
+        });
       };
 
-      // ---------- what a player may see ----------
+      // ---------- the view sent to the page ----------
 
-      const seatView = (s) => {
-        const dealt = Array.isArray(s.cards) && s.cards.length > 0;
-        return {
-          name: s.name, avatar: s.avatar, role: s.role, wager: s.wager, staked: s.staked, doubled: !!s.doubled,
-          cards: s.cards || [], total: dealt ? game.total(s.cards) : null, status: s.status, note: s.note || '',
-          result: s.settled ? s.result : null, payout: s.settled ? s.payout : 0, net: s.settled ? s.payout - s.staked : 0,
-          mine: s.member_id === me.id
-        };
-      };
+      const seatView = (s) => ({
+        seat: s.seat_no, wager: s.wager, staked: s.staked, doubled: s.doubled, cards: s.cards || [],
+        status: s.status, note: s.note, result: s.result, payout: s.payout, settled: s.settled
+      });
+
       const stateOf = async (t, extra = {}) => {
         const seats = await seatsOf(t.round_no);
-        const revealed = t.status === 'settled';
-        const mine = seats.find((s) => s.member_id === me.id);
+        const mine = seats.find((x) => x.member_id === me.id);
+        const revealed = t.status === 'settled' || t.settling_round === t.round_no;
         return {
+          ok: true, version: BACKEND_VERSION,
           open,
           table: {
             round_no: t.round_no, status: t.status, bets_close_at: t.bets_close_at || null, act_close_at: t.act_close_at || null,
@@ -322,17 +318,14 @@ export function cardTableHandler(game: CardGame) {
           return balance;
         });
 
-        // The first bet of a round starts the countdown.
-        t = await withRecordLock(b, 'CardTable', t.id, async () => {
+        // The first bet of a round starts the countdown. No table lock is needed for this:
+        // only one field is written, and two first bets landing together set it to the same moment.
+        {
           const live = await T.get(t.id);
-          // Betting keeps your chair: note when this member was last active.
-          const chairs = chairsOf(live);
-          const i = chairs.findIndex((c) => c && c.member_id === me.id);
-          const update: Record<string, unknown> = {};
-          if (i >= 0) { chairs[i] = { ...chairs[i], active_at: iso(Date.now()) }; update.seats = chairs.map((c) => c || {}); }
-          if (live.status === 'betting' && live.round_no === round && !live.bets_close_at) update.bets_close_at = iso(Date.now() + BET_SECONDS * 1000);
-          return Object.keys(update).length ? await T.update(live.id, update) : live;
-        });
+          t = live.status === 'betting' && live.round_no === round && !live.bets_close_at
+            ? await T.update(live.id, { bets_close_at: iso(Date.now() + BET_SECONDS * 1000) })
+            : live;
+        }
         return Response.json(await stateOf(t, { balance }));
       }
 
