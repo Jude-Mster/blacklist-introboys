@@ -9,6 +9,7 @@ import WagerInput from "./WagerInput";
 import { Points } from "@/components/SealLogo";
 import { useGuild, errorText } from "@/lib/GuildContext";
 import { cn } from "@/lib/utils";
+import { useTableGuard } from "@/lib/tableGuard";
 
 // A shared card table (Blackjack, Lucky 9) with six chairs. Members sit down, then
 // bet each round from their chair and play their own hand against the same dealer. The server deals and decides everything;
@@ -164,6 +165,17 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
     }, fresh ? fresh * DEAL_STEP_MS + 500 : 0);
     return () => clearTimeout(timer);
   }, [settledRound, shownRound, dealerCards, iPlayed, reload]);
+
+  // Seated members are asked before they wander off to another game or page.
+  const guardSeated = !!data && data.my_seat >= 0;
+  const guardInHand = !!(data && data.mine && !data.mine.result);
+  useTableGuard(guardSeated, {
+    message: () => (guardInHand
+      ? `Your hand at the ${title.replace(/^Blacklist /, "")} table is still in play. Finish this round before you leave.`
+      : `You're seated at the ${title.replace(/^Blacklist /, "")} table. Leaving gives up your seat.`),
+    canLeave: () => !guardInHand,
+    leave: () => base44.functions.invoke(fn, { action: "leave" })
+  });
 
   if (!data) return <Panel title={title}>{error ? <p role="alert" className="py-6 text-center text-sm text-ember">{error}</p> : <LanternSpinner label="Finding the table" className="py-12" />}</Panel>;
 

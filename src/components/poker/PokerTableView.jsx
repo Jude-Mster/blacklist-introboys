@@ -12,6 +12,8 @@ import DealtCards, { Dealt } from "@/components/DealtCards";
 import BuyIn from "./BuyIn";
 import usePokerTable from "./usePokerTable";
 import { cn } from "@/lib/utils";
+import { useTableGuard } from "@/lib/tableGuard";
+import { base44 } from "@/api/base44Client";
 
 const BETTING = ["preflop", "flop", "turn", "river"];
 const ACTION_SECONDS = 25;
@@ -46,6 +48,17 @@ export default function PokerTableView({ tableId }) {
     const timer = setTimeout(() => setShown((n) => n + 1), BOARD_STEP_MS);
     return () => clearTimeout(timer);
   }, [shown, boardLen, handNo]);
+
+  // Seated members are asked before they move to another page.
+  const gSeatNo = state ? state.my_seat ?? -1 : -1;
+  const gSeat = live && gSeatNo >= 0 ? live.seats[gSeatNo] : null;
+  const gInHand = !!(gSeat && gSeat.in_hand && !gSeat.folded && BETTING.includes(live.phase));
+  useTableGuard(!!gSeat, {
+    message: () => (gInHand
+      ? (gSeat.all_in ? "You're all in. If you leave, the hand plays out and anything you win is paid to your points." : `A hand is in play. Leaving folds it, and your ${Number(gSeat.stack || 0).toLocaleString()} chips are cashed out to your points.`)
+      : `You're seated at ${live.name}. Leaving cashes out your ${Number(gSeat.stack || 0).toLocaleString()} chips to your points.`),
+    leave: async () => { await base44.functions.invoke("pokerAction", { action: "leave", tableId }); reload(); }
+  });
 
   if (!state) return <LanternSpinner label="Taking you to the table" className="py-24" />;
   const t = state.table;
@@ -190,6 +203,7 @@ export default function PokerTableView({ tableId }) {
             }}
           />
         )}
+
         {!seated && sitAt === null && (
           <p className="text-center text-sm text-mist">You're watching. Tap an empty seat to sit down.</p>
         )}
@@ -425,9 +439,9 @@ function MyControls({ t, me, mySeat, cards, send, reload, best }) {
         <TopUp
           t={t}
           me={me}
-          onDone={() => setTopup(false)}
           send={send}
           reload={reload}
+          onDone={() => setTopup(false)}
         />
       )}
     </Panel>

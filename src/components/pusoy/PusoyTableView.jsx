@@ -12,6 +12,7 @@ import { useGuild, errorText } from "@/lib/GuildContext";
 import { canFollow, sortByRank, sortBySuit, rankLabel, SUIT_SYMBOL, SUIT_NAME } from "@/lib/pusoy";
 import { cn } from "@/lib/utils";
 import SuitOrder from "./SuitOrder";
+import { useTableGuard } from "@/lib/tableGuard";
 
 // A live Pusoy Dos table. The server deals, checks every play and runs the clock;
 // this page shows what it is told and asks again every second or so.
@@ -78,6 +79,7 @@ export default function PusoyTableView({ tableId }) {
   const [bySuit, setBySuit] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const busyRef = useRef("");
+  const leaving = useRef(false); // the member pressed Stand up themselves: no second question
   const paidGame = useRef(0);
   busyRef.current = busy;
 
@@ -135,6 +137,17 @@ export default function PusoyTableView({ tableId }) {
   // The 13 cards are dealt into the hand one at a time.
   const dealDelay = useDealDelays(hand.map((c) => `${data ? data.table.game_no : 0}:${c}`), 160);
 
+  // Seated members are asked before they move to another page.
+  const gSeat = data && data.my_seat >= 0 ? data.table.seats[data.my_seat] : null;
+  const gPlaying = !!(gSeat && data.table.status === "playing" && gSeat.in_game && !gSeat.out);
+  const gCost = data ? data.table.ante + (data.hand || []).length * data.table.stake : 0;
+  useTableGuard(!!gSeat && !leaving.current, {
+    message: () => (gPlaying
+      ? `A game is in progress. Leaving now forfeits it and you lose ${gCost.toLocaleString()} points.`
+      : "You're seated at this Pusoy Dos table. Leaving gives up your seat."),
+    leave: () => base44.functions.invoke("pusoyAction", { action: "leave", tableId })
+  });
+
   if (gone) {
     return (
       <Panel title="Table closed" className="mx-auto max-w-md">
@@ -171,8 +184,9 @@ export default function PusoyTableView({ tableId }) {
   const standUp = async () => {
     // Leaving mid-game costs points, so it takes a second tap.
     if (inGame && !confirmLeave) { setConfirmLeave(true); return; }
+    leaving.current = true;
     const out = await send("leave");
-    if (out) { reload(); navigate("/pusoy"); }
+    if (out) { reload(); navigate("/pusoy"); } else leaving.current = false;
   };
 
   let banner;

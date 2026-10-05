@@ -8,6 +8,7 @@ import Sidebar from "./nav/Sidebar";
 import MobileTabBar from "./nav/MobileTabBar";
 import ChatDrawer from "./nav/ChatDrawer";
 import ChatFloaters from "./chat/ChatFloaters";
+import LeaveTableGuard from "./LeaveTableGuard";
 import { cn } from "@/lib/utils";
 
 const COLLAPSE_KEY = "bi.nav.collapsed";
@@ -107,6 +108,7 @@ function Shell() {
       </main>
       {account && account.linked && <ChatDrawer open={chatOpen} onClose={closeChat} onIncoming={onIncoming} />}
       {playing && <ChatFloaters items={floaters} onDone={dropFloater} />}
+      <LeaveTableGuard />
       <AppPrompt />
       <MobileTabBar onChat={toggleChat} chatOpen={chatOpen} unread={unread} />
     </div>

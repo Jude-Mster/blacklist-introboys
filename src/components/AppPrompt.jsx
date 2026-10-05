@@ -2,8 +2,8 @@ import React, { useEffect, useState } from "react";
 import { Download, X, Check, RotateCw, Wifi, FileDown, ShieldCheck, PackageCheck } from "lucide-react";
 import { useGuild } from "@/lib/GuildContext";
 
-const KEY = "bi.app.prompt.until";
-const SNOOZE_DAYS = 7;
+const KEY = "bi.app.prompt.done";       // set by "Done" (they installed it)
+const VISIT_KEY = "bi.app.prompt.visit"; // set by "Not now": hidden for this visit only
 const DONE_DAYS = 30;
 
 // True on an Android phone's browser. False on desktop, iPhone, and inside the
@@ -17,8 +17,11 @@ function onAndroidBrowser() {
   return true;
 }
 
+// "Not now" only hides the invite until the site is opened again: every new visit in the
+// phone's browser shows it. Only "Done" (after installing) keeps it away for longer.
 function snoozed() {
   try {
+    if (window.sessionStorage.getItem(VISIT_KEY) === "1") return true;
     return Number(window.localStorage.getItem(KEY) || 0) > Date.now();
   } catch {
     return false;
@@ -55,7 +58,15 @@ export default function AppPrompt() {
     setShow(false);
     setGuide(false);
   };
-  const dismiss = () => hideFor(SNOOZE_DAYS);
+  const dismiss = () => {
+    try {
+      window.sessionStorage.setItem(VISIT_KEY, "1");
+    } catch {
+      /* per-visit convenience only */
+    }
+    setShow(false);
+    setGuide(false);
+  };
   const done = () => hideFor(DONE_DAYS);
 
   const openDownload = () => {
@@ -72,7 +83,7 @@ export default function AppPrompt() {
         <img src="/icon-192.png" alt="" width={48} height={48} className="h-12 w-12 shrink-0 rounded-xl border border-bronze" onError={(e) => (e.currentTarget.style.display = "none")} />
         <div className="min-w-0 flex-1">
           <p className="font-heading text-base font-semibold leading-tight text-white">Get the Blacklist12Sky app</p>
-          <p className="text-xs text-mist">Faster on your phone, one tap from your home screen.</p>
+          <p className="text-xs text-mist">Easier access: faster on your phone, one tap from your home screen.</p>
         </div>
         <button onClick={dismiss} aria-label="Not now" className="-mr-1 flex h-11 w-11 shrink-0 items-center justify-center text-mist">
           <X className="h-5 w-5" />
