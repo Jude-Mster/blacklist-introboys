@@ -5,7 +5,7 @@ import Panel from "@/components/Panel";
 import LanternSpinner from "@/components/LanternSpinner";
 import DealtCards, { DEAL_STEP_MS } from "@/components/DealtCards";
 import Avatar from "@/components/Avatar";
-import WagerInput from "./WagerInput";
+import { BetSpot, ChipRack, ChipTray, FeltPrint, CHIP_VALUES } from "./ChipBetting";
 import { Points } from "@/components/SealLogo";
 import { useGuild, errorText } from "@/lib/GuildContext";
 import { ReactionBar, ReactionBubble, useReactions } from "./Reactions";
@@ -91,14 +91,17 @@ function Cards({ cards, hidden = 0, size = "lg", empty }) {
   );
 }
 
-export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, rules, settings, balance, feltClass, winNote, sideBets, tips }) {
+export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, rules, settings, balance, felt, winNote, sideBets, tips }) {
   const { setBalance, reload } = useGuild();
   const [data, setData] = useState(null);
   const [offset, setOffset] = useState(0);
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const [wager, setWager] = useState(settings.min_bet);
+  const [wager, setWager] = useState(0); // chips on the main spot
+  const [chip, setChip] = useState(0);   // the chip picked up from the tray
+  const [moves, setMoves] = useState([]); // chips put down, newest last (for Undo)
+  const [chipNote, setChipNote] = useState("");
   const [sides, setSides] = useState({}); // optional side bets: { id: amount }
   const first = useRef(true);
   const paidRound = useRef(0);
@@ -215,6 +218,32 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
     : stake > settings.max_bet ? `Your wager and side bets together can be at most ${settings.max_bet.toLocaleString()}.`
     : stake > balance ? "Not enough points for that wager and those side bets." : "";
   const canBet = seated && table.status === "betting" && !mine && (betLeft === null || betLeft > 1) && wager >= settings.min_bet && wager <= settings.max_bet && wager <= balance && !sideProblem;
+  // ----- chips -----
+  const chipList = CHIP_VALUES.filter((v) => v <= settings.max_bet && v >= Math.min(10, settings.min_bet));
+  const useChip = chipList.includes(chip) ? chip : chipList[0] || 0;
+  const canChip = seated && !mine; // chips can be arranged ahead of the next round
+  const spotAmount = (id) => (mine ? (id === "main" ? mine.wager : (mine.sides && mine.sides[id]) || 0) : id === "main" ? wager : sideAmount(id));
+  const spendable = Math.min(settings.max_bet, balance);
+  const putChip = (id, value) => {
+    if (!canChip || !value) return;
+    if (stake + value > spendable) { setChipNote(stake + value > balance ? "You don't have enough points for that chip." : `Your bets together can be at most ${settings.max_bet.toLocaleString()}.`); return; }
+    if (id !== "main" && sideAmount(id) + value > wager) { setChipNote("A side bet can be at most the size of your main bet. Put chips on BET first."); return; }
+    setChipNote("");
+    if (id === "main") setWager((w) => w + value); else setSides((cur) => ({ ...cur, [id]: (Math.floor(Number(cur[id])) || 0) + value }));
+    setMoves((m) => [...m.slice(-60), { id, value }]);
+  };
+  const undoChip = () => {
+    const last = moves[moves.length - 1];
+    if (!last) return;
+    setChipNote("");
+    if (last.id === "main") setWager((w) => Math.max(0, w - last.value)); else setSides((cur) => ({ ...cur, [last.id]: Math.max(0, (Number(cur[last.id]) || 0) - last.value) }));
+    setMoves((m) => m.slice(0, -1));
+  };
+  const clearChips = () => { setWager(0); setSides({}); setMoves([]); setChipNote(""); };
+  const doubleChips = () => {
+    if (stake * 2 > spendable) { setChipNote(stake * 2 > balance ? "You don't have enough points to double your bets." : `Your bets together can be at most ${settings.max_bet.toLocaleString()}.`); return; }
+    setChipNote(""); setWager((w) => w * 2); setSides((cur) => Object.fromEntries(Object.entries(cur).map(([k, v]) => [k, (Number(v) || 0) * 2]))); setMoves([]);
+  };
   const sidePayload = Object.fromEntries(sideList.map((b) => [b.id, sideAmount(b.id)]).filter(([, v]) => v > 0));
   const inHand = mine && (!mine.result || drawing);
   const Spin = <Loader2 className="h-4 w-4 animate-spin" />;
@@ -232,14 +261,15 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
     <Panel title={title}>
       <div
         className={cn(
-          "mb-4 space-y-4 rounded-md border border-bronze/40 p-3 sm:p-4",
-          feltClass || "bg-[radial-gradient(circle_at_50%_30%,hsl(150_30%_14%),hsl(0_0%_6%))]",
+          "casino-felt mb-4 space-y-3 px-3 pb-10 pt-0 sm:px-5",
           res && res.win === true && "win-glow",
           res && res.win === false && "loss-shake"
         )}
+        style={{ "--felt-hue": (felt && felt.hue) ?? 150 }}
       >
+        <ChipRack />
         <div className="flex flex-col items-center">
-          <p className="mb-1.5 text-xs uppercase tracking-wide text-mist">
+          <p className="mb-1.5 text-xs uppercase tracking-wide text-white/70">
             {dealerLabel}
             {table.dealer.total !== null && !drawing && (
               <span className="ml-2 font-heading text-sm font-bold normal-case text-gold">{table.dealer.total}{table.dealer.hidden ? " showing" : ""}</span>
@@ -251,11 +281,35 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
           </div>
         </div>
 
+        {felt && felt.lines && <FeltPrint lines={felt.lines} id={fn} />}
+
         <div className="grid grid-cols-3 gap-2">
           {chairs.map((c) => (
             <Chair key={c.seat} chair={c} canSit={!seated && data.open !== false} busy={busy} onSit={(seat) => send("sit", { seat })} hideResult={drawing} reaction={reactionAt(c.seat)} />
           ))}
         </div>
+
+        {/* the bet spots printed on the felt, and the chip tray on the rail */}
+        {seated && (
+          <div className="space-y-3 pt-1">
+            <div className="flex items-start justify-center gap-3 sm:gap-6">
+              {sideList[0] && <BetSpot id={sideList[0].id} label={sideList[0].name} sub={sideList[0].short} amount={spotAmount(sideList[0].id)} locked={!canChip} armed={!!useChip} bad={!mine && sideAmount(sideList[0].id) > wager} onTap={() => putChip(sideList[0].id, useChip)} />}
+              <BetSpot id="main" label="Bet" sub={canChip ? "Drop chips here" : ""} amount={spotAmount("main")} big locked={!canChip} armed={!!useChip} onTap={() => putChip("main", useChip)} />
+              {sideList[1] && <BetSpot id={sideList[1].id} label={sideList[1].name} sub={sideList[1].short} amount={spotAmount(sideList[1].id)} locked={!canChip} armed={!!useChip} bad={!mine && sideAmount(sideList[1].id) > wager} onTap={() => putChip(sideList[1].id, useChip)} />}
+            </div>
+            {canChip && (
+              <>
+                <ChipTray chips={chipList} selected={useChip} onSelect={setChip} onDrop={putChip} disabled={!!busy} />
+                <div className="flex items-center justify-center gap-2">
+                  <button type="button" onClick={undoChip} disabled={!moves.length} className="btn-bronze h-8 px-3 text-xs">Undo</button>
+                  <button type="button" onClick={clearChips} disabled={!stake} className="btn-bronze h-8 px-3 text-xs">Clear</button>
+                  <button type="button" onClick={doubleChips} disabled={!stake} className="btn-bronze h-8 px-3 text-xs">Double</button>
+                </div>
+                <p className="text-center text-[11px] text-white/60">Drag a chip onto a spot, or tap a chip and then tap the spot.</p>
+              </>
+            )}
+          </div>
+        )}
 
         {seated && <ReactionBar onSend={react} />}
 
@@ -356,43 +410,17 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
             : "Tap an empty seat to sit down, then place your bet."}
         </p>
       ) : table.status === "betting" && !mine ? (
-        <div className="space-y-4">
-          <WagerInput wager={wager} setWager={setWager} minBet={settings.min_bet} maxBet={settings.max_bet} balance={balance} disabled={!!busy} />
-          {sideList.length > 0 && (
-            <div className="rounded-md border border-bronze/40 bg-black/25 p-3">
-              <p className="label !mb-0">Side bets <span className="font-normal normal-case text-mist">(optional)</span></p>
-              <p className="mb-2 text-xs text-mist">Extra bets on the first cards dealt. They win or lose on their own, whatever happens to your hand.</p>
-              <div className="grid grid-cols-2 gap-3">
-                {sideList.map((b) => (
-                  <div key={b.id}>
-                    <label htmlFor={`side-${b.id}`} className="text-sm font-bold text-[hsl(var(--foreground))]">{b.name}</label>
-                    <input
-                      id={`side-${b.id}`}
-                      type="number"
-                      inputMode="numeric"
-                      min={0}
-                      max={wager}
-                      placeholder="0"
-                      value={sides[b.id] || ""}
-                      onChange={(e) => setSides((cur) => ({ ...cur, [b.id]: Math.max(0, Math.floor(Number(e.target.value) || 0)) }))}
-                      disabled={!!busy}
-                      className={cn("field mt-1 h-10 text-base font-bold text-gold", sideAmount(b.id) > wager && "border-ember/80")}
-                    />
-                    <p className="mt-1 text-[11px] leading-snug text-mist">{b.blurb}</p>
-                  </div>
-                ))}
-              </div>
-              {sideProblem && <p role="alert" className="mt-2 text-xs text-ember">{sideProblem}</p>}
-              {tips && (
-                <details className="mt-3 rounded border border-bronze/30 bg-black/30 px-2.5 py-2" open={sideTotal > 0 ? undefined : false}>
-                  <summary className="cursor-pointer text-sm text-gold">How side bets and splitting work, and what they pay</summary>
-                  <div className="mt-2 text-xs text-mist">{tips}</div>
-                </details>
-              )}
-            </div>
+        <div className="space-y-3">
+          {(chipNote || sideProblem) && <p role="alert" className="text-center text-xs text-ember">{chipNote || sideProblem}</p>}
+          {wager > 0 && wager < settings.min_bet && <p className="text-center text-xs text-mist">The minimum wager is {settings.min_bet.toLocaleString()}.</p>}
+          {tips && (
+            <details className="rounded border border-bronze/30 bg-black/30 px-2.5 py-2">
+              <summary className="cursor-pointer text-sm text-gold">How side bets and splitting work, and what they pay</summary>
+              <div className="mt-2 text-xs text-mist">{tips}</div>
+            </details>
           )}
           <button onClick={() => send("bet", { wager, sides: sidePayload })} disabled={!!busy || !canBet || data.open === false} className="btn-seal h-12 w-full text-base">
-            {busy === "bet" ? <>{Spin} Placing bet</> : data.open === false ? "Table closed" : sideTotal > 0 ? <>Place bet · {stake.toLocaleString()} in total</> : "Place bet"}
+            {busy === "bet" ? <>{Spin} Placing bet</> : data.open === false ? "Table closed" : !wager ? "Put chips on BET to play" : <>Place bet · {stake.toLocaleString()}</>}
           </button>
           {winNote && <p className="text-center text-sm text-mist">{winNote}</p>}
         </div>

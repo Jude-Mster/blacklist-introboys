@@ -12,8 +12,8 @@ const ACTIONS = [
 // Optional side bets. What they pay is set on the server (base44/shared/blackjackSides.ts)
 // and must match the tables below.
 const SIDE_BETS = [
-  { id: "pairs", name: "Pairs", blurb: "Wins if your first two cards are a pair. Pays 5 to 25 times." },
-  { id: "plus3", name: "21+3", blurb: "Your two cards and the dealer's first card make a poker hand. Pays 5 to 100 times." }
+  { id: "pairs", name: "Pairs", short: "up to 25 to 1", blurb: "Wins if your first two cards are a pair. Pays 5 to 25 times." },
+  { id: "plus3", name: "21+3", short: "up to 100 to 1", blurb: "Your two cards and the dealer's first card make a poker hand. Pays 5 to 100 times." }
 ];
 const PAIRS = [
   ["Perfect pair", "same number and same suit, like 8♥ 8♥", "25 to 1"],
@@ -73,6 +73,7 @@ export default function Blackjack({ settings, balance }) {
       actions={ACTIONS}
       sideBets={SIDE_BETS}
       tips={TIPS}
+      felt={{ hue: 150, lines: ["BLACKJACK PAYS 3 TO 2", "Dealer draws to 17 and hits soft 17", "SPLIT A PAIR · DOUBLE ON TWO CARDS"] }}
       settings={settings}
       balance={balance}
       winNote="Blackjack (an Ace with a 10 or face card) pays 3 to 2."
