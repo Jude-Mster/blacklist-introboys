@@ -17,6 +17,7 @@ import ChatBox from "@/components/chat/ChatBox";
 import { GAME_ICONS } from "@/lib/gameIcons";
 import { GAMES } from "@/lib/games";
 import { cn } from "@/lib/utils";
+import { tableGuard } from "@/lib/tableGuard";
 
 const COMPONENTS = { coinflip: CoinFlip, dragondice: DragonDice, lanternslots: LanternSlots, fortune: FortuneSlots, skywheel: SkyWheel, roulette: Roulette, blackjack: Blackjack, lucky9: Lucky9 };
 const ICONS = GAME_ICONS;
@@ -77,7 +78,7 @@ export default function Games() {
               key={g.id}
               role="tab"
               aria-selected={on}
-              onClick={() => setParams({ game: g.id }, { replace: true })}
+              onClick={() => { if (!on) tableGuard.ask(() => setParams({ game: g.id }, { replace: true })); }}
               className={cn(
                 "flex min-w-0 shrink-0 items-center gap-2.5 sm:min-w-[9.5rem] sm:gap-3 rounded-md border px-3 py-2.5 text-left transition-colors",
                 on ? "border-gold bg-bronze/25" : "border-bronze/45 bg-black/25 hover:border-bronze"
