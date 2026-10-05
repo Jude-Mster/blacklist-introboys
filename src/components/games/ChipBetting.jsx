@@ -18,8 +18,10 @@ export function chipsFor(amount, limit = 5) {
   return out;
 }
 
-export function Chip({ value, size = 44, className, style }) {
+// `text` replaces the number on the chip (for a chip that stands for a whole stack).
+export function Chip({ value, size = 44, className, style, text }) {
   const c = COLORS[value] || COLORS[1];
+  const face = text !== undefined ? String(text) : label(value);
   return (
     <span
       className={cn("relative inline-flex shrink-0 items-center justify-center rounded-full shadow-[0_2px_4px_rgba(0,0,0,0.6)]", className)}
@@ -27,9 +29,9 @@ export function Chip({ value, size = 44, className, style }) {
     >
       <span
         className="flex items-center justify-center rounded-full border border-white/70 font-heading font-extrabold leading-none text-white"
-        style={{ width: size * 0.7, height: size * 0.7, background: c, fontSize: size * (label(value).length > 2 ? 0.25 : 0.3) }}
+        style={{ width: size * 0.7, height: size * 0.7, background: c, fontSize: size * (face.length > 3 ? 0.21 : face.length > 2 ? 0.25 : 0.3) }}
       >
-        {label(value)}
+        {face}
       </span>
     </span>
   );

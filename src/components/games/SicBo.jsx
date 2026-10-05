@@ -31,6 +31,9 @@ export default function SicBo({ settings, balance }) {
   const [log, setLog] = useState([]); // chips put down this round, newest last (for Undo)
   const placingRef = useRef(false);
   const changedAt = useRef(0); // when our chips last changed on the server
+  const lastPoll = useRef(0);
+  const tableRef = useRef(null);
+  const offsetRef = useRef(0);
   const [lastBets, setLastBets] = useState(null);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
@@ -49,6 +52,7 @@ export default function SicBo({ settings, balance }) {
     if (inFlight.current) return;
     inFlight.current = true;
     const asked = Date.now();
+    lastPoll.current = asked;
     try {
       const res = await base44.functions.invoke("sicboAction", { action: "state" });
       const d = res.data;
@@ -56,6 +60,8 @@ export default function SicBo({ settings, balance }) {
       if (d && d.table && asked < changedAt.current) return;
       if (d && d.table) {
         setOffset(Date.parse(d.table.server_now) - Date.now());
+        offsetRef.current = Date.parse(d.table.server_now) - Date.now();
+        tableRef.current = d.table;
         loaded.current = true;
         setState(d);
         setLoadError("");
@@ -69,7 +75,17 @@ export default function SicBo({ settings, balance }) {
 
   useEffect(() => {
     refresh();
-    const poll = setInterval(refresh, POLL_MS);
+    // Ask the table only when something can have changed: every few seconds while bets are
+    // open, right after they close, and again when the next round is due. Fewer calls means
+    // the server is far less likely to answer "busy".
+    const poll = setInterval(() => {
+      const t = tableRef.current;
+      const serverTime = Date.now() + offsetRef.current;
+      let wait = POLL_MS;
+      if (t && t.status === "betting") { const left = Date.parse(t.bets_close_at) - serverTime; wait = left > 0 ? Math.min(4000, left + 500) : 1500; }
+      else if (t) { const left = t.next_at ? Date.parse(t.next_at) - serverTime : 0; wait = left > 0 ? Math.min(5000, left + 400) : 1500; }
+      if (Date.now() - lastPoll.current >= wait) refresh();
+    }, 250);
     const tick = setInterval(() => setNow(Date.now()), 250);
     return () => { clearInterval(poll); clearInterval(tick); };
   }, [refresh]);
@@ -145,6 +161,9 @@ export default function SicBo({ settings, balance }) {
       setPending((cur) => subtract(cur, batch));
       setLog([]);
       setError(errorText(e, "Those chips didn't go down. Try again."));
+      // The request may have failed after the chips were already taken: ask the table what it really has.
+      changedAt.current = Date.now();
+      setTimeout(refresh, 300);
     } finally {
       placingRef.current = false;
       setPlacing(false);
@@ -164,6 +183,8 @@ export default function SicBo({ settings, balance }) {
       refresh();
     } catch (e) {
       setError(errorText(e, "Those chips couldn't be taken back."));
+      changedAt.current = Date.now();
+      setTimeout(refresh, 300);
     } finally {
       placingRef.current = false;
       setPlacing(false);
@@ -191,10 +212,13 @@ export default function SicBo({ settings, balance }) {
     setPending((cur) => { const out = cur.map((b) => ({ ...b })); for (const b of lastBets) { const k = out.find((x) => x.type === b.type); if (k) k.amount += b.amount; else out.push({ ...b }); } return out; });
   };
   const enough = placedTotal + pendingTotal >= settings.min_bet;
+  const msLeft = betting ? Date.parse(table.bets_close_at) - serverNow : 0;
   const pendingKey = pending.map((b) => `${b.type}:${b.amount}`).join(",");
   useEffect(() => {
     if (!pending.length || !open || placing || !enough) return undefined;
-    const timer = setTimeout(() => submit(pending), 150);
+    // Chips put down in a burst go to the table as ONE bet: wait for a short pause first,
+    // unless time is nearly up, when they go straight away.
+    const timer = setTimeout(() => submit(pending), msLeft < 2500 ? 0 : 500);
     return () => clearTimeout(timer);
   }, [pendingKey, open, placing, enough]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -220,6 +244,7 @@ export default function SicBo({ settings, balance }) {
   const othersAt = (type) => players.filter((p) => !p.mine).map((p) => ({ name: p.name, avatar: p.avatar, amount: (p.spots || []).filter((c) => c.type === type).reduce((a, c) => a + c.amount, 0) })).filter((p) => p.amount > 0).sort((a, b) => b.amount - a.amount);
   const recent = table.recent.slice(showResult || table.status === "betting" ? 0 : 1);
   const waitingToRoll = betting && !open;
+  const lateBy = betting ? serverNow - Date.parse(table.bets_close_at) : 0;
 
   // One printed spot on the felt. Chips can be dragged onto it or tapped onto it.
   const spot = (id, label, pays, extra = "") => {
@@ -254,8 +279,8 @@ export default function SicBo({ settings, balance }) {
         )}
         {mineHere + waiting > 0 && (
           <span className="pointer-events-none absolute -right-1.5 -top-2.5 flex flex-col items-center">
-            <Chip value={stack[0] || 1} size={24} className={waiting && !mineHere ? "opacity-80" : ""} />
-            <span className="-mt-1 rounded-full bg-black/80 px-1 text-[9px] font-bold leading-3 text-gold">{short(mineHere + waiting)}</span>
+            {/* one chip showing exactly how much is on this spot */}
+            <Chip value={stack[0] || 1} text={short(mineHere + waiting)} size={30} className={waiting ? "opacity-75" : ""} />
           </span>
         )}
       </button>
@@ -284,7 +309,7 @@ export default function SicBo({ settings, balance }) {
                 </div>
               </>
             )}
-            {(waitingToRoll || rolling) && <p className="font-heading text-base font-bold text-gold">No more bets. {rolling ? "The dice are rolling." : "Shaking the dice."}</p>}
+            {(waitingToRoll || rolling) && <p className="font-heading text-base font-bold text-gold">No more bets. {rolling ? "The dice are rolling." : lateBy > 6000 ? "The server is slow to roll. Hold on." : "Shaking the dice."}</p>}
             {showResult && !rolling && (
               <>
                 <p className="font-heading text-xl font-extrabold leading-tight text-gold">

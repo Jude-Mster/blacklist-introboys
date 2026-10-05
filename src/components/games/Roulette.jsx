@@ -39,6 +39,9 @@ export default function Roulette({ settings, balance }) {
   const [log, setLog] = useState([]); // chips put down this round, newest last (for Undo)
   const placingRef = useRef(false);
   const changedAt = useRef(0); // when our chips last changed on the server
+  const lastPoll = useRef(0);
+  const tableRef = useRef(null);
+  const offsetRef = useRef(0);
   const [lastBets, setLastBets] = useState(null);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
@@ -55,6 +58,7 @@ export default function Roulette({ settings, balance }) {
     if (inFlight.current) return;
     inFlight.current = true;
     const asked = Date.now();
+    lastPoll.current = asked;
     try {
       const res = await base44.functions.invoke("rouletteAction", { action: "state" });
       const d = res.data;
@@ -62,6 +66,8 @@ export default function Roulette({ settings, balance }) {
       if (d && d.table && asked < changedAt.current) return;
       if (d && d.table) {
         setOffset(Date.parse(d.table.server_now) - Date.now());
+        offsetRef.current = Date.parse(d.table.server_now) - Date.now();
+        tableRef.current = d.table;
         loaded.current = true;
         setState(d);
         setLoadError("");
@@ -76,7 +82,17 @@ export default function Roulette({ settings, balance }) {
 
   useEffect(() => {
     refresh();
-    const poll = setInterval(refresh, POLL_MS);
+    // Ask the table only when something can have changed: every few seconds while bets are
+    // open, right after they close, and again when the next round is due. Fewer calls means
+    // the server is far less likely to answer "busy".
+    const poll = setInterval(() => {
+      const t = tableRef.current;
+      const serverTime = Date.now() + offsetRef.current;
+      let wait = POLL_MS;
+      if (t && t.status === "betting") { const left = Date.parse(t.bets_close_at) - serverTime; wait = left > 0 ? Math.min(4000, left + 500) : 1500; }
+      else if (t) { const left = t.next_at ? Date.parse(t.next_at) - serverTime : 0; wait = left > 0 ? Math.min(5000, left + 400) : 1500; }
+      if (Date.now() - lastPoll.current >= wait) refresh();
+    }, 250);
     const tick = setInterval(() => setNow(Date.now()), 250);
     return () => {
       clearInterval(poll);
@@ -172,6 +188,9 @@ export default function Roulette({ settings, balance }) {
       setPending((cur) => subtract(cur, batch));
       setLog([]);
       setError(errorText(e, "Those chips didn't go down. Try again."));
+      // The request may have failed after the chips were already taken: ask the table what it really has.
+      changedAt.current = Date.now();
+      setTimeout(refresh, 300);
     } finally {
       placingRef.current = false;
       setPlacing(false);
@@ -191,6 +210,8 @@ export default function Roulette({ settings, balance }) {
       refresh();
     } catch (e) {
       setError(errorText(e, "Those chips couldn't be taken back."));
+      changedAt.current = Date.now();
+      setTimeout(refresh, 300);
     } finally {
       placingRef.current = false;
       setPlacing(false);
@@ -218,10 +239,13 @@ export default function Roulette({ settings, balance }) {
     setPending((cur) => { const out = cur.map((b) => ({ ...b })); for (const b of lastBets) { const k = out.find((x) => x.type === b.type); if (k) k.amount += b.amount; else out.push({ ...b }); } return out; });
   };
   const enough = placedTotal + pendingTotal >= settings.min_bet;
+  const msLeft = betting ? Date.parse(table.bets_close_at) - serverNow : 0;
   const pendingKey = pending.map((b) => `${b.type}:${b.amount}`).join(",");
   useEffect(() => {
     if (!pending.length || !open || placing || !enough) return undefined;
-    const timer = setTimeout(() => submit(pending), 150);
+    // Chips put down in a burst go to the table as ONE bet: wait for a short pause first,
+    // unless time is nearly up, when they go straight away.
+    const timer = setTimeout(() => submit(pending), msLeft < 2500 ? 0 : 500);
     return () => clearTimeout(timer);
   }, [pendingKey, open, placing, enough]); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -252,10 +252,12 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
         setWager(back[0]);
         setSides(Object.fromEntries(back[1]));
         setMoves([]);
+        // The request may have failed after the chips were taken: ask the table what it really has.
+        setTimeout(refresh, 300);
       } finally {
         setSyncNo((n) => n + 1);
       }
-    }, 150);
+    }, closeAt && closeAt - (now + offset) < 2500 ? 0 : 450); // a burst of chips goes as one bet, unless time is nearly up
     return () => clearTimeout(timer);
   }, [localKey, betOpen, syncNo]);
 

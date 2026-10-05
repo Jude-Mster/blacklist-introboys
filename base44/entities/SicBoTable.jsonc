@@ -22,6 +22,11 @@
       "type": "integer",
       "description": "Round whose result has been decided and is being paid out"
     },
+    "settling_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When a request last started settling this round, so others do not queue behind it"
+    },
     "settled_at": {
       "type": "string",
       "format": "date-time"
@@ -32,16 +37,12 @@
     },
     "result_dice": {
       "type": "array",
-      "items": {
-        "type": "integer"
-      },
+      "items": { "type": "integer" },
       "description": "The three dice of the round being settled or just settled"
     },
     "recent": {
       "type": "array",
-      "items": {
-        "type": "string"
-      },
+      "items": { "type": "string" },
       "description": "Recent rolls, newest first, each as three digits like 436"
     },
     "total_bet": {

@@ -29,7 +29,11 @@ export const BET_SECONDS = 10;      // countdown after the first bet
 export const RESULT_SECONDS = 8;    // how long results stay up
 const ARRIVE_MARGIN_MS = 200;        // a chip must reach the server this long before the close
 const CLOSE_MARGIN_MS = 1500;       // bets stop a moment before the deadline
-const SETTLE_LOCK_MS = 120000;
+// Added to the lock helper's built-in 20 seconds: a table lock left behind by a request that
+// died now clears after 15 s (it used to block the table for over two minutes).
+const SETTLE_LOCK_MS = -5000;
+// While one request is dealing or settling, the others don't queue behind it.
+const BUSY_MS = 10000;
 import { addReaction, liveReactions } from './reactions.ts';
 export const SEAT_COUNT = 6;         // chairs at each table
 const IDLE_MS = 10 * 60 * 1000;     // a chair with no bet for this long is given up
@@ -137,7 +141,7 @@ export function cardTableHandler(game: CardGame) {
           // A bet taken off the table at the very last moment is simply not dealt in.
           try { await S.update(s.id, fields); } catch (e) { console.error('seat left before the deal', e); }
         }
-        return await T.update(t.id, { status: 'playing', dealer, act_close_at: iso(now + game.actSeconds * 1000) });
+        return await T.update(t.id, { status: 'playing', dealer, busy_at: iso(0), act_close_at: iso(now + game.actSeconds * 1000) });
       };
 
       const settle = async (t, now: number) => {
@@ -190,7 +194,7 @@ export function cardTableHandler(game: CardGame) {
           });
         }
         // Count the results pause from when paying finished, so a busy table still shows its results.
-        return await T.update(t.id, { status: 'settled', next_at: iso(Date.now() + RESULT_SECONDS * 1000) });
+        return await T.update(t.id, { status: 'settled', busy_at: iso(0), next_at: iso(Date.now() + RESULT_SECONDS * 1000) });
       };
 
       const advance = async (early = false) => {
@@ -201,18 +205,20 @@ export function cardTableHandler(game: CardGame) {
           (first.status === 'playing' && (early || !first.act_close_at || Date.parse(first.act_close_at) <= now0)) ||
           (first.status === 'settled' && (!first.next_at || Date.parse(first.next_at) <= now0));
         if (!due) return first;
+        if (first.busy_at && Date.now() - Date.parse(first.busy_at) < BUSY_MS) return first; // someone is already on it
         return withRecordLock(b, 'CardTable', first.id, async () => {
           let t = await T.get(first.id);
           const now = Date.now();
           if (t.status === 'betting' && t.bets_close_at && Date.parse(t.bets_close_at) <= now) {
             const seats = await seatsOf(t.round_no);
-            if (seats.length === 0) return await T.update(t.id, { bets_close_at: null });
+            if (seats.length === 0) return await T.update(t.id, { bets_close_at: null, busy_at: iso(0) });
+            await T.update(t.id, { busy_at: iso(now) });
             t = await deal(t, seats, now);
             // Everyone has blackjack, or the dealer does: nothing to play.
             if (allDone(await seatsOf(t.round_no))) t = await settle(t, now);
           } else if (t.status === 'playing') {
             const timeUp = !t.act_close_at || Date.parse(t.act_close_at) <= now;
-            if (timeUp || allDone(await seatsOf(t.round_no))) t = await settle(t, now);
+            if (timeUp || allDone(await seatsOf(t.round_no))) { await T.update(t.id, { busy_at: iso(now) }); t = await settle(t, now); }
           } else if (t.status === 'settled' && (!t.next_at || Date.parse(t.next_at) <= now)) {
             // Anyone who bet in the round that just ended keeps their chair; idle ones are freed.
             const chairs = chairsOf(t);

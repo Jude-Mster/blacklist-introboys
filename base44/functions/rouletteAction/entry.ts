@@ -19,7 +19,16 @@ const SPIN_SECONDS = 5;   // length of the ball animation on the page (SPIN_MS i
 const RESULT_SECONDS = SPIN_SECONDS + 3;
 const ARRIVE_MARGIN_MS = 200; // a chip must reach the server this long before the close
 const CLOSE_MARGIN_MS = 1500; // (kept for reference: the old cut-off, measured when the bet was processed)
-const SETTLE_LOCK_MS = 120000; // paying out a full table can take a while; nobody else may settle meanwhile // bets stop a moment before the deadline
+// Locks are kept short. A lock left behind by a request that died (or whose clean-up was
+// refused by the platform) used to block the table for over two minutes: that is what
+// left the table sitting on "No more bets". These numbers are ADDED to the lock helper's
+// built-in 20 seconds, so a left-over table lock now clears after 15 s and a member's after 12 s.
+const SETTLE_LOCK_MS = -5000;
+const MEMBER_LOCK_MS = -8000;
+// While one request is settling a round, the others don't queue behind it (queueing costs
+// many calls each and trips the platform's limit): they just show the table as it is.
+const BUSY_MS = 10000;
+const lockMember = (b, id, fn) => withMemberLock(b, id, fn, MEMBER_LOCK_MS);
 // Bumped whenever the wheel changes, so results from an older wheel are never read as this one's.
 const LAYOUT = 'v4';
 const POCKET_NAME = { red: 'Red', black: 'Black', green: 'Green', dragon: 'the Dragon', tiger: 'the Tiger' };
@@ -42,6 +51,7 @@ function due(t, now: number) {
 async function advance(b, settings) {
   const first = await getTable(b);
   if (!due(first, Date.now())) return first;
+  if (first.settling_at && Date.now() - Date.parse(first.settling_at) < BUSY_MS) return first; // someone is already on it
   return withRecordLock(b, 'RouletteTable', first.id, async () => {
     let t = await b.asServiceRole.entities.RouletteTable.get(first.id);
     const now = Date.now();
@@ -51,7 +61,7 @@ async function advance(b, settings) {
       // Safety net: a bet that slipped in while the round was being settled is handed back in full.
       const { items: late } = await b.asServiceRole.entities.RouletteBet.filter({ round_no: t.round_no, settled: false }, { limit: 100 });
       for (const lb of late) {
-        await withMemberLock(b, lb.member_id, async () => {
+        await lockMember(b, lb.member_id, async () => {
           let cur; try { cur = await b.asServiceRole.entities.RouletteBet.get(lb.id); } catch { return; }
           if (!cur || cur.settled) return;
           await b.asServiceRole.entities.RouletteBet.update(cur.id, { settled: true, payout: cur.amount, net: 0 });
@@ -62,6 +72,7 @@ async function advance(b, settings) {
       t = await b.asServiceRole.entities.RouletteTable.update(t.id, {
         round_no: (t.round_no || 0) + 1,
         status: 'betting',
+        settling_at: iso(0),
         bets_close_at: iso(now + seconds * 1000),
         total_bet: 0,
         players: 0
@@ -78,16 +89,17 @@ async function settle(b, t, now: number, settings) {
   let number;
   if (t.settling_round === t.round_no && Number.isInteger(t.result_number) && t.result_number < ROULETTE_POCKETS.length) {
     number = t.result_number;
+    await b.asServiceRole.entities.RouletteTable.update(t.id, { settling_at: iso(Date.now()) });
   } else {
     number = randInt(ROULETTE_POCKETS.length);
-    t = await b.asServiceRole.entities.RouletteTable.update(t.id, { settling_round: t.round_no, result_number: number, result_index: number });
+    t = await b.asServiceRole.entities.RouletteTable.update(t.id, { settling_at: iso(Date.now()), settling_round: t.round_no, result_number: number, result_index: number });
   }
   const kind = ROULETTE_POCKETS[number];
   const { items: bets } = await b.asServiceRole.entities.RouletteBet.filter({ round_no: t.round_no, settled: false }, { limit: 500 });
   for (const listed of bets) {
     // Each bet is settled under its owner's lock, so a chip going down or coming off at the
     // last moment can never cross with the payout. The bet is read again inside the lock.
-    const rb = await withMemberLock(b, listed.member_id, async () => {
+    const rb = await lockMember(b, listed.member_id, async () => {
       let cur; try { cur = await b.asServiceRole.entities.RouletteBet.get(listed.id); } catch { return null; }
       if (!cur || cur.settled) return null;
       const pay = roulettePayout(cur.bets, kind);
@@ -111,7 +123,11 @@ async function settle(b, t, now: number, settings) {
       await announceBigWin(rb.name || 'A member', NAME, net, `landed on ${POCKET_NAME[kind]}`);
     }
   }
+  // If another request finished this round while we were paying, don't record it twice.
+  const done = await b.asServiceRole.entities.RouletteTable.get(t.id);
+  if (done.status === 'settled' && done.round_no === t.round_no) return done;
   return await b.asServiceRole.entities.RouletteTable.update(t.id, {
+    settling_at: iso(0),
     status: 'settled',
     result_number: number,
     result_index: number,
@@ -152,7 +168,8 @@ export default async function(req) {
       const { items: bets } = await b.asServiceRole.entities.RouletteBet.filter({ round_no: t.round_no }, { limit: 200 });
       const mine = bets.find((x) => x.member_id === me.id) || null;
       return Response.json({
-        table: publicTable(t),
+        // Totals are counted from the bets themselves, so they can never disagree with the chips shown.
+        table: { ...publicTable(t), total_bet: bets.reduce((a, x) => a + (x.amount || 0), 0), players: bets.length },
         // Every player's chips, spot by spot, so the table can show who bet where.
         bets: bets.map((x) => ({ name: x.name, avatar: x.avatar, role: x.role, amount: x.amount, payout: x.payout, net: x.net, settled: x.settled, mine: x.member_id === me.id, spots: (x.bets || []).map((c) => ({ type: c.type, amount: c.amount })) })),
         mine
@@ -173,7 +190,7 @@ export default async function(req) {
         throw new UserError('Bets are closed for this spin. Wait for the next round.');
       }
       const round = t.round_no;
-      const result = await withMemberLock(b, me.id, async () => {
+      const result = await lockMember(b, me.id, async () => {
         const member = await b.asServiceRole.entities.Member.get(me.id);
         if (member.banned) throw new UserError('You are banned from the games.', 403);
         // The round may have closed while we waited for the lock.
@@ -211,12 +228,6 @@ export default async function(req) {
         }
         return { balance, mine: row, isNew: !existing };
       });
-      // Keep the table's totals roughly current for everyone watching.
-      t = await b.asServiceRole.entities.RouletteTable.get(t.id);
-      await b.asServiceRole.entities.RouletteTable.update(t.id, {
-        total_bet: (t.total_bet || 0) + total,
-        players: (t.players || 0) + (result.isNew ? 1 : 0)
-      }).catch(() => {});
       return Response.json({ ok: true, balance: result.balance, mine: result.mine });
     }
 
@@ -232,7 +243,7 @@ export default async function(req) {
       if (!inTime(t)) t = await advance(b, settings);
       if (!inTime(t)) throw new UserError(CLOSED);
       const round = t.round_no;
-      const result = await withMemberLock(b, me.id, async () => {
+      const result = await lockMember(b, me.id, async () => {
         const live = await b.asServiceRole.entities.RouletteTable.get(t.id);
         if (live.round_no !== round || !inTime(live)) throw new UserError(CLOSED);
         const { items } = await b.asServiceRole.entities.RouletteBet.filter({ round_no: round, member_id: me.id }, { limit: 1 });
@@ -263,11 +274,6 @@ export default async function(req) {
         if (member.daily_bet_date === todayStr()) await b.asServiceRole.entities.Member.update(me.id, { daily_bet_total: Math.max(0, (member.daily_bet_total || 0) - back) });
         return { balance, mine: row, back, gone: remaining === 0 };
       });
-      t = await b.asServiceRole.entities.RouletteTable.get(t.id);
-      await b.asServiceRole.entities.RouletteTable.update(t.id, {
-        total_bet: Math.max(0, (t.total_bet || 0) - result.back),
-        players: Math.max(0, (t.players || 0) - (result.gone ? 1 : 0))
-      }).catch(() => {});
       return Response.json({ ok: true, balance: result.balance, mine: result.mine });
     }
 
