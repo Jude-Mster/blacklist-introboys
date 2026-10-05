@@ -37,13 +37,17 @@
     },
     "result_dice": {
       "type": "array",
-      "items": { "type": "integer" },
-      "description": "The three dice of the round being settled or just settled"
+      "items": {
+        "type": "integer"
+      },
+      "description": "The three dice of the current round. Rolled when the round opens; never sent to members before bets close"
     },
     "recent": {
       "type": "array",
-      "items": { "type": "string" },
-      "description": "Recent rolls, newest first, each as three digits like 436"
+      "items": {
+        "type": "string"
+      },
+      "description": "Finished rounds, newest first, each as round:dice like 39:436"
     },
     "total_bet": {
       "type": "integer",
@@ -59,6 +63,10 @@
     "lock_until": {
       "type": "string",
       "format": "date-time"
+    },
+    "clock": {
+      "type": "string",
+      "description": "v2 = the round runs on the clock: dice are rolled when the round opens and shown when bets close"
     }
   },
   "rls": {

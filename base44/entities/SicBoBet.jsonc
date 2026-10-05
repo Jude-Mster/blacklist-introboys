@@ -38,6 +38,11 @@
     "settled": {
       "type": "boolean",
       "default": false
+    },
+    "pay_started": {
+      "type": "boolean",
+      "default": false,
+      "description": "A payout for this bet has been started; a retry checks the points log before paying"
     }
   },
   "rls": {

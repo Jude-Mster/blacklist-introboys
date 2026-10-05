@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 // this page shows the roll and the board.
 const ROLL_MS = 4000; // must match ROLL_SECONDS in sicboAction
 const POLL_MS = 2500;
+const OWED_KEY = "bi.sicbo.owed"; // set while this device has a bet that hasn't been collected
 const TOTALS_LOW = [4, 5, 6, 7, 8, 9, 10];
 const TOTALS_HIGH = [11, 12, 13, 14, 15, 16, 17];
 const short = (n) => (n >= 1000 ? `${+(n / 1000).toFixed(1)}K` : String(n));
@@ -47,6 +48,24 @@ export default function SicBo({ settings, balance }) {
   const inFlight = useRef(false);
   const loaded = useRef(false);
   const useChip = chips.includes(chip) ? chip : chips[Math.min(1, chips.length - 1)] || 0;
+
+  // Collecting: once the dice are out, ask the server to hand over what this member's bets
+  // won. Showing the roll never waits for this; the points appear when the dice stop.
+  const collecting = useRef(false);
+  const rollingRef = useRef(false);
+  const collect = useCallback(async () => {
+    if (collecting.current) return;
+    collecting.current = true;
+    try {
+      await base44.functions.invoke("sicboAction", { action: "settle" });
+      try { localStorage.removeItem(OWED_KEY); } catch { /* private mode */ }
+      if (!rollingRef.current) reload();
+    } catch {
+      /* tried again at the next look at the table */
+    } finally {
+      setTimeout(() => { collecting.current = false; }, 2500);
+    }
+  }, [reload]);
 
   const refresh = useCallback(async () => {
     if (inFlight.current) return;
@@ -91,6 +110,11 @@ export default function SicBo({ settings, balance }) {
   }, [refresh]);
 
   const table = state && state.table;
+  rollingRef.current = rolling;
+  const owed = !!(state && state.owed);
+  useEffect(() => { if (owed) collect(); }, [owed, state, collect]);
+  // A bet left behind by closing the page before the roll is collected on the next visit.
+  useEffect(() => { try { if (localStorage.getItem(OWED_KEY)) collect(); } catch { /* private mode */ } }, [collect]);
   const round = table ? table.round_no : 0;
   const serverNow = now + offset;
 
@@ -150,6 +174,7 @@ export default function SicBo({ settings, balance }) {
     setPlacing(true);
     try {
       const res = await base44.functions.invoke("sicboAction", { action: "bet", bets: batch });
+      try { localStorage.setItem(OWED_KEY, "1"); } catch { /* private mode */ }
       setBalance(res.data.balance);
       setPending((cur) => subtract(cur, batch));
       changedAt.current = Date.now();
@@ -218,7 +243,7 @@ export default function SicBo({ settings, balance }) {
     if (!pending.length || !open || placing || !enough) return undefined;
     // Chips put down in a burst go to the table as ONE bet: wait for a short pause first,
     // unless time is nearly up, when they go straight away.
-    const timer = setTimeout(() => submit(pending), msLeft < 2500 ? 0 : 500);
+    const timer = setTimeout(() => submit(pending), msLeft < 2500 ? 0 : 300);
     return () => clearTimeout(timer);
   }, [pendingKey, open, placing, enough]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -280,7 +305,7 @@ export default function SicBo({ settings, balance }) {
         {mineHere + waiting > 0 && (
           <span className="pointer-events-none absolute -right-1.5 -top-2.5 flex flex-col items-center">
             {/* one chip showing exactly how much is on this spot */}
-            <Chip value={stack[0] || 1} text={short(mineHere + waiting)} size={30} className={waiting ? "opacity-75" : ""} />
+            <Chip value={stack[0] || 1} text={short(mineHere + waiting)} size={30} />
           </span>
         )}
       </button>
@@ -309,7 +334,7 @@ export default function SicBo({ settings, balance }) {
                 </div>
               </>
             )}
-            {(waitingToRoll || rolling) && <p className="font-heading text-base font-bold text-gold">No more bets. {rolling ? "The dice are rolling." : lateBy > 6000 ? "The server is slow to roll. Hold on." : "Shaking the dice."}</p>}
+            {(waitingToRoll || rolling) && <p className="font-heading text-base font-bold text-gold">No more bets. {rolling ? "The dice are rolling." : lateBy > 5000 ? "Waiting for the server. Hold on." : "Shaking the dice."}</p>}
             {showResult && !rolling && (
               <>
                 <p className="font-heading text-xl font-extrabold leading-tight text-gold">
@@ -362,7 +387,7 @@ export default function SicBo({ settings, balance }) {
             {!open ? (placedTotal ? `Bets are closed. You have ${placedTotal.toLocaleString()} on the table.` : "Wait for the next roll.")
               : !placedTotal && !pendingTotal ? "Put chips on the board and you're in."
               : !enough ? `Add more chips: the minimum is ${settings.min_bet.toLocaleString()}.`
-              : pendingTotal ? "Placing your chips…"
+              : pendingTotal ? "Sending your chips to the table…"
               : <>Your bet is in: <Points value={placedTotal} className="text-gold" />. Add or remove chips until bets close.</>}
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2">

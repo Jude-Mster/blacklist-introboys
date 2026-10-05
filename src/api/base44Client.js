@@ -34,7 +34,7 @@ const client = createClient({
 // Anything a member does (bet, play a card, send a message) is never held back.
 const READ_FUNCTIONS = { getChatMessages: 3000, getGameFeed: 3000, getLeaderboard: 3000 };
 const READ_ACTIONS = { state: 900, list: 900 };
-const BACKOFF_MS = 8000;
+const BACKOFF_MS = 4000;
 const LOAD_ACTIONS = new Set(["state", "list", "catalog", "adminOverview", "roster", "totals", "search", "discordStatus", "ping"]);
 const LOAD_RETRY_MS = [1200, 2500, 5000];
 // Games that play an animation before the result should be seen set the balance themselves.
@@ -85,7 +85,7 @@ functions.invoke = (name, data) => {
     const d = res && res.data;
     if (HOLD_BALANCE.has(name)) return res;
     if (d && typeof d.balance === "number") announce("bi:balance", { points: d.balance });
-    else if (ttl === undefined && !isLoad && !NO_POINTS.has(name) && payload.action !== "react") announce("bi:changed", {});
+    else if (ttl === undefined && !isLoad && !NO_POINTS.has(name) && payload.action !== "react" && payload.action !== "settle") announce("bi:changed", {});
     return res;
   });
   const call = async () => {
@@ -115,7 +115,8 @@ functions.invoke = (name, data) => {
   const hidden = typeof document !== "undefined" && document.hidden;
   const resting = hidden || now < backoffUntil;
   // Reuse the last good answer when it is fresh, the tab is hidden, or we were just told to slow down.
-  if (hit && (now - hit.at < ttl || resting)) return hit.promise;
+  // (Never an answer more than a few seconds old: a table that has moved on must be seen to move on.)
+  if (hit && (now - hit.at < ttl || (resting && now - hit.at < 5000))) return hit.promise;
   if (inFlight.has(key)) return inFlight.get(key);
   // If a change went through while this refresh was on its way, its answer may be from
   // before the change: ask once more so the page never steps back in time.
