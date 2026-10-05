@@ -38,6 +38,7 @@ export default function Roulette({ settings, balance }) {
   const [pending, setPending] = useState([]); // chips not sent yet: [{ type, amount }]
   const [log, setLog] = useState([]); // chips put down this round, newest last (for Undo)
   const placingRef = useRef(false);
+  const changedAt = useRef(0); // when our chips last changed on the server
   const [lastBets, setLastBets] = useState(null);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
@@ -53,9 +54,12 @@ export default function Roulette({ settings, balance }) {
   const refresh = useCallback(async () => {
     if (inFlight.current) return;
     inFlight.current = true;
+    const asked = Date.now();
     try {
       const res = await base44.functions.invoke("rouletteAction", { action: "state" });
       const d = res.data;
+      // An answer asked for before our last chips went down (or came off) is out of date: skip it.
+      if (d && d.table && asked < changedAt.current) return;
       if (d && d.table) {
         setOffset(Date.parse(d.table.server_now) - Date.now());
         loaded.current = true;
@@ -127,7 +131,7 @@ export default function Roulette({ settings, balance }) {
 
   const betting = !!table && table.status === "betting";
   const closeIn = betting ? Math.max(0, Math.ceil((Date.parse(table.bets_close_at) - serverNow) / 1000)) : 0;
-  const open = betting && Date.parse(table.bets_close_at) - serverNow > 1500;
+  const open = betting && Date.parse(table.bets_close_at) - serverNow > 700;
   const showResult = !!table && table.status === "settled" && revealed === table.round_no && !!table.result_kind;
   const nextIn = table && table.status === "settled" && table.next_at ? Math.max(0, Math.ceil((Date.parse(table.next_at) - serverNow) / 1000)) : 0;
   const betSeconds = 10; // must match BET_SECONDS in rouletteAction
@@ -159,6 +163,7 @@ export default function Roulette({ settings, balance }) {
       const res = await base44.functions.invoke("rouletteAction", { action: "bet", bets: batch });
       setBalance(res.data.balance);
       setPending((cur) => subtract(cur, batch));
+      changedAt.current = Date.now();
       setState((s) => (s ? { ...s, mine: res.data.mine } : s));
       setError("");
       refresh();
@@ -180,6 +185,7 @@ export default function Roulette({ settings, balance }) {
     try {
       const res = await base44.functions.invoke("rouletteAction", { action: "remove", ...payload });
       setBalance(res.data.balance);
+      changedAt.current = Date.now();
       setState((s) => (s ? { ...s, mine: res.data.mine } : s));
       setError("");
       refresh();
@@ -215,7 +221,7 @@ export default function Roulette({ settings, balance }) {
   const pendingKey = pending.map((b) => `${b.type}:${b.amount}`).join(",");
   useEffect(() => {
     if (!pending.length || !open || placing || !enough) return undefined;
-    const timer = setTimeout(() => submit(pending), 350);
+    const timer = setTimeout(() => submit(pending), 150);
     return () => clearTimeout(timer);
   }, [pendingKey, open, placing, enough]); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -45,6 +45,15 @@ const announce = (type, detail) => {
   try { window.dispatchEvent(new CustomEvent(type, { detail })); } catch { /* not in a browser */ }
 };
 const lastGood = new Map(); // key -> { at, promise } of the last answer that worked
+// Counts the changes a member has made through each function. A refresh that was asked for
+// before a change finished may describe the table as it was BEFORE the change (for example
+// without the chips just placed), so it is never remembered and is asked for again.
+const changes = new Map();
+const bump = (name) => changes.set(name, (changes.get(name) || 0) + 1);
+const forget = (name) => {
+  for (const k of [...lastGood.keys()]) if (k.startsWith(name + "|")) lastGood.delete(k);
+  for (const k of [...inFlight.keys()]) if (k.startsWith(name + "|")) inFlight.delete(k);
+};
 const inFlight = new Map();
 let backoffUntil = 0;
 
@@ -93,9 +102,11 @@ functions.invoke = (name, data) => {
   };
 
   if (ttl === undefined) {
-    // A member did something: the remembered answers for this function are out of date.
-    for (const k of lastGood.keys()) if (k.startsWith(name + "|")) lastGood.delete(k);
-    return call();
+    // A member did something: the remembered answers for this function are out of date,
+    // both now and again once the change has gone through.
+    bump(name);
+    forget(name);
+    return call().finally(() => { bump(name); forget(name); });
   }
 
   const key = `${name}|${JSON.stringify(data || {})}`;
@@ -106,12 +117,23 @@ functions.invoke = (name, data) => {
   // Reuse the last good answer when it is fresh, the tab is hidden, or we were just told to slow down.
   if (hit && (now - hit.at < ttl || resting)) return hit.promise;
   if (inFlight.has(key)) return inFlight.get(key);
-  const promise = call();
+  // If a change went through while this refresh was on its way, its answer may be from
+  // before the change: ask once more so the page never steps back in time.
+  let clean = true;
+  const fresh = async () => {
+    for (let again = 0; ; again++) {
+      const before = changes.get(name) || 0;
+      const res = await call();
+      clean = (changes.get(name) || 0) === before;
+      if (clean || again >= 1) return res;
+    }
+  };
+  const promise = fresh();
   inFlight.set(key, promise);
   promise
-    .then(() => lastGood.set(key, { at: Date.now(), promise }))
+    .then(() => { if (clean && inFlight.get(key) === promise) lastGood.set(key, { at: Date.now(), promise }); })
     .catch(() => {})
-    .finally(() => inFlight.delete(key));
+    .finally(() => { if (inFlight.get(key) === promise) inFlight.delete(key); });
   return promise;
 };
 

@@ -112,8 +112,14 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
   const hasData = useRef(false);
   busyRef.current = busy;
 
+  const newest = useRef(0); // server time of the newest answer shown
   const take = useCallback((d) => {
     if (!d || !d.table) return;
+    // Answers can arrive out of order. One that is older than what is already on screen
+    // would make chips just placed vanish, so it is dropped.
+    const stamp = Date.parse(d.table.server_now) || 0;
+    if (stamp && stamp < newest.current) return;
+    newest.current = stamp;
     hasData.current = true;
     idle.current = d.table.status === "betting" && !d.table.bets_close_at && !d.mine;
     setData(d);
@@ -205,7 +211,7 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
   const tRound = data ? data.table.round_no : 0;
   const closeAt = data && data.table.bets_close_at ? Date.parse(data.table.bets_close_at) : 0;
   // Chips can go down or come off only while bets are open. Once time is up they stay.
-  const betOpen = !!data && data.my_seat >= 0 && tStatus === "betting" && data.open !== false && (!closeAt || closeAt - (now + offset) > 1500);
+  const betOpen = !!data && data.my_seat >= 0 && tStatus === "betting" && data.open !== false && (!closeAt || closeAt - (now + offset) > 700);
   const cleanSides = Object.fromEntries(Object.entries(sides).map(([k, v]) => [k, Math.max(0, Math.floor(Number(v) || 0))]).filter(([, v]) => v > 0));
   const localKey = keyOf(wager, cleanSides);
   latest.current = { wager, sides: cleanSides, key: localKey };
@@ -249,7 +255,7 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
       } finally {
         setSyncNo((n) => n + 1);
       }
-    }, 300);
+    }, 150);
     return () => clearTimeout(timer);
   }, [localKey, betOpen, syncNo]);
 

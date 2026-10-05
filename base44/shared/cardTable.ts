@@ -27,6 +27,7 @@ import { resilient } from './points.ts';
 
 export const BET_SECONDS = 10;      // countdown after the first bet
 export const RESULT_SECONDS = 8;    // how long results stay up
+const ARRIVE_MARGIN_MS = 200;        // a chip must reach the server this long before the close
 const CLOSE_MARGIN_MS = 1500;       // bets stop a moment before the deadline
 const SETTLE_LOCK_MS = 120000;
 import { addReaction, liveReactions } from './reactions.ts';
@@ -69,6 +70,9 @@ export function cardTableHandler(game: CardGame) {
 
   return async function(req) {
     try {
+      // When this request reached the server. A chip counts if it ARRIVED before bets closed,
+      // however long the checks and the lock take afterwards.
+      const arrived = Date.now();
       const b = resilient(createClientFromRequest(req));
       const user = await sessionUser(b, req);
       if (!user) throw new UserError('Link your Discord first.', 401);
@@ -361,9 +365,10 @@ export function cardTableHandler(game: CardGame) {
         const stake = wager + sideTotal;
         if (stake > settings.max_bet) throw new UserError(`Your wager and side bets together can be at most ${settings.max_bet}.`);
 
-        let t = await advance();
         const CLOSED = 'Bets are closed for this round. Your chips stay as they are.';
-        const closed = (x) => x.status !== 'betting' || (x.bets_close_at && Date.parse(x.bets_close_at) - CLOSE_MARGIN_MS <= Date.now());
+        const closed = (x) => x.status !== 'betting' || (x.bets_close_at && Date.parse(x.bets_close_at) - ARRIVE_MARGIN_MS <= arrived);
+        let t = await getTable();
+        if (closed(t)) t = await advance();
         if (closed(t)) throw new UserError(CLOSED);
         if (chairIndex(t, me.id) < 0) throw new UserError('Sit down at the table first.');
         const round = t.round_no;
