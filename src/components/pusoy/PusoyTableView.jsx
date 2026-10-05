@@ -21,50 +21,65 @@ import { ReactionBar, ReactionBubble, useReactions } from "@/components/games/Re
 const POLL_MS = 2000;
 const cardRank = (c) => "3456789TJQKA2".indexOf(c[0]) * 4 + "dchs".indexOf(c[1]);
 
-function Seat({ s, table, left, canSit, busy, onSit, firstSeat, reaction }) {
+// Seat spots around the oval, starting with the viewer at the bottom and going clockwise.
+const SPOTS = [[50, 86], [10, 50], [50, 11], [90, 50]];
+
+// One seat at the oval table: an empty chair to tap, or a player with their card count.
+function Seat({ s, table, left, canSit, busy, onSit, firstSeat, reaction, x, y }) {
+  const style = { left: `${x}%`, top: `${y}%` };
   if (s.empty) {
     return (
-      <button
-        type="button"
-        onClick={() => onSit(s.seat)}
-        disabled={!canSit || !!busy}
-        className={cn(
-          "flex min-h-[116px] flex-col items-center justify-center rounded-md border border-dashed border-bronze/50 bg-black/20 px-1 py-2 text-center",
-          canSit ? "text-gold hover:border-gold hover:bg-black/35" : "text-mist/50"
+      <div className="absolute -translate-x-1/2 -translate-y-1/2" style={style}>
+        {canSit ? (
+          <button
+            type="button"
+            onClick={() => onSit(s.seat)}
+            disabled={!!busy}
+            aria-label={`Sit at seat ${s.seat + 1}`}
+            className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-dashed border-bronze/60 bg-black/40 text-xs font-bold text-mist transition-colors hover:border-gold hover:text-gold"
+          >
+            Sit
+          </button>
+        ) : (
+          <div className="h-12 w-12 rounded-full border border-dashed border-bronze/30" aria-label={`Seat ${s.seat + 1}, empty`} />
         )}
-      >
-        <span className="text-[11px] uppercase tracking-wide">Seat {s.seat + 1}</span>
-        <span className="mt-1 font-heading text-sm font-bold">{canSit ? "Sit here" : "Empty"}</span>
-      </button>
+      </div>
     );
   }
-  const turn = table.status === "playing" && table.turn === s.seat;
+  const playing = table.status === "playing";
+  const turn = playing && table.turn === s.seat;
   const won = table.result && table.result.winner === s.seat;
   const shown = (table.opening || []).find((o) => o.seat === s.seat);
-  const high = table.status === "playing" && shown ? shown.card : null;
+  const high = playing && shown ? shown.card : null;
   const first = high && firstSeat === s.seat;
+  const pct = turn && left !== null ? Math.max(0, Math.min(1, left / (table.turn_seconds || 20))) : 0;
   let note = "";
-  if (table.status === "playing") {
-    note = !s.in_game ? "Next game" : s.out ? "Forfeited" : turn ? `${left}s` : s.passed ? "Passed" : "";
-  } else if (table.status === "finished") note = won ? "Winner" : "";
+  if (playing) note = !s.in_game ? "Next game" : s.out ? "Forfeited" : turn ? `${left}s` : s.passed ? "Passed" : "";
+  else if (table.status === "finished") note = won ? "Winner" : "";
+  const backs = playing && s.in_game && !s.out && !s.mine ? Math.min(s.count || 0, 5) : 0;
   return (
-    <div className={cn(
-      "relative flex min-h-[116px] flex-col items-center rounded-md border bg-black/30 px-1 py-2 text-center",
-      turn ? "border-gold ring-1 ring-gold/70" : s.mine ? "border-gold/70" : "border-bronze/50",
-      won && "win-glow"
-    )}>
-      <ReactionBubble r={reaction} className="-top-3" />
-      <Avatar url={s.avatar} name={s.name} size={28} />
-      <p className={cn("mt-1 w-full truncate text-xs font-bold", s.mine ? "text-gold" : "text-[hsl(var(--foreground))]")}>{s.mine ? "You" : s.name}</p>
-      {s.count !== null && (
-        <p className="mt-0.5 text-[11px] leading-tight text-mist"><span className="font-heading text-sm font-bold text-[hsl(var(--foreground))]">{s.count}</span> card{s.count === 1 ? "" : "s"}</p>
-      )}
-      <p className={cn("text-[11px] font-bold leading-tight", turn || won ? "text-gold" : "text-mist")}>{note}</p>
-      {high && (
-        <p className="mt-1 flex items-center gap-1 text-[10px] leading-none text-mist" title="Highest card, shown at the deal. Hidden again once play starts.">
-          High <PlayingCard card={high} size="xs" className={first ? "ring-1 ring-gold" : ""} />
+    <div className={cn("absolute flex w-[84px] -translate-x-1/2 -translate-y-1/2 flex-col items-center", playing && (!s.in_game || s.out) && "opacity-55")} style={style}>
+      <ReactionBubble r={reaction} className="-top-8" />
+      {high ? (
+        <p className="z-10 mb-[-8px] flex items-center gap-1 rounded bg-black/75 px-1 py-0.5 text-[9px] font-bold uppercase leading-none text-white/85" title="Highest card, shown at the deal. Hidden again once play starts.">
+          High <PlayingCard card={high} size="xs" className={first ? "ring-2 ring-gold" : ""} />
         </p>
-      )}
+      ) : backs > 0 ? (
+        <div className="mb-[-10px] flex pl-3" aria-hidden="true">
+          {Array.from({ length: backs }, (_, k) => <PlayingCard key={k} back size="xs" className="-ml-3" />)}
+        </div>
+      ) : null}
+      <div
+        className={cn("relative rounded-full p-[3px]", won && "win-glow")}
+        style={{ background: turn ? `conic-gradient(hsl(var(--gold)) ${pct * 360}deg, hsl(0 0% 100% / 0.12) 0deg)` : s.mine ? "hsl(var(--jade))" : "hsl(0 0% 32%)" }}
+      >
+        <Avatar url={s.avatar} name={s.name} size={40} className="border-2 border-[hsl(0_0%_7%)]" />
+      </div>
+      <div className={cn("mt-1 w-full rounded border bg-black/70 px-1 py-0.5 text-center", turn ? "border-gold" : "border-bronze/50")}>
+        <p className={cn("truncate text-[11px] font-bold leading-tight", s.mine && "text-gold")}>{s.mine ? "You" : s.name}</p>
+        {s.count !== null && <p className="text-[11px] leading-tight text-mist"><span className="font-heading text-sm font-bold text-[hsl(var(--foreground))]">{s.count}</span> card{s.count === 1 ? "" : "s"}</p>}
+      </div>
+      {note && <p className={cn("mt-0.5 rounded-sm bg-black/60 px-1.5 text-[10px] font-bold", turn || won ? "text-gold" : "text-mist")}>{note}</p>}
     </div>
   );
 }
@@ -222,16 +237,19 @@ export default function PusoyTableView({ tableId }) {
       </div>
 
       <Panel title={table.name}>
-        <SuitOrder className="mb-3" />
-
-        <div className="space-y-3 rounded-md border border-bronze/40 bg-[radial-gradient(circle_at_50%_30%,hsl(215_30%_15%),hsl(0_0%_6%))] p-3 sm:p-4">
-          <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
-            {table.seats.map((s) => (
-              <Seat key={s.seat} s={s} table={table} left={turnLeft} firstSeat={firstSeat} canSit={!seated && data.open !== false} busy={busy} onSit={(seat) => send("sit", { seat })} reaction={reactionAt(s.seat)} />
-            ))}
+        {/* the poker table: an oval felt with the seats around it and the played cards in the middle */}
+        <div className="relative mx-auto !mb-10 !mt-10 h-[400px] w-full max-w-[600px] sm:h-[430px]">
+          <div
+            className="absolute inset-x-[10%] inset-y-[13%] rounded-[50%] border-[6px] border-[hsl(0_0%_32%)]"
+            style={{
+              background: "radial-gradient(ellipse at 50% 40%, hsl(357 62% 24%), hsl(357 66% 13%) 70%, hsl(357 70% 7%))",
+              boxShadow: "inset 0 0 0 2px hsl(0 0% 100% / 0.3), inset 0 0 50px rgba(0,0,0,0.6), 0 20px 50px -20px rgba(0,0,0,0.9)"
+            }}
+          >
+            <span className="absolute inset-0 flex items-center justify-center font-heading text-6xl font-extrabold text-black/15" aria-hidden="true">黑</span>
           </div>
 
-          <div className="flex min-h-[132px] flex-col items-center justify-center rounded-md border border-bronze/30 bg-black/25 p-2 text-center">
+          <div className="absolute inset-x-[22%] top-1/2 flex -translate-y-1/2 flex-col items-center text-center">
             {table.status === "finished" && res && (
               <div className="mb-2">
                 <p className="font-heading text-lg font-bold text-gold">{myRow && myRow.net > 0 ? "You win!" : `${res.winner_name} wins`}</p>
@@ -252,25 +270,40 @@ export default function PusoyTableView({ tableId }) {
               </p>
             )}
             {table.pile.length > 0 ? (
-              // Every card played stays on the table: older cards stacked small, the newest on top.
-              <div className="flex max-w-full flex-wrap items-end justify-center pl-1" aria-label={`${table.pile.length} cards on the table`}>
-                {table.pile.map((c, i) => {
-                  const newest = i === table.pile.length - 1;
-                  return <span key={c} className={newest ? "card-deal inline-flex" : "inline-flex"}><PlayingCard card={c} size={newest ? "md" : "xs"} highlight={newest && !!top} className={cn("mb-1", newest ? "ml-1.5" : "-ml-1 opacity-80")} /></span>;
+              // The newest card on top, with the few before it fanned underneath. Every card played is listed under the table.
+              <div className="flex items-end justify-center pl-3" aria-label={`${table.pile.length} cards on the table`}>
+                {table.pile.slice(-7).map((c, i, arr) => {
+                  const newest = i === arr.length - 1;
+                  return <span key={c} className={newest ? "card-deal inline-flex" : "inline-flex"}><PlayingCard card={c} size={newest ? "md" : "xs"} highlight={newest && !!top} className={newest ? "ml-1" : "-ml-2.5 opacity-85"} /></span>;
                 })}
               </div>
             ) : (
-              table.status !== "finished" && <p className="text-sm text-mist/70">{table.status === "playing" ? "" : "No cards on the table"}</p>
+              table.status !== "finished" && <p className="text-sm text-white/60">{table.status === "playing" ? "" : "No cards on the table"}</p>
             )}
-            {table.pile.length > 0 && <p className="mt-1 text-[11px] text-mist/80">{table.pile.length} card{table.pile.length === 1 ? "" : "s"} on the table</p>}
+            {table.pile.length > 0 && <p className="mt-1 rounded-full bg-black/45 px-2 text-[11px] text-white/80">{table.pile.length} card{table.pile.length === 1 ? "" : "s"} played</p>}
           </div>
 
-          {seated && <ReactionBar onSend={react} />}
-
-          <p role="status" aria-live="polite" className={cn("text-center text-sm", myTurn ? "font-bold text-gold" : "text-mist")}>
-            {banner}{myTurn && turnLeft !== null ? ` ${turnLeft}s` : ""}
-          </p>
+          {table.seats.map((s) => {
+            const d = (s.seat - (seated ? data.my_seat : 0) + table.seats.length) % table.seats.length;
+            const [x, y] = SPOTS[d] || SPOTS[0];
+            return <Seat key={s.seat} s={s} x={x} y={y} table={table} left={turnLeft} firstSeat={firstSeat} canSit={!seated && data.open !== false} busy={busy} onSit={(seat) => send("sit", { seat })} reaction={reactionAt(s.seat)} />;
+          })}
         </div>
+
+        <p role="status" aria-live="polite" className={cn("mt-2 text-center text-sm", myTurn ? "font-bold text-gold" : "text-mist")}>
+          {banner}{myTurn && turnLeft !== null ? ` ${turnLeft}s` : ""}
+        </p>
+        {seated && <ReactionBar onSend={react} className="mt-2" />}
+
+        {/* every card that has been played stays in view */}
+        {table.pile.length > 7 && (
+          <div className="mt-3 rounded-md border border-bronze/30 bg-black/25 p-2">
+            <p className="mb-1 text-center text-[11px] uppercase tracking-wide text-mist">All cards played, oldest first</p>
+            <div className="flex flex-wrap justify-center gap-0.5">
+              {table.pile.map((c) => <PlayingCard key={c} card={c} size="xs" />)}
+            </div>
+          </div>
+        )}
 
         {error && <p role="alert" className="mt-3 rounded-md border border-ember/40 bg-ember/10 px-3 py-2 text-sm text-ember">{error}</p>}
 
@@ -339,6 +372,8 @@ export default function PusoyTableView({ tableId }) {
             )}
           </>
         )}
+
+        <SuitOrder className="mt-4" />
 
         <p className="mt-4 text-xs text-mist/80">
           Everyone puts in {table.ante.toLocaleString()} pot money and the first to empty their hand takes it.{table.stake > 0 ? ` Each loser also pays ${table.stake.toLocaleString()} for every card left.` : ""} {table.cut_pct}% of the winnings is removed from circulation. When a game is dealt, {table.need.toLocaleString()} points are held from each player and whatever isn't lost comes straight back. You have {table.turn_seconds} seconds a turn; run out three times in a row, or leave mid-game, and you forfeit: you lose your pot money{table.stake > 0 ? " and pay for every card you hold" : ""}.

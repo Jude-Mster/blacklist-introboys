@@ -261,7 +261,7 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
     <Panel title={title}>
       <div
         className={cn(
-          "casino-felt mb-4 space-y-3 px-3 pb-10 pt-0 sm:px-5",
+          "casino-felt mb-4 space-y-3 px-3 pb-12 pt-0 sm:px-5",
           res && res.win === true && "win-glow",
           res && res.win === false && "loss-shake"
         )}
@@ -289,8 +289,70 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
           ))}
         </div>
 
+        <div role="status" aria-live="polite" className="min-h-[2.75rem] text-center">
+          {res ? (
+            <>
+              <p className={cn("font-heading text-lg font-bold", res.win === true ? "text-gold" : res.win === false ? "text-ember" : "text-mist")}>{res.text}</p>
+              <p className="text-sm text-mist">
+                {mine.net > 0 ? <>You won <Points value={mine.net} className="font-bold text-gold" /></> : mine.net < 0 ? <>You lost <Points value={-mine.net} className="font-bold" /></> : "No points changed hands."}
+                {" "}{banner}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-white/85">{banner}</p>
+          )}
+        </div>
+
+        {mine && (
+          <div className="rounded-md border border-white/20 bg-black/35 p-3">
+            <p className="mb-1.5 text-xs uppercase tracking-wide text-mist">
+              Your hand
+              {!mine.hands && mine.total !== null && <span className="ml-2 font-heading text-sm font-bold normal-case text-gold">{mine.total}</span>}
+              <span className="ml-2 normal-case text-mist">· <Points value={mine.staked} iconSize={12} className="text-gold" /> on the table</span>
+            </p>
+            {mine.hands ? (
+              <div className="space-y-2">
+                {mine.hands.map((h, i) => {
+                  const active = myTurn && i === mine.hand_ix;
+                  const hr = h.result && !drawing ? h.result : null;
+                  return (
+                    <div key={i} className={cn("rounded-md border p-2", active ? "border-gold bg-gold/5" : "border-bronze/40")}>
+                      <p className="mb-1 text-xs text-mist">
+                        <span className="font-bold text-[hsl(var(--foreground))]">Hand {i + 1}</span>
+                        <span className="ml-2 font-heading text-sm font-bold text-gold">{h.total}</span>
+                        <span className="ml-2">· <Points value={h.stake} iconSize={11} className="text-gold" /></span>
+                        <span className={cn("ml-2 font-bold", hr === "win" ? "text-gold" : hr === "lose" ? "text-ember" : active ? "text-gold" : "text-mist")}>
+                          {hr ? (hr === "win" ? `Won +${h.stake.toLocaleString()}` : hr === "lose" ? "Lost" : "Tie") : active ? "Your move" : h.status === "playing" ? "Up next" : NOTE[h.note] || "Done"}
+                        </span>
+                      </p>
+                      <Cards cards={h.cards} />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <Cards cards={mine.cards} empty="Cards are dealt when betting closes" />
+            )}
+            {mine.side_total > 0 && (
+              <ul className="mt-2 flex flex-wrap gap-1.5 text-xs" aria-label="Your side bets">
+                {sideList.filter((b) => mine.sides && mine.sides[b.id] > 0).map((b) => {
+                  const w = mine.side_wins && mine.side_wins[b.id];
+                  return (
+                    <li key={b.id} className={cn("rounded-full border px-2 py-0.5", !w ? "border-bronze/50 text-mist" : w.win > 0 ? "border-gold bg-gold/15 font-bold text-gold" : "border-bronze/40 text-mist/70 line-through")}>
+                      {b.name} · {mine.sides[b.id].toLocaleString()}
+                      {w ? (w.win > 0 ? ` · ${w.name} +${(w.win - mine.sides[b.id]).toLocaleString()}` : " · no win") : ""}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {error && <p role="alert" className="rounded-md border border-ember/40 bg-ember/10 px-3 py-2 text-sm text-ember">{error}</p>}
+
         {/* the bet spots printed on the felt, and the chip tray on the rail */}
-        {seated && (
+        {seated && (!mine || table.status === "betting") && (
           <div className="space-y-3 pt-1">
             <div className="flex items-start justify-center gap-3 sm:gap-6">
               {sideList[0] && <BetSpot id={sideList[0].id} label={sideList[0].name} sub={sideList[0].short} amount={spotAmount(sideList[0].id)} locked={!canChip} armed={!!useChip} bad={!mine && sideAmount(sideList[0].id) > wager} onTap={() => putChip(sideList[0].id, useChip)} />}
@@ -305,137 +367,79 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
                   <button type="button" onClick={clearChips} disabled={!stake} className="btn-bronze h-8 px-3 text-xs">Clear</button>
                   <button type="button" onClick={doubleChips} disabled={!stake} className="btn-bronze h-8 px-3 text-xs">Double</button>
                 </div>
+                {(chipNote || sideProblem) && <p role="alert" className="text-center text-xs font-bold text-ember">{chipNote || sideProblem}</p>}
+                {wager > 0 && wager < settings.min_bet && <p className="text-center text-xs text-white/75">The minimum wager is {settings.min_bet.toLocaleString()}.</p>}
+                {/* the bet button sits right under the chips, on the table itself */}
+                {table.status === "betting" ? (
+                  <button onClick={() => send("bet", { wager, sides: sidePayload })} disabled={!!busy || !canBet || data.open === false} className="btn-seal mx-auto h-12 w-full max-w-sm text-base">
+                    {busy === "bet" ? <>{Spin} Placing bet</> : data.open === false ? "Table closed" : !wager ? "Put chips on BET to play" : <>Place bet · {stake.toLocaleString()}</>}
+                  </button>
+                ) : (
+                  <p className="text-center text-xs text-white/75">A round is in progress. Set your chips now and bet when the next round opens.</p>
+                )}
                 <p className="text-center text-[11px] text-white/60">Drag a chip onto a spot, or tap a chip and then tap the spot.</p>
               </>
             )}
           </div>
         )}
 
-        {seated && <ReactionBar onSend={react} />}
-
-        <div role="status" aria-live="polite" className="min-h-[2.75rem] text-center">
-          {res ? (
-            <>
-              <p className={cn("font-heading text-lg font-bold", res.win === true ? "text-gold" : res.win === false ? "text-ember" : "text-mist")}>{res.text}</p>
-              <p className="text-sm text-mist">
-                {mine.net > 0 ? <>You won <Points value={mine.net} className="font-bold text-gold" /></> : mine.net < 0 ? <>You lost <Points value={-mine.net} className="font-bold" /></> : "No points changed hands."}
-                {" "}{banner}
-              </p>
-            </>
-          ) : (
-            <p className="text-sm text-mist">{banner}</p>
-          )}
-        </div>
-      </div>
-
-      {mine && (
-        <div className="mb-4 rounded-md border border-bronze/40 bg-black/25 p-3">
-          <p className="mb-1.5 text-xs uppercase tracking-wide text-mist">
-            Your hand
-            {!mine.hands && mine.total !== null && <span className="ml-2 font-heading text-sm font-bold normal-case text-gold">{mine.total}</span>}
-            <span className="ml-2 normal-case text-mist">· <Points value={mine.staked} iconSize={12} className="text-gold" /> on the table</span>
-          </p>
-          {mine.hands ? (
-            <div className="space-y-2">
-              {mine.hands.map((h, i) => {
-                const active = myTurn && i === mine.hand_ix;
-                const hr = h.result && !drawing ? h.result : null;
+        {myTurn ? (
+          <>
+            <div className={cn("grid gap-2", actions.length === 4 ? "grid-cols-4" : actions.length === 3 ? "grid-cols-3" : "grid-cols-2")}>
+              {actions.map((a) => {
+                const blocked = (a.firstTwoOnly && (cur.cards.length !== 2 || cur.doubled || mine.wager > balance)) || (a.splitOnly && (!mine.can_split || mine.wager > balance));
                 return (
-                  <div key={i} className={cn("rounded-md border p-2", active ? "border-gold bg-gold/5" : "border-bronze/40")}>
-                    <p className="mb-1 text-xs text-mist">
-                      <span className="font-bold text-[hsl(var(--foreground))]">Hand {i + 1}</span>
-                      <span className="ml-2 font-heading text-sm font-bold text-gold">{h.total}</span>
-                      <span className="ml-2">· <Points value={h.stake} iconSize={11} className="text-gold" /></span>
-                      <span className={cn("ml-2 font-bold", hr === "win" ? "text-gold" : hr === "lose" ? "text-ember" : active ? "text-gold" : "text-mist")}>
-                        {hr ? (hr === "win" ? `Won +${h.stake.toLocaleString()}` : hr === "lose" ? "Lost" : "Tie") : active ? "Your move" : h.status === "playing" ? "Up next" : NOTE[h.note] || "Done"}
-                      </span>
-                    </p>
-                    <Cards cards={h.cards} />
-                  </div>
+                  <button key={a.id} onClick={() => send(a.id)} disabled={!!busy || blocked} className={cn(a.primary ? "btn-seal" : "btn-bronze", "h-12 px-1", actions.length === 4 ? "text-sm" : "text-base")}>
+                    {busy === a.id ? Spin : a.label}
+                  </button>
                 );
               })}
             </div>
-          ) : (
-            <Cards cards={mine.cards} empty="Cards are dealt when betting closes" />
-          )}
-          {mine.side_total > 0 && (
-            <ul className="mt-2 flex flex-wrap gap-1.5 text-xs" aria-label="Your side bets">
-              {sideList.filter((b) => mine.sides && mine.sides[b.id] > 0).map((b) => {
-                const w = mine.side_wins && mine.side_wins[b.id];
-                return (
-                  <li key={b.id} className={cn("rounded-full border px-2 py-0.5", !w ? "border-bronze/50 text-mist" : w.win > 0 ? "border-gold bg-gold/15 font-bold text-gold" : "border-bronze/40 text-mist/70 line-through")}>
-                    {b.name} · {mine.sides[b.id].toLocaleString()}
-                    {w ? (w.win > 0 ? ` · ${w.name} +${(w.win - mine.sides[b.id]).toLocaleString()}` : " · no win") : ""}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-      )}
+            {/* say why an option is greyed out, and what it costs when it isn't */}
+            {actions.filter((a) => a.firstTwoOnly).map((a) => (
+              <p key={a.id} className="mt-2 text-center text-xs text-mist">
+                {cur.cards.length !== 2 || cur.doubled ? `${a.label} is only offered on your first two cards.`
+                  : mine.wager > balance ? `${a.label} needs ${mine.wager.toLocaleString()} more points and you have ${balance.toLocaleString()}.`
+                  : `${a.label}: put ${mine.wager.toLocaleString()} more on the hand, take exactly one more card, then stand.`}
+              </p>
+            ))}
+            {mine.can_split && actions.filter((a) => a.splitOnly).map((a) => (
+              <p key={a.id} className="mt-1 text-center text-xs text-mist">
+                {mine.wager > balance ? `${a.label} needs ${mine.wager.toLocaleString()} more points and you have ${balance.toLocaleString()}.`
+                  : `${a.label}: put ${mine.wager.toLocaleString()} more down and play your two cards as two separate hands.`}
+              </p>
+            ))}
+          </>
+        ) : !seated && !mine ? (
+          <p className="rounded-md border border-white/20 bg-black/35 px-3 py-3 text-center text-sm text-white/85">
+            {data.open === false ? "This table is closed right now."
+              : sitting >= chairs.length ? "The table is full. A chair opens when someone stands up."
+              : "Tap an empty seat to sit down, then place your bet."}
+          </p>
+        ) : mine ? (
+          <p className="rounded-md border border-white/20 bg-black/35 px-3 py-2 text-center text-sm text-white/85">
+            {table.status === "betting" ? "You're in. Waiting for betting to close."
+              : table.status === "playing" ? "Your hand is finished. Waiting for the others."
+              : drawing ? `${dealerLabel} is drawing.` : "Round over."}
+          </p>
+        ) : null}
 
-      {error && <p role="alert" className="mb-3 rounded-md border border-ember/40 bg-ember/10 px-3 py-2 text-sm text-ember">{error}</p>}
-
-      {myTurn ? (
-        <>
-          <div className={cn("grid gap-2", actions.length === 4 ? "grid-cols-4" : actions.length === 3 ? "grid-cols-3" : "grid-cols-2")}>
-            {actions.map((a) => {
-              const blocked = (a.firstTwoOnly && (cur.cards.length !== 2 || cur.doubled || mine.wager > balance)) || (a.splitOnly && (!mine.can_split || mine.wager > balance));
-              return (
-                <button key={a.id} onClick={() => send(a.id)} disabled={!!busy || blocked} className={cn(a.primary ? "btn-seal" : "btn-bronze", "h-12 px-1", actions.length === 4 ? "text-sm" : "text-base")}>
-                  {busy === a.id ? Spin : a.label}
-                </button>
-              );
-            })}
+        {seated && (
+          <div className="flex flex-col items-center gap-2">
+            <ReactionBar onSend={react} />
+            <button onClick={() => send("leave")} disabled={!!busy || inHand} className="btn-bronze h-9 px-5 text-xs">
+              {busy === "leave" ? Spin : inHand ? "Finish this round to stand up" : "Stand up"}
+            </button>
           </div>
-          {/* say why an option is greyed out, and what it costs when it isn't */}
-          {actions.filter((a) => a.firstTwoOnly).map((a) => (
-            <p key={a.id} className="mt-2 text-center text-xs text-mist">
-              {cur.cards.length !== 2 || cur.doubled ? `${a.label} is only offered on your first two cards.`
-                : mine.wager > balance ? `${a.label} needs ${mine.wager.toLocaleString()} more points and you have ${balance.toLocaleString()}.`
-                : `${a.label}: put ${mine.wager.toLocaleString()} more on the hand, take exactly one more card, then stand.`}
-            </p>
-          ))}
-          {mine.can_split && actions.filter((a) => a.splitOnly).map((a) => (
-            <p key={a.id} className="mt-1 text-center text-xs text-mist">
-              {mine.wager > balance ? `${a.label} needs ${mine.wager.toLocaleString()} more points and you have ${balance.toLocaleString()}.`
-                : `${a.label}: put ${mine.wager.toLocaleString()} more down and play your two cards as two separate hands.`}
-            </p>
-          ))}
-        </>
-      ) : !seated && !mine ? (
-        <p className="rounded-md border border-bronze/40 bg-black/25 px-3 py-3 text-center text-sm text-mist">
-          {data.open === false ? "This table is closed right now."
-            : sitting >= chairs.length ? "The table is full. A chair opens when someone stands up."
-            : "Tap an empty seat to sit down, then place your bet."}
-        </p>
-      ) : table.status === "betting" && !mine ? (
-        <div className="space-y-3">
-          {(chipNote || sideProblem) && <p role="alert" className="text-center text-xs text-ember">{chipNote || sideProblem}</p>}
-          {wager > 0 && wager < settings.min_bet && <p className="text-center text-xs text-mist">The minimum wager is {settings.min_bet.toLocaleString()}.</p>}
-          {tips && (
-            <details className="rounded border border-bronze/30 bg-black/30 px-2.5 py-2">
-              <summary className="cursor-pointer text-sm text-gold">How side bets and splitting work, and what they pay</summary>
-              <div className="mt-2 text-xs text-mist">{tips}</div>
-            </details>
-          )}
-          <button onClick={() => send("bet", { wager, sides: sidePayload })} disabled={!!busy || !canBet || data.open === false} className="btn-seal h-12 w-full text-base">
-            {busy === "bet" ? <>{Spin} Placing bet</> : data.open === false ? "Table closed" : !wager ? "Put chips on BET to play" : <>Place bet · {stake.toLocaleString()}</>}
-          </button>
-          {winNote && <p className="text-center text-sm text-mist">{winNote}</p>}
-        </div>
-      ) : (
-        <p className="rounded-md border border-bronze/40 bg-black/25 px-3 py-3 text-center text-sm text-mist">
-          {table.status === "betting" ? "You're in. Waiting for betting to close."
-            : table.status === "playing" ? (mine ? "Your hand is finished. Waiting for the others." : "A round is in progress. You can bet on the next one.")
-            : drawing ? `${dealerLabel} is drawing.` : "Round over."}
-        </p>
-      )}
+        )}
+      </div>
 
-      {seated && (
-        <button onClick={() => send("leave")} disabled={!!busy || inHand} className="btn-bronze mt-3 h-10 w-full text-sm">
-          {busy === "leave" ? Spin : inHand ? "Finish this round to stand up" : "Stand up"}
-        </button>
+      {winNote && <p className="mb-3 text-center text-sm text-mist">{winNote}</p>}
+      {tips && (
+        <details className="mb-3 rounded border border-bronze/30 bg-black/30 px-2.5 py-2">
+          <summary className="cursor-pointer text-sm text-gold">How side bets and splitting work, and what they pay</summary>
+          <div className="mt-2 text-xs text-mist">{tips}</div>
+        </details>
       )}
 
       <p className="mt-4 text-xs text-mist/80">{rules}</p>

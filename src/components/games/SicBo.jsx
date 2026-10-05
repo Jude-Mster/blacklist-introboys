@@ -211,7 +211,7 @@ export default function SicBo({ settings, balance }) {
         <span className="flex items-center gap-1.5 text-mist"><Users className="h-4 w-4" aria-hidden="true" /> {players.length} betting · <Points value={table.total_bet} iconSize={12} /></span>
       </div>
 
-      <div className={cn("casino-felt mb-4 space-y-2.5 px-2.5 pb-9 pt-3 sm:px-4", myNet !== null && (myNet > 0 ? "win-glow" : myNet < 0 ? "loss-shake" : ""))} style={{ "--felt-hue": 150 }}>
+      <div className={cn("casino-felt mb-4 space-y-2.5 px-2.5 pb-12 pt-3 sm:px-4", myNet !== null && (myNet > 0 ? "win-glow" : myNet < 0 ? "loss-shake" : ""))} style={{ "--felt-hue": 150 }}>
         {/* the dice */}
         <div className="flex flex-col items-center">
           <div className={cn("flex h-[96px] items-end justify-center gap-4 pb-2", waitingToRoll && "dice-shake")}>
@@ -268,24 +268,23 @@ export default function SicBo({ settings, balance }) {
         <div className="space-y-2 pt-2">
           <ChipTray chips={chips} selected={useChip} onSelect={setChip} onDrop={(id, value) => place(id, value)} disabled={!open || placing} />
           <p className="text-center text-[11px] text-white/60">Drag a chip onto the board, or tap a chip and then tap a spot.</p>
+          {/* everything needed to bet sits on the table itself */}
+          {myNet !== null && (
+            <p className={cn("text-center font-heading text-lg font-bold", myNet >= 0 ? "text-gold" : "text-ember")} aria-live="polite">
+              {myNet > 0 ? `Victory! +${myNet.toLocaleString()} points` : myNet === 0 ? "You broke even." : `Defeat. −${Math.abs(myNet).toLocaleString()} points`}
+            </p>
+          )}
+          {error && <p role="alert" className="rounded-md border border-ember/50 bg-black/50 px-3 py-1.5 text-center text-sm font-bold text-ember">{error}</p>}
+          <button type="button" onClick={submit} disabled={!pending.length || !open || placing} className="btn-seal mx-auto h-12 w-full max-w-sm text-base">
+            {placing ? <><Loader2 className="h-4 w-4 animate-spin" /> Placing</> : pending.length ? <>Place bets · {pendingTotal.toLocaleString()}</> : placedTotal ? `You have ${placedTotal.toLocaleString()} on the table` : open ? "Put chips on the board" : "Wait for the next roll"}
+          </button>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <button type="button" onClick={undo} disabled={!history.length || placing} className="btn-bronze h-8 px-3 text-xs">Undo</button>
+            <button type="button" onClick={clear} disabled={!pending.length || placing} className="btn-bronze h-8 px-3 text-xs">Clear</button>
+            <button type="button" onClick={rebet} disabled={!lastBets || !open || placing} className="btn-bronze h-8 px-3 text-xs">Repeat last</button>
+          </div>
         </div>
       </div>
-
-      {myNet !== null && (
-        <p className={cn("mb-3 text-center font-heading text-lg font-bold", myNet >= 0 ? "text-jade" : "text-ember")} aria-live="polite">
-          {myNet > 0 ? `Victory! +${myNet.toLocaleString()} points` : myNet === 0 ? "You broke even." : `Defeat. −${Math.abs(myNet).toLocaleString()} points`}
-        </p>
-      )}
-      {error && <p role="alert" className="mb-3 rounded-md border border-ember/40 bg-ember/10 px-3 py-2 text-center text-sm text-ember">{error}</p>}
-
-      <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
-        <button type="button" onClick={undo} disabled={!history.length || placing} className="btn-bronze h-9 px-3 text-xs">Undo</button>
-        <button type="button" onClick={clear} disabled={!pending.length || placing} className="btn-bronze h-9 px-3 text-xs">Clear</button>
-        <button type="button" onClick={rebet} disabled={!lastBets || !open || placing} className="btn-bronze h-9 px-3 text-xs">Repeat last bets</button>
-      </div>
-      <button type="button" onClick={submit} disabled={!pending.length || !open || placing} className="btn-seal h-12 w-full text-base">
-        {placing ? <><Loader2 className="h-4 w-4 animate-spin" /> Placing</> : pending.length ? <>Place bets · {pendingTotal.toLocaleString()}</> : placedTotal ? `You have ${placedTotal.toLocaleString()} on the table` : open ? "Put chips on the board" : "Wait for the next roll"}
-      </button>
 
       {recent.length > 0 && (
         <div className="mt-4 flex items-center gap-2 overflow-hidden" aria-label="Recent rolls, newest first">
