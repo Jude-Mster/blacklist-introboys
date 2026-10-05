@@ -13,13 +13,15 @@ import { canFollow, sortByRank, sortBySuit, rankLabel, SUIT_SYMBOL, SUIT_NAME } 
 import { cn } from "@/lib/utils";
 import SuitOrder from "./SuitOrder";
 import { useTableGuard } from "@/lib/tableGuard";
+import ChatBox from "@/components/chat/ChatBox";
+import { ReactionBar, ReactionBubble, useReactions } from "@/components/games/Reactions";
 
 // A live Pusoy Dos table. The server deals, checks every play and runs the clock;
 // this page shows what it is told and asks again every second or so.
 const POLL_MS = 2000;
 const cardRank = (c) => "3456789TJQKA2".indexOf(c[0]) * 4 + "dchs".indexOf(c[1]);
 
-function Seat({ s, table, left, canSit, busy, onSit, firstSeat }) {
+function Seat({ s, table, left, canSit, busy, onSit, firstSeat, reaction }) {
   if (s.empty) {
     return (
       <button
@@ -47,10 +49,11 @@ function Seat({ s, table, left, canSit, busy, onSit, firstSeat }) {
   } else if (table.status === "finished") note = won ? "Winner" : "";
   return (
     <div className={cn(
-      "flex min-h-[116px] flex-col items-center rounded-md border bg-black/30 px-1 py-2 text-center",
+      "relative flex min-h-[116px] flex-col items-center rounded-md border bg-black/30 px-1 py-2 text-center",
       turn ? "border-gold ring-1 ring-gold/70" : s.mine ? "border-gold/70" : "border-bronze/50",
       won && "win-glow"
     )}>
+      <ReactionBubble r={reaction} className="-top-3" />
       <Avatar url={s.avatar} name={s.name} size={28} />
       <p className={cn("mt-1 w-full truncate text-xs font-bold", s.mine ? "text-gold" : "text-[hsl(var(--foreground))]")}>{s.mine ? "You" : s.name}</p>
       {s.count !== null && (
@@ -58,7 +61,7 @@ function Seat({ s, table, left, canSit, busy, onSit, firstSeat }) {
       )}
       <p className={cn("text-[11px] font-bold leading-tight", turn || won ? "text-gold" : "text-mist")}>{note}</p>
       {high && (
-        <p className="mt-1 flex items-center gap-1 text-[10px] leading-none text-mist" title="Highest card, shown at the deal">
+        <p className="mt-1 flex items-center gap-1 text-[10px] leading-none text-mist" title="Highest card, shown at the deal. Hidden again once play starts.">
           High <PlayingCard card={high} size="xs" className={first ? "ring-1 ring-gold" : ""} />
         </p>
       )}
@@ -133,6 +136,12 @@ export default function PusoyTableView({ tableId }) {
     }
   }, [tableId, take]);
 
+  const reactionAt = useReactions(data && data.reactions);
+  const react = useCallback(async (emoji) => {
+    const res = await base44.functions.invoke("pusoyAction", { action: "react", tableId, emoji });
+    if (res.data && res.data.reactions) setData((d) => (d ? { ...d, reactions: res.data.reactions } : d));
+  }, [tableId]);
+
   const hand = useMemo(() => (data ? (bySuit ? sortBySuit(data.hand) : sortByRank(data.hand)) : []), [data, bySuit]);
   // The 13 cards are dealt into the hand one at a time.
   const dealDelay = useDealDelays(hand.map((c) => `${data ? data.table.game_no : 0}:${c}`), 160);
@@ -205,7 +214,8 @@ export default function PusoyTableView({ tableId }) {
   }
 
   return (
-    <div className="mx-auto max-w-xl space-y-4">
+    <div className="mx-auto grid max-w-[64rem] gap-5 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
+    <div className="mx-auto w-full max-w-xl space-y-4">
       <div className="flex items-center justify-between gap-3">
         <Link to="/pusoy" className="flex items-center gap-1 text-sm text-mist hover:text-gold"><ArrowLeft className="h-4 w-4" /> Tables</Link>
         <p className="text-right text-sm text-mist">Pot money <Points value={table.ante} iconSize={12} className="font-bold text-gold" />{table.stake > 0 && <> · <Points value={table.stake} iconSize={12} className="font-bold text-gold" /> per card</>}</p>
@@ -217,7 +227,7 @@ export default function PusoyTableView({ tableId }) {
         <div className="space-y-3 rounded-md border border-bronze/40 bg-[radial-gradient(circle_at_50%_30%,hsl(215_30%_15%),hsl(0_0%_6%))] p-3 sm:p-4">
           <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
             {table.seats.map((s) => (
-              <Seat key={s.seat} s={s} table={table} left={turnLeft} firstSeat={firstSeat} canSit={!seated && data.open !== false} busy={busy} onSit={(seat) => send("sit", { seat })} />
+              <Seat key={s.seat} s={s} table={table} left={turnLeft} firstSeat={firstSeat} canSit={!seated && data.open !== false} busy={busy} onSit={(seat) => send("sit", { seat })} reaction={reactionAt(s.seat)} />
             ))}
           </div>
 
@@ -254,6 +264,8 @@ export default function PusoyTableView({ tableId }) {
             )}
             {table.pile.length > 0 && <p className="mt-1 text-[11px] text-mist/80">{table.pile.length} card{table.pile.length === 1 ? "" : "s"} on the table</p>}
           </div>
+
+          {seated && <ReactionBar onSend={react} />}
 
           <p role="status" aria-live="polite" className={cn("text-center text-sm", myTurn ? "font-bold text-gold" : "text-mist")}>
             {banner}{myTurn && turnLeft !== null ? ` ${turnLeft}s` : ""}
@@ -332,6 +344,12 @@ export default function PusoyTableView({ tableId }) {
           Everyone puts in {table.ante.toLocaleString()} pot money and the first to empty their hand takes it.{table.stake > 0 ? ` Each loser also pays ${table.stake.toLocaleString()} for every card left.` : ""} {table.cut_pct}% of the winnings is removed from circulation. When a game is dealt, {table.need.toLocaleString()} points are held from each player and whatever isn't lost comes straight back. You have {table.turn_seconds} seconds a turn; run out three times in a row, or leave mid-game, and you forfeit: you lose your pot money{table.stake > 0 ? " and pay for every card you hold" : ""}.
         </p>
       </Panel>
+    </div>
+
+      {/* game chat: this table's own channel, plus the guild chat */}
+      <div className="lg:sticky lg:top-24">
+        <ChatBox channels={[{ id: `table:${tableId}`, label: "Table" }, { id: "guild", label: "Guild" }]} height="h-72 lg:h-[26rem]" />
+      </div>
     </div>
   );
 }

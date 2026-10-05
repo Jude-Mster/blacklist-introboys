@@ -25,6 +25,14 @@
       "type": "integer",
       "default": 6
     },
+    "reactions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "description": "Emoji reactions from the last few seconds: { id, seat, emoji, at }"
+    },
     "cashouts": {
       "type": "array",
       "description": "Points owed to players who left: { member_id, name, amount, ref }. Removed once paid.",

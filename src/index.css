@@ -395,3 +395,12 @@
     overscroll-behavior-y: none;
   }
 }
+/* an emoji reaction popping up over a seat */
+@keyframes reaction-pop {
+  0% { opacity: 0; transform: translate(-50%, 10px) scale(0.4); }
+  12% { opacity: 1; transform: translate(-50%, -8px) scale(1.25); }
+  24% { transform: translate(-50%, -2px) scale(1); }
+  80% { opacity: 1; transform: translate(-50%, -8px) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -26px) scale(0.9); }
+}
+.reaction-pop { animation: reaction-pop 3.5s ease-out both; }

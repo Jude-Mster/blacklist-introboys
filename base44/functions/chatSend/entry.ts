@@ -41,10 +41,10 @@ export default async function(req) {
     if (channel !== GUILD_CHANNEL) {
       const m = /^table:([A-Za-z0-9_-]{1,64})$/.exec(channel);
       if (!m) throw new UserError('Unknown chat channel.');
-      // Make sure the table exists.
-      await b.asServiceRole.entities.PokerTable.get(m[1]).catch(() => {
-        throw new UserError('That table no longer exists.');
-      });
+      // Make sure the table exists: a poker table or a Pusoy Dos table.
+      const found = await b.asServiceRole.entities.PokerTable.get(m[1]).catch(() => null)
+        || await b.asServiceRole.entities.PusoyTable.get(m[1]).catch(() => null);
+      if (!found) throw new UserError('That table no longer exists.');
     }
     const text = String(p.text || '').replace(/\s+/g, ' ').trim();
     if (!text) throw new UserError('Type a message first.');

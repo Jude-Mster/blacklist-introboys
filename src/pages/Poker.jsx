@@ -4,6 +4,7 @@ import LanternSpinner from "@/components/LanternSpinner";
 import Panel from "@/components/Panel";
 import PokerLobby from "@/components/poker/PokerLobby";
 import PokerTableView from "@/components/poker/PokerTableView";
+import TableBoundary from "@/components/TableBoundary";
 import { useGuild } from "@/lib/GuildContext";
 
 export default function Poker() {
@@ -19,5 +20,5 @@ export default function Poker() {
       </Panel>
     );
   }
-  return tableId ? <PokerTableView key={tableId} tableId={tableId} /> : <PokerLobby />;
+  return tableId ? <TableBoundary key={tableId} back="/poker"><PokerTableView tableId={tableId} /></TableBoundary> : <PokerLobby />;
 }

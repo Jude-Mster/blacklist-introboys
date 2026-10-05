@@ -76,7 +76,7 @@ functions.invoke = (name, data) => {
     const d = res && res.data;
     if (HOLD_BALANCE.has(name)) return res;
     if (d && typeof d.balance === "number") announce("bi:balance", { points: d.balance });
-    else if (ttl === undefined && !isLoad && !NO_POINTS.has(name)) announce("bi:changed", {});
+    else if (ttl === undefined && !isLoad && !NO_POINTS.has(name) && payload.action !== "react") announce("bi:changed", {});
     return res;
   });
   const call = async () => {

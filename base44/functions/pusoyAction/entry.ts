@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { sessionUser } from '../../shared/session.ts';
+import { addReaction, liveReactions } from '../../shared/reactions.ts';
 import { getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, UserError, errorResponse, nullSafe } from '../../shared/points.ts';
 import { postFeed } from '../../shared/feed.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
@@ -23,7 +24,7 @@ const LOCK_MS = 60000;
 const iso = (ms: number) => new Date(ms).toISOString();
 const taken = (s) => !!(s && s.member_id);
 const load = (row) => ({ ...row, seats: Array.from({ length: SEATS }, (_, i) => ({ ...((row.seats || [])[i] || {}) })), hands: { ...(row.hands || {}) }, pile: row.pile || [], opening: row.opening || [], last: row.last || {}, result: row.result || {}, log: row.log || [] });
-const FIELDS = ['name', 'ante', 'stake', 'status', 'game_no', 'seats', 'hands', 'turn', 'deadline', 'last', 'pile', 'opening', 'first', 'low_card', 'start_at', 'next_at', 'result', 'log', 'empty_since'];
+const FIELDS = ['name', 'ante', 'stake', 'status', 'game_no', 'seats', 'hands', 'turn', 'deadline', 'last', 'pile', 'opening', 'opening_until', 'first', 'low_card', 'start_at', 'next_at', 'result', 'log', 'empty_since'];
 
 // Pot money follows the site's wager limits. The card value is optional (0 = pot only).
 export const stakeLimits = (settings) => {
@@ -209,12 +210,19 @@ export default async function(req) {
     const tableId = String(p.tableId || '');
     if (!tableId) throw new UserError('Choose a table.');
 
+    if (action === 'react') {
+      let row;
+      try { row = await T.get(tableId); } catch { throw new UserError('That table has closed.', 404); }
+      const seat = load(row).seats.findIndex((s) => taken(s) && s.member_id === me.id && !s.left);
+      return Response.json({ reactions: await addReaction(T, tableId, seat, p.emoji) });
+    }
+
     if (action === 'state') {
       let row;
       try { row = await T.get(tableId); } catch { throw new UserError('That table has closed.', 404); }
       const t = needsTick(row) ? await withTable(tableId) : load(row);
       // No extra read for the balance: the page refreshes it when a game ends.
-      return Response.json({ open, ...viewFor(t, me.id, Date.now()) });
+      return Response.json({ open, ...viewFor(t, me.id, Date.now()), reactions: liveReactions(t) });
     }
 
     if (action === 'sit') {
@@ -233,7 +241,7 @@ export default async function(req) {
           if (t.status === 'waiting') { const n = seatedCount(t); t.start_at = n >= 2 ? iso(now + (n === SEATS ? FULL_START_SECONDS : START_SECONDS) * 1000) : null; }
         });
       });
-      return Response.json({ open, ...viewFor(t, me.id, Date.now()) });
+      return Response.json({ open, ...viewFor(t, me.id, Date.now()), reactions: liveReactions(t) });
     }
 
     if (action === 'leave') {
@@ -249,7 +257,7 @@ export default async function(req) {
           s.left = true; // seat clears when the result screen closes
         } else t.seats[i] = {};
       });
-      return Response.json({ open, ...viewFor(t, me.id, Date.now()) });
+      return Response.json({ open, ...viewFor(t, me.id, Date.now()), reactions: liveReactions(t) });
     }
 
     if (action === 'play' || action === 'pass') {
@@ -262,7 +270,7 @@ export default async function(req) {
         } catch (e) { throw new UserError(e.message); }
       });
       const m = await M.get(me.id);
-      return Response.json({ open, ...viewFor(t, me.id, Date.now()), balance: m.points || 0 });
+      return Response.json({ open, ...viewFor(t, me.id, Date.now()), reactions: liveReactions(t), balance: m.points || 0 });
     }
 
     throw new UserError('Unknown action.');

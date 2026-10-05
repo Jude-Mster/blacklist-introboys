@@ -4,6 +4,7 @@ import LanternSpinner from "@/components/LanternSpinner";
 import Panel from "@/components/Panel";
 import PusoyLobby from "@/components/pusoy/PusoyLobby";
 import PusoyTableView from "@/components/pusoy/PusoyTableView";
+import TableBoundary from "@/components/TableBoundary";
 import { useGuild } from "@/lib/GuildContext";
 
 export default function Pusoy() {
@@ -26,5 +27,5 @@ export default function Pusoy() {
       </Panel>
     );
   }
-  return tableId ? <PusoyTableView key={tableId} tableId={tableId} /> : <PusoyLobby />;
+  return tableId ? <TableBoundary key={tableId} back="/pusoy"><PusoyTableView tableId={tableId} /></TableBoundary> : <PusoyLobby />;
 }

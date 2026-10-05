@@ -34,6 +34,14 @@
       "format": "date-time",
       "description": "When the next round opens"
     },
+    "reactions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "description": "Emoji reactions from the last few seconds: { id, seat, emoji, at }"
+    },
     "dealer": {
       "type": "array",
       "items": {

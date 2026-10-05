@@ -62,6 +62,19 @@
       },
       "description": "Every card played this game, in order: { seat, card }"
     },
+    "reactions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "description": "Emoji reactions from the last few seconds: { id, seat, emoji, at }"
+    },
+    "opening_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "The highest cards are hidden after this moment, once a card has been played"
+    },
     "opening": {
       "type": "array",
       "items": {

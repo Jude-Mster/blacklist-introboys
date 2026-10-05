@@ -8,6 +8,7 @@ import Avatar from "@/components/Avatar";
 import WagerInput from "./WagerInput";
 import { Points } from "@/components/SealLogo";
 import { useGuild, errorText } from "@/lib/GuildContext";
+import { ReactionBar, ReactionBubble, useReactions } from "./Reactions";
 import { cn } from "@/lib/utils";
 import { useTableGuard } from "@/lib/tableGuard";
 
@@ -27,7 +28,7 @@ const RESULT_TEXT = {
 const NOTE = { stood: "Stayed", bust: "Bust", blackjack: "Blackjack", drew: "Drew", doubled: "Doubled", split: "Split", timeout: "Timed out", dealer: "" };
 
 // One chair at the table: empty (tap to sit) or a member with this round's hand.
-function Chair({ chair, canSit, busy, onSit, hideResult }) {
+function Chair({ chair, canSit, busy, onSit, hideResult, reaction }) {
   if (chair.empty) {
     return (
       <button
@@ -49,10 +50,11 @@ function Chair({ chair, canSit, busy, onSit, hideResult }) {
   const r = h && h.result && !hideResult ? RESULT_TEXT[h.result] : null;
   return (
     <div className={cn(
-      "flex min-h-[112px] flex-col items-center rounded-md border bg-black/30 px-1 py-2 text-center",
+      "relative flex min-h-[112px] flex-col items-center rounded-md border bg-black/30 px-1 py-2 text-center",
       chair.mine ? "border-gold shadow-[0_0_0_1px_hsl(var(--gold,45_90%_55%)/0.4)]" : "border-bronze/50",
       h && h.status === "playing" && "ring-1 ring-gold/60"
     )}>
+      <ReactionBubble r={reaction} className="-top-3" />
       <Avatar url={chair.avatar} name={chair.name} size={28} />
       <p className={cn("mt-1 w-full truncate text-xs font-bold", chair.mine ? "text-gold" : "text-[hsl(var(--foreground))]")}>{chair.mine ? "You" : chair.name}</p>
       {h ? (
@@ -140,6 +142,13 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
     const tick = setInterval(() => setNow(Date.now()), 250);
     return () => { clearInterval(poll); clearInterval(tick); };
   }, [refresh]);
+
+  // An emoji reaction, shown over the member's chair to everyone at the table.
+  const reactionAt = useReactions(data && data.reactions);
+  const react = useCallback(async (emoji) => {
+    const res = await base44.functions.invoke(fn, { action: "react", emoji });
+    if (res.data && res.data.reactions) setData((d) => (d ? { ...d, reactions: res.data.reactions } : d));
+  }, [fn]);
 
   const send = useCallback(async (action, extra) => {
     if (busyRef.current) return;
@@ -244,9 +253,11 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
 
         <div className="grid grid-cols-3 gap-2">
           {chairs.map((c) => (
-            <Chair key={c.seat} chair={c} canSit={!seated && data.open !== false} busy={busy} onSit={(seat) => send("sit", { seat })} hideResult={drawing} />
+            <Chair key={c.seat} chair={c} canSit={!seated && data.open !== false} busy={busy} onSit={(seat) => send("sit", { seat })} hideResult={drawing} reaction={reactionAt(c.seat)} />
           ))}
         </div>
+
+        {seated && <ReactionBar onSend={react} />}
 
         <div role="status" aria-live="polite" className="min-h-[2.75rem] text-center">
           {res ? (

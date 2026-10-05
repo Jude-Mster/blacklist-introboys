@@ -8,7 +8,9 @@ import ChatBox from "@/components/chat/ChatBox";
 import { Ingot } from "@/components/SealLogo";
 import { useGuild, errorText } from "@/lib/GuildContext";
 import PlayingCard from "./PlayingCard";
-import DealtCards, { Dealt } from "@/components/DealtCards";
+import { Dealt } from "@/components/DealtCards";
+import SqueezeCards from "./SqueezeCards";
+import { ReactionBar, ReactionBubble, useReactions } from "@/components/games/Reactions";
 import BuyIn from "./BuyIn";
 import usePokerTable from "./usePokerTable";
 import { cn } from "@/lib/utils";
@@ -30,7 +32,8 @@ const SPOTS = [
 
 export default function PokerTableView({ tableId }) {
   const { account, reload } = useGuild();
-  const { state, error, now, send } = usePokerTable(tableId);
+  const { state, error, now, send, react } = usePokerTable(tableId);
+  const reactionAt = useReactions(state && state.reactions);
   const [sitAt, setSitAt] = useState(null);
 
   // Community cards are turned over one at a time, even when the server deals several
@@ -50,8 +53,10 @@ export default function PokerTableView({ tableId }) {
   }, [shown, boardLen, handNo]);
 
   // Seated members are asked before they move to another page.
+  // A seat only counts as mine while I am really in it (not after standing up).
+  const isMine = (s) => !!(s && s.member_id && !s.left);
   const gSeatNo = state ? state.my_seat ?? -1 : -1;
-  const gSeat = live && gSeatNo >= 0 ? live.seats[gSeatNo] : null;
+  const gSeat = live && gSeatNo >= 0 && isMine(live.seats[gSeatNo]) ? live.seats[gSeatNo] : null;
   const gInHand = !!(gSeat && gSeat.in_hand && !gSeat.folded && BETTING.includes(live.phase));
   useTableGuard(!!gSeat, {
     message: () => (gInHand
@@ -62,7 +67,7 @@ export default function PokerTableView({ tableId }) {
 
   if (!state) return <LanternSpinner label="Taking you to the table" className="py-24" />;
   const t = state.table;
-  const mySeat = state.my_seat ?? -1;
+  const mySeat = gSeat ? gSeatNo : -1;
   const seated = mySeat >= 0;
   const me = seated ? t.seats[mySeat] : null;
   const anchor = seated ? mySeat : 0;
@@ -98,7 +103,7 @@ export default function PokerTableView({ tableId }) {
         </div>
 
         {/* the table */}
-        <div className="relative mx-auto h-[430px] w-full max-w-[640px] sm:h-[460px]">
+        <div className="relative mx-auto !mt-16 h-[470px] w-full max-w-[640px] sm:h-[500px]">
           <div
             className="absolute inset-x-[11%] inset-y-[12%] rounded-[50%] border-[6px] border-[hsl(0_0%_32%)]"
             style={{
@@ -116,20 +121,31 @@ export default function PokerTableView({ tableId }) {
             <p className="flex items-center gap-1.5 rounded-full bg-black/40 px-3 py-0.5 text-sm font-bold text-gold">
               <Ingot size={14} /> {pot.toLocaleString()}
             </p>
+            {/* the result sits above the cards, in large type */}
+            {winners.length > 0 && (
+              <div className="text-center" role="status" aria-live="polite">
+                {winners.map((w) => (
+                  <p key={w.seat} className="font-heading text-lg font-extrabold leading-tight text-gold drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] sm:text-xl">
+                    {w.seat === mySeat ? "You win" : `${t.seats[w.seat]?.name || "Someone"} wins`} {w.amount.toLocaleString()}
+                  </p>
+                ))}
+                {winners[0].hand && <p className="font-heading text-base font-bold uppercase tracking-wide text-[hsl(0_0%_96%)] sm:text-lg">{[...new Set(winners.map((w) => w.hand))].join(" · ")}</p>}
+              </div>
+            )}
             <div className="flex gap-1" aria-label="Community cards">
               {[0, 1, 2, 3, 4].map((i) =>
                 t.board && t.board[i] && i < shown ? (
-                  <span key={i} className="card-deal inline-flex"><PlayingCard card={t.board[i]} size="sm" highlight={winningCards.has(t.board[i])} /></span>
+                  <span key={i} className="card-deal inline-flex"><PlayingCard card={t.board[i]} size="sm" highlight={winningCards.has(t.board[i])} dim={winningCards.size > 0 && !winningCards.has(t.board[i])} /></span>
                 ) : (
                   <div key={i} className="h-12 w-[34px] rounded-[5px] border border-dashed border-[hsl(0_0%_80%/0.18)]" />
                 )
               )}
             </div>
-            <p className="text-center text-xs text-[hsl(0_0%_88%/0.85)]" aria-live="polite">
-              {winners.length
-                ? winners.map((w) => `${t.seats[w.seat]?.name || "Someone"} wins ${w.amount.toLocaleString()}${w.hand ? ` · ${w.hand}` : ""}`).join(" · ")
-                : dealing && result ? "All in. Dealing the board." : PHASE_LABEL[t.phase]}
-            </p>
+            {winners.length === 0 && (
+              <p className="text-center text-xs text-[hsl(0_0%_88%/0.85)]" aria-live="polite">
+                {dealing && result ? "All in. Dealing the board." : PHASE_LABEL[t.phase]}
+              </p>
+            )}
           </div>
 
           {/* seats */}
@@ -173,8 +189,10 @@ export default function PokerTableView({ tableId }) {
                   mine={i === mySeat}
                   winner={winner}
                   cards={show ? revealed[i].cards : null}
-                  hidden={s.in_hand && !s.folded && !show && i !== mySeat && t.phase !== "waiting"}
+                  hidden={s.in_hand && !s.folded && !show && t.phase !== "waiting"}
                   best={winningCards}
+                  handName={show && !dealing ? revealed[i].hand : ""}
+                  reaction={reactionAt(i)}
                 />
                 {s.bet > 0 && (
                   <div
@@ -203,12 +221,13 @@ export default function PokerTableView({ tableId }) {
             }}
           />
         )}
-
         {!seated && sitAt === null && (
           <p className="text-center text-sm text-mist">You're watching. Tap an empty seat to sit down.</p>
         )}
 
-        {seated && <MyControls t={t} me={notYetPaid[mySeat] ? { ...me, stack: me.stack - notYetPaid[mySeat] } : me} mySeat={mySeat} cards={state.my_cards} send={send} reload={reload} best={winningCards} />}
+        {seated && <ReactionBar onSend={react} />}
+
+        {seated && <MyControls key={mySeat} showdown={!!result} t={t} me={notYetPaid[mySeat] ? { ...me, stack: me.stack - notYetPaid[mySeat] } : me} mySeat={mySeat} cards={state.my_cards} send={send} reload={reload} best={winningCards} />}
 
         {t.log && t.log.length > 0 && (
           <details className="rounded-md border border-bronze/40 bg-black/20 px-3 py-2">
@@ -229,17 +248,27 @@ export default function PokerTableView({ tableId }) {
   );
 }
 
-function Seat({ s, x, y, isTurn, left, dealer, mine, winner, cards, hidden, best, handNo }) {
+function Seat({ s, x, y, isTurn, left, dealer, mine, winner, cards, hidden, best, handNo, handName, reaction }) {
   const pct = Math.max(0, Math.min(1, left / ACTION_SECONDS));
   return (
     <div
       className={cn("absolute flex w-[80px] -translate-x-1/2 -translate-y-1/2 flex-col items-center", (s.folded || s.sitting_out) && "opacity-50")}
       style={{ left: `${x}%`, top: `${y}%` }}
     >
+      <ReactionBubble r={reaction} className="-top-7" />
+      {/* the hand's name goes above the cards */}
+      {handName && (
+        <p className={cn(
+          "mb-1 whitespace-nowrap rounded px-1.5 py-0.5 font-heading text-[13px] font-extrabold leading-tight shadow-md",
+          winner ? "bg-gold text-[hsl(0_0%_7%)]" : "bg-black/75 text-[hsl(0_0%_88%)]"
+        )}>
+          {handName}
+        </p>
+      )}
       {(cards || hidden) && (
         <div className="mb-[-10px] flex gap-0.5">
           {cards
-            ? cards.map((c) => <PlayingCard key={c} card={c} size="xs" highlight={best.has(c)} />)
+            ? cards.map((c) => <PlayingCard key={c} card={c} size="sm" highlight={best.has(c)} dim={best.size > 0 && !best.has(c)} />)
             : [0, 1].map((k) => <Dealt key={`${handNo}-${k}`} delay={k * 350}><PlayingCard back size="xs" /></Dealt>)}
         </div>
       )}
@@ -277,7 +306,10 @@ function Seat({ s, x, y, isTurn, left, dealer, mine, winner, cards, hidden, best
   );
 }
 
-function MyControls({ t, me, mySeat, cards, send, reload, best }) {
+function MyControls({ t, me, mySeat, cards, send, reload, best, showdown }) {
+  // Hole cards are dealt face down; the player squeezes or flips them. Each new hand starts face down.
+  const [openHand, setOpenHand] = useState(0);
+  const cardsOpen = openHand === t.hand_no;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmLeave, setConfirmLeave] = useState(false);
@@ -322,7 +354,14 @@ function MyControls({ t, me, mySeat, cards, send, reload, best }) {
       <div className="flex items-center gap-4">
         <div className="flex gap-1.5">
           {cards && cards.length ? (
-            <DealtCards key={t.hand_no} cards={cards} size="lg" step={400} cardProps={(c) => ({ dim: me.folded, highlight: best.has(c) })} />
+            <SqueezeCards
+              cards={cards}
+              handNo={t.hand_no}
+              open={cardsOpen}
+              onOpen={(v) => setOpenHand(v ? t.hand_no : 0)}
+              forceOpen={showdown && !me.folded}
+              cardProps={(c) => ({ dim: me.folded || (best.size > 0 && !best.has(c)), highlight: best.has(c) })}
+            />
           ) : (
             <>
               <PlayingCard back size="lg" className="opacity-40" />
@@ -336,6 +375,9 @@ function MyControls({ t, me, mySeat, cards, send, reload, best }) {
             <Ingot size={14} />
             <span className="font-heading text-lg font-bold text-gold tabular-nums">{me.stack.toLocaleString()}</span>
           </p>
+          {cards && cards.length > 0 && BETTING.includes(t.phase) && !me.folded && (
+            <p className="mt-0.5 text-xs text-mist/80">{cardsOpen ? "Tap your cards to turn them face down." : "Your cards are face down. Drag up on them to squeeze, or tap to flip."}</p>
+          )}
           <p className="mt-1 text-mist">
             {me.folded && BETTING.includes(t.phase)
               ? "You folded. Next hand soon."
@@ -439,9 +481,9 @@ function MyControls({ t, me, mySeat, cards, send, reload, best }) {
         <TopUp
           t={t}
           me={me}
+          onDone={() => setTopup(false)}
           send={send}
           reload={reload}
-          onDone={() => setTopup(false)}
         />
       )}
     </Panel>

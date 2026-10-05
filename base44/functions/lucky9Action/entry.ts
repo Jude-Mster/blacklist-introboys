@@ -47,4 +47,4 @@ export default cardTableHandler({
   feedDetail: (seat, banker) => `Player ${total(seat.cards)}, banker ${total(banker)}`,
   extra: (settings) => ({ multiplier: coinMultiplier(houseEdge(settings)) })
 });
-// redeploys to pick up the updated shared card table engine
+// redeploys to pick up the updated shared card table engine (reactions)

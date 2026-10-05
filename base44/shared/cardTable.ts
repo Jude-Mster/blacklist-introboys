@@ -29,6 +29,7 @@ export const BET_SECONDS = 10;      // countdown after the first bet
 export const RESULT_SECONDS = 8;    // how long results stay up
 const CLOSE_MARGIN_MS = 1500;       // bets stop a moment before the deadline
 const SETTLE_LOCK_MS = 120000;
+import { addReaction, liveReactions } from './reactions.ts';
 export const SEAT_COUNT = 6;         // chairs at each table
 const IDLE_MS = 10 * 60 * 1000;     // a chair with no bet for this long is given up
 
@@ -256,6 +257,7 @@ export function cardTableHandler(game: CardGame) {
             return { seat: i, empty: false, name: c.name, avatar: c.avatar, role: c.role, mine: c.member_id === me.id, hand: hand ? seatView(hand) : null };
           }),
           my_seat: chairIndex(t, me.id),
+          reactions: liveReactions(t),
           mine: mine ? seatView(mine) : null,
           ...(game.extra ? game.extra(settings) : {}),
           ...extra
@@ -289,6 +291,11 @@ export function cardTableHandler(game: CardGame) {
           t = await T.update(t.id, { bets_close_at: iso(Date.now() + BET_SECONDS * 1000) });
         }
         return Response.json(await stateOf(t));
+      }
+
+      if (action === 'react') {
+        const t = await getTable();
+        return Response.json({ reactions: await addReaction(T, t.id, chairIndex(t, me.id), p.emoji) });
       }
 
       if (action === 'sit') {

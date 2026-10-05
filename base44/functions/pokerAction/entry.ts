@@ -6,6 +6,7 @@ import {
 import { act, forceFold, tick, newSeat, viewFor } from '../../shared/poker.ts';
 import { postSystem, tableChannel, announceBigWin } from '../../shared/chat.ts';
 import { resilient } from '../../shared/points.ts';
+import { addReaction, liveReactions } from '../../shared/reactions.ts';
 
 const BETTING = ['preflop', 'flop', 'turn', 'river'];
 const DEFAULT_TABLES = [
@@ -165,7 +166,12 @@ export default async function(req) {
       const t = load(row);
       const i = seatOf(t, me.id);
       const secret = i >= 0 && BETTING.concat('showdown').includes(t.phase) ? await getSecret(b, tableId) : null;
-      return Response.json({ table: publicView(t), ...viewFor(t, secret, i) });
+      return Response.json({ table: publicView(t), ...viewFor(t, secret, i), reactions: liveReactions(row) });
+    }
+
+    if (action === 'react') {
+      const row = await tables(b).get(tableId);
+      return Response.json({ reactions: await addReaction(tables(b), tableId, seatOf(load(row), me.id), p.emoji) });
     }
 
     if (action === 'join') {
@@ -190,7 +196,7 @@ export default async function(req) {
         return {};
       });
       await postSystem(b, tableChannel(tableId), `${me.discord_name} sat down with ${buyin}.`);
-      return Response.json({ ok: true, table: publicView(t) });
+      return Response.json({ ok: true, table: publicView(t), my_seat: seatOf(t, me.id) });
     }
 
     if (action === 'leave') {
@@ -220,7 +226,8 @@ export default async function(req) {
         return {};
       });
       if (seated) await postSystem(b, tableChannel(tableId), pending ? `${me.discord_name} left the table while all in.` : `${me.discord_name} left the table${refund ? ` with ${refund}` : ''}.`);
-      return Response.json({ ok: true, refund, pending, table: publicView(t) });
+      // my_seat tells the page straight away that the seat is gone (it is -1 from here on).
+      return Response.json({ ok: true, refund, pending, table: publicView(t), my_seat: seatOf(t, me.id), my_cards: null });
     }
 
     if (action === 'act') {
@@ -253,7 +260,7 @@ export default async function(req) {
         s.timeouts = 0;
         return {};
       });
-      return Response.json({ ok: true, table: publicView(t) });
+      return Response.json({ ok: true, table: publicView(t), my_seat: seatOf(t, me.id) });
     }
 
     if (action === 'sitout' || action === 'sitin') {
@@ -266,7 +273,7 @@ export default async function(req) {
         s.timeouts = 0;
         return {};
       });
-      return Response.json({ ok: true, table: publicView(t) });
+      return Response.json({ ok: true, table: publicView(t), my_seat: seatOf(t, me.id) });
     }
 
     // ----- Leader: create or close tables -----

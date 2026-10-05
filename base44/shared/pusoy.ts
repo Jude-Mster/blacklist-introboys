@@ -54,6 +54,9 @@ function pushLog(t, entry) {
   t.log = [...(t.log || []), entry].slice(-12);
 }
 
+// How long the highest cards stay on show once the first card has been played.
+export const OPENING_SECONDS = 6;
+
 function setTurn(t, seat: number, now: number) {
   t.turn = seat;
   t.deadline = iso(now + TURN_SECONDS * 1000);
@@ -74,6 +77,8 @@ export function deal(t, seatNos: number[], now: number, deck = shuffledDeck()) {
     if (best === null || cardValue(high) > cardValue(best)) { best = high; bestSeat = i; }
   });
   t.opening = opening;
+  // The highest cards are only on show until play gets going.
+  t.opening_until = iso(now + OPENING_SECONDS * 1000);
   t.pile = [];
   t.status = 'playing';
   t.game_no = (t.game_no || 0) + 1;
@@ -229,7 +234,7 @@ export function viewFor(t, memberId: string, now: number) {
       id: t.id, name: t.name, ante: t.ante || 0, stake: t.stake || 0, need: maxLoss(t), status: t.status, game_no: t.game_no || 0, turn: t.turn,
       deadline: t.deadline || null, start_at: t.start_at || null, next_at: t.next_at || null, server_now: iso(now),
       suit: t.status === 'playing' && t.last && t.last.cards ? t.last.cards[0][1] : null,
-      pile: t.status === 'waiting' ? [] : (t.pile || []).map((x) => x.card), opening: t.status === 'waiting' ? [] : (t.opening || []),
+      pile: t.status === 'waiting' ? [] : (t.pile || []).map((x) => x.card), opening: t.status === 'playing' && ((t.pile || []).length === 0 || (t.opening_until && Date.parse(t.opening_until) > now)) ? (t.opening || []) : [],
       last: t.last && t.last.cards ? t.last : null, log: t.log || [], turn_seconds: TURN_SECONDS, cut_pct: HOUSE_CUT_PCT,
       seats: t.seats.map((s, i) => (taken(s)
         ? { seat: i, empty: false, name: s.name, avatar: s.avatar, role: s.role, mine: i === mySeat, in_game: !!s.in_game, count: s.in_game ? s.count : null, passed: !!s.passed, out: !!s.out, left: !!s.left }

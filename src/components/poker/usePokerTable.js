@@ -90,5 +90,11 @@ export default function usePokerTable(tableId) {
     [tableId, refresh]
   );
 
-  return { state, error, now, refresh, send };
+  // An emoji reaction: shown to everyone at the table for a few seconds.
+  const react = useCallback(async (emoji) => {
+    const res = await base44.functions.invoke("pokerAction", { action: "react", tableId, emoji });
+    if (res.data && res.data.reactions) setState((s) => (s ? { ...s, reactions: res.data.reactions } : s));
+  }, [tableId]);
+
+  return { state, error, now, refresh, send, react };
 }
