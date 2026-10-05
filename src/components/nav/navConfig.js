@@ -1,4 +1,4 @@
-import { Home, Trophy, ScrollText, Shield, Swords, MessageSquare, Spade, Ticket, BookOpen, Store } from "lucide-react";
+import { Home, Trophy, ScrollText, Shield, Swords, MessageSquare, Spade, Ticket, BookOpen, Store, Download } from "lucide-react";
 import { GAMES } from "@/lib/games";
 
 // One source of truth for every navigation surface.
@@ -29,6 +29,8 @@ export function gameLinks(settings) {
 export const RAFFLE = { id: "raffle", to: "/raffle", label: "Raffle", short: "Raffle", icon: Ticket };
 export const SHOP = { id: "shop", to: "/shop", label: "Guild shop", short: "Shop", icon: Store };
 export const GUIDE = { id: "guide", to: "/guide", label: "Game guide", short: "Guide", icon: BookOpen };
+// External link to the Android APK. Shown in the mobile "More" sheet only, never in app mode.
+export const DOWNLOAD = { id: "download", label: "Download app", short: "App", icon: Download, href: true };
 export const isAdminRole = (m) => !!m && (m.role === "officer" || m.role === "leader");
 
 // Is a nav item the current page?

@@ -8,7 +8,8 @@ import RankBadge from "@/components/RankBadge";
 import { Points } from "@/components/SealLogo";
 import { useGuild } from "@/lib/GuildContext";
 import { GAME_ICONS } from "@/lib/gameIcons";
-import { HOME, GAMES_HUB, POKER, RANKINGS, CHAT, RAFFLE, SHOP, GUIDE, PROFILE, ADMIN, gameLinks, isActive, isAdminRole, tableLinks } from "./navConfig";
+import { HOME, GAMES_HUB, POKER, RANKINGS, CHAT, RAFFLE, SHOP, GUIDE, PROFILE, ADMIN, DOWNLOAD, gameLinks, isActive, isAdminRole, tableLinks } from "./navConfig";
+import { onAndroidBrowser } from "@/lib/appMode";
 import { cn } from "@/lib/utils";
 
 // Phone navigation. Four destinations within thumb reach plus "More", which
@@ -24,7 +25,8 @@ export default function MobileTabBar({ onChat, chatOpen, unread }) {
   // Close the sheet after moving to another page.
   useEffect(() => setMore(false), [location.pathname, location.search]);
 
-  const secondary = [SHOP, RAFFLE, GUIDE, RANKINGS, PROFILE, ...(isAdminRole(member) ? [ADMIN] : [])];
+  const canDownload = !!(settings && settings.app_download_url) && onAndroidBrowser();
+  const secondary = [SHOP, RAFFLE, GUIDE, RANKINGS, PROFILE, ...(canDownload ? [DOWNLOAD] : []), ...(isAdminRole(member) ? [ADMIN] : [])];
   const inMore = secondary.some((i) => isActive(i, location));
   const quiet = chatOpen || more;
   const tabs = [
@@ -97,18 +99,29 @@ export default function MobileTabBar({ onChat, chatOpen, unread }) {
               {secondary.map((item) => {
                 const Icon = item.icon;
                 const on = isActive(item, location);
+                const label = item.short === "Ranks" ? "Rankings" : item.label.replace(" hall", "");
+                const cls = cn(
+                  "flex h-[76px] flex-col items-center justify-center gap-2 rounded-lg border text-sm active:bg-white/10",
+                  on ? "border-crimson bg-crimson/15 font-bold text-white" : "border-bronze bg-black/40 text-[hsl(var(--foreground))]"
+                );
+                if (item.href) {
+                  return (
+                    <a
+                      key={item.id}
+                      href={settings.app_download_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={cls}
+                    >
+                      <Icon className="h-6 w-6" />
+                      {label}
+                    </a>
+                  );
+                }
                 return (
-                  <Link
-                    key={item.id}
-                    to={item.to}
-                    aria-current={on ? "page" : undefined}
-                    className={cn(
-                      "flex h-[76px] flex-col items-center justify-center gap-2 rounded-lg border text-sm active:bg-white/10",
-                      on ? "border-crimson bg-crimson/15 font-bold text-white" : "border-bronze bg-black/40 text-[hsl(var(--foreground))]"
-                    )}
-                  >
+                  <Link key={item.id} to={item.to} aria-current={on ? "page" : undefined} className={cls}>
                     <Icon className="h-6 w-6" />
-                    {item.short === "Ranks" ? "Rankings" : item.label.replace(" hall", "")}
+                    {label}
                   </Link>
                 );
               })}

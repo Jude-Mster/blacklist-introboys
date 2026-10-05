@@ -1,21 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { Download, X, Check, RotateCw, Wifi, FileDown, ShieldCheck, PackageCheck } from "lucide-react";
 import { useGuild } from "@/lib/GuildContext";
+import { onAndroidBrowser } from "@/lib/appMode";
 
 const KEY = "bi.app.prompt.done";       // set by "Done" (they installed it)
 const VISIT_KEY = "bi.app.prompt.visit"; // set by "Not now": hidden for this visit only
 const DONE_DAYS = 30;
-
-// True on an Android phone's browser. False on desktop, iPhone, and inside the
-// app itself (an Android WebView marks itself with "; wv").
-function onAndroidBrowser() {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent || "";
-  if (!/Android/i.test(ua)) return false;
-  if (/; wv\)/i.test(ua) || /\bwv\b/.test(ua)) return false;
-  if (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) return false;
-  return true;
-}
 
 // "Not now" only hides the invite until the site is opened again: every new visit in the
 // phone's browser shows it. Only "Done" (after installing) keeps it away for longer.
