@@ -1,9 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-
 import { secrets } from 'base44:runtime';
 import nacl from 'npm:tweetnacl@1.0.3';
 import { announcePoints } from '../../shared/discordPost.ts';
 import { getSettings, getMemberByDiscordId, changePoints, withMemberLock, awardedLast24h } from '../../shared/points.ts';
+import { resilient } from '../../shared/points.ts';
 
 function hexToBytes(hex) {
   const out = new Uint8Array(hex.length / 2);
@@ -37,7 +37,7 @@ export default async function(req) {
     if (data.type === 1) return Response.json({ type: 1 }); // PONG
     if (data.type !== 2) return Response.json({ type: 4, data: { content: 'Unsupported interaction type.' } });
 
-    const b = createClientFromRequest(req);
+    const b = resilient(createClientFromRequest(req));
     const settings = await getSettings(b);
     const cmdName = data.data.name;
     const memberObj = data.member || data.user;

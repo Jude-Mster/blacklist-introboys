@@ -1,8 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-
 import { secrets } from 'base44:runtime';
 import { getSettings } from '../../shared/points.ts';
 import { sha256Hex } from '../../shared/session.ts';
+import { resilient } from '../../shared/points.ts';
 
 // Step 1 of "Continue with Discord". Anyone may call this (there is no account
 // yet). It only creates a short-lived state and returns Discord's authorize URL.
@@ -18,7 +18,7 @@ function secret(name: string) {
 
 export default async function(req) {
   try {
-    const b = createClientFromRequest(req);
+    const b = resilient(createClientFromRequest(req));
     let p; try { p = await req.json(); } catch { p = {}; }
 
     const clientId = secret('DISCORD_CLIENT_ID');

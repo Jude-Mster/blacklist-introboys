@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-
 import { getSettings, errorResponse } from '../../shared/points.ts';
 import { hasRoleNow } from '../../shared/access.ts';
+import { resilient } from '../../shared/points.ts';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const PACE_MS = 500; // ~2 Discord calls/sec — stays well under the rate limit
@@ -16,7 +16,7 @@ const WORKFLOW_SECRET = 'a38d759dc94c446fab834e45b8c15b33174691e91b2541db';
 export default async function(req) {
   try {
     const body = await req.json().catch(() => ({}));
-    const b = createClientFromRequest(req);
+    const b = resilient(createClientFromRequest(req));
     const user = await b.auth.me().catch(() => null);
     const isWorkflow = body && body.__wf_secret === WORKFLOW_SECRET;
     const isAdmin = user && user.role === 'admin';

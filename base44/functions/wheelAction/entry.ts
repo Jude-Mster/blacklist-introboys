@@ -1,5 +1,4 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-
 import { sessionUser } from '../../shared/session.ts';
 import {
   getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, todayStr, randInt,
@@ -7,12 +6,13 @@ import {
 } from '../../shared/points.ts';
 import { postFeed } from '../../shared/feed.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
+import { resilient } from '../../shared/points.ts';
 
 // One shared Twelve Skies Wheel that runs itself, like the roulette table:
 //   betting (15 s) -> the wheel spins and lands (4.5 s) -> result shown (3 s) -> next round.
 // Rounds advance lazily: any request after a deadline moves the wheel forward.
 // Round timing: bets stay open 15 s; the next round opens 3 s after the result is shown.
-const BET_SECONDS = 15;
+const BET_SECONDS = 10;
 const SPIN_SECONDS = 4.5; // length of the wheel animation on the page (SPIN_MS in SkyWheel.jsx)
 const RESULT_SECONDS = SPIN_SECONDS + 3;
 const CLOSE_MARGIN_MS = 1500;
@@ -96,7 +96,7 @@ const publicTable = (t) => ({
 
 export default async function(req) {
   try {
-    const b = createClientFromRequest(req);
+    const b = resilient(createClientFromRequest(req));
     const user = await sessionUser(b, req);
     if (!user) throw new UserError('Link your Discord first.', 401);
     let p; try { p = await req.json(); } catch { p = {}; }

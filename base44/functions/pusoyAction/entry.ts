@@ -4,6 +4,7 @@ import { getSettings, getMemberByUserId, changePoints, withMemberLock, withRecor
 import { postFeed } from '../../shared/feed.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
 import { SEATS, HAND_SIZE, START_SECONDS, FULL_START_SECONDS, deal, play, pass, forfeit, tick, viewFor, seatedCount, maxLoss } from '../../shared/pusoy.ts';
+import { resilient } from '../../shared/points.ts';
 
 // Pusoy Dos: members play each other. The loser pays the winner for every card
 // left in hand; 2% of what the winner collects is removed from circulation.
@@ -33,7 +34,7 @@ export const stakeLimits = (settings) => {
 
 export default async function(req) {
   try {
-    const b = createClientFromRequest(req);
+    const b = resilient(createClientFromRequest(req));
     const user = await sessionUser(b, req);
     if (!user) throw new UserError('Link your Discord first.', 401);
     let p; try { p = await req.json(); } catch { p = {}; }

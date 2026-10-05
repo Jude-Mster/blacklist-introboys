@@ -1,5 +1,4 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-
 import { sessionUser } from '../../shared/session.ts';
 import {
   getMemberByUserId, changePoints, withMemberLock, withRecordLock, randInt, UserError, errorResponse
@@ -7,6 +6,7 @@ import {
 import { postSystem, GUILD_CHANNEL } from '../../shared/chat.ts';
 import { announceRaffle } from '../../shared/discordPost.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
+import { resilient } from '../../shared/points.ts';
 
 // Raffles: the Guild Leader sets prizes, a ticket price and an end time.
 // Members buy tickets with points; each ticket is one slice of the wheel.
@@ -73,7 +73,7 @@ async function refundAll(b, r) {
 
 export default async function(req) {
   try {
-    const b = createClientFromRequest(req);
+    const b = resilient(createClientFromRequest(req));
     const user = await sessionUser(b, req);
     if (!user) throw new UserError('Link your Discord first.', 401);
     let p; try { p = await req.json(); } catch { p = {}; }

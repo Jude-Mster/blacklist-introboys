@@ -1,24 +1,25 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-
 import { sessionUser } from '../../shared/session.ts';
 import {
   getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, todayStr, randInt,
-  validRouletteBet, rouletteWins, ROULETTE_ORDER, GAME_NAMES, UserError, errorResponse
+  validRouletteBet, roulettePayout, ROULETTE_POCKETS, GAME_NAMES, UserError, errorResponse
 } from '../../shared/points.ts';
 import { postFeed } from '../../shared/feed.ts';
 import { announceBigWin } from '../../shared/chat.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
+import { resilient } from '../../shared/points.ts';
 
 // One shared roulette table that runs itself:
-//   betting (15 s) -> ball spins and lands (5 s) -> result shown (3 s) -> next round.
+//   betting (10 s) -> the wheel spins and lands (5 s) -> result shown (3 s) -> next round.
+// Guild rules: Red 2x, Black 2x, Green 14x, Dragon (a red pocket) 7x, Tiger (a black pocket) 7x.
 // Rounds advance lazily: any request after a deadline moves the table forward.
 // Round timing: bets stay open 15 s; the next round opens 3 s after the result is shown.
-const BET_SECONDS = 15;
+const BET_SECONDS = 10;
 const SPIN_SECONDS = 5;   // length of the ball animation on the page (SPIN_MS in Roulette.jsx)
 const RESULT_SECONDS = SPIN_SECONDS + 3;
 const CLOSE_MARGIN_MS = 1500;
 const SETTLE_LOCK_MS = 120000; // paying out a full table can take a while; nobody else may settle meanwhile // bets stop a moment before the deadline
-const PAYS = { straight: 35, color: 1, parity: 1, half: 1, dozen: 2, column: 2 };
+const POCKET_NAME = { red: 'Red', black: 'Black', green: 'Green', dragon: 'the Dragon', tiger: 'the Tiger' };
 const NAME = GAME_NAMES.roulette;
 
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -60,17 +61,18 @@ async function advance(b, settings) {
 async function settle(b, t, now: number, settings) {
   // Decide the result ONCE and save it before paying anyone. If this run is cut
   // short, the next one resumes with the same number instead of spinning again.
+  // `number` is the pocket the wheel stops on (0 to 29).
   let number;
-  if (t.settling_round === t.round_no && Number.isInteger(t.result_number)) {
+  if (t.settling_round === t.round_no && Number.isInteger(t.result_number) && t.result_number < ROULETTE_POCKETS.length) {
     number = t.result_number;
   } else {
-    number = randInt(37);
-    t = await b.asServiceRole.entities.RouletteTable.update(t.id, { settling_round: t.round_no, result_number: number, result_index: ROULETTE_ORDER.indexOf(number) });
+    number = randInt(ROULETTE_POCKETS.length);
+    t = await b.asServiceRole.entities.RouletteTable.update(t.id, { settling_round: t.round_no, result_number: number, result_index: number });
   }
+  const kind = ROULETTE_POCKETS[number];
   const { items: bets } = await b.asServiceRole.entities.RouletteBet.filter({ round_no: t.round_no, settled: false }, { limit: 500 });
   for (const rb of bets) {
-    let payout = 0;
-    for (const x of rb.bets || []) if (rouletteWins(x, number)) payout += x.amount * (PAYS[x.type] + 1);
+    const payout = roulettePayout(rb.bets, kind);
     const net = payout - rb.amount;
     // Mark the bet settled BEFORE paying, so it can never be paid twice.
     await b.asServiceRole.entities.RouletteBet.update(rb.id, { payout, net, settled: true });
@@ -79,35 +81,38 @@ async function settle(b, t, now: number, settings) {
     }
     await b.asServiceRole.entities.Bet.create({
       member_id: rb.member_id, discord_id: '', game: 'roulette', wager: rb.amount, payout, won: payout > 0,
-      outcome: { number, index: ROULETTE_ORDER.indexOf(number), round: t.round_no, bets: rb.bets }
+      outcome: { number, kind, round: t.round_no, bets: rb.bets }
     });
     await postFeed(b, { id: rb.member_id, discord_name: rb.name, avatar_url: rb.avatar, role: rb.role }, {
-      game: 'roulette', game_name: NAME, wager: rb.amount, payout, detail: `Ball on ${number}`
+      game: 'roulette', game_name: NAME, wager: rb.amount, payout, detail: `Landed on ${POCKET_NAME[kind]}`
     });
     const threshold = Number(settings.big_win_threshold) || 0;
     if (net > 0 && net >= threshold) {
-      await announceBigWin(rb.name || 'A member', NAME, net, `ball on ${number}`);
+      await announceBigWin(rb.name || 'A member', NAME, net, `landed on ${POCKET_NAME[kind]}`);
     }
   }
   return await b.asServiceRole.entities.RouletteTable.update(t.id, {
     status: 'settled',
     result_number: number,
-    result_index: ROULETTE_ORDER.indexOf(number),
+    result_index: number,
     settled_at: iso(now),
     next_at: iso(now + RESULT_SECONDS * 1000),
-    recent: [number, ...(t.recent || [])].slice(0, 16)
+    layout: 'v2',
+    // Results from the old numbered wheel don't belong in this history.
+    recent: [number, ...(t.layout === 'v2' ? t.recent || [] : [])].slice(0, 20)
   });
 }
 
 const publicTable = (t) => ({
   round_no: t.round_no, status: t.status, bets_close_at: t.bets_close_at, settled_at: t.settled_at, next_at: t.next_at,
-  result_number: t.result_number, result_index: t.result_index, recent: t.recent || [], total_bet: t.total_bet || 0,
+  result_number: t.layout === 'v2' ? t.result_number : null, result_kind: t.layout === 'v2' && Number.isInteger(t.result_number) ? ROULETTE_POCKETS[t.result_number] : null,
+  recent: t.layout === 'v2' ? (t.recent || []).map((n) => ROULETTE_POCKETS[n]).filter(Boolean) : [], total_bet: t.total_bet || 0,
   players: t.players || 0, server_now: new Date().toISOString()
 });
 
 export default async function(req) {
   try {
-    const b = createClientFromRequest(req);
+    const b = resilient(createClientFromRequest(req));
     const user = await sessionUser(b, req);
     if (!user) throw new UserError('Link your Discord first.', 401);
     let p; try { p = await req.json(); } catch { p = {}; }
@@ -124,7 +129,8 @@ export default async function(req) {
       const mine = bets.find((x) => x.member_id === me.id) || null;
       return Response.json({
         table: publicTable(t),
-        bets: bets.map((x) => ({ name: x.name, avatar: x.avatar, role: x.role, amount: x.amount, payout: x.payout, net: x.net, settled: x.settled, mine: x.member_id === me.id, count: (x.bets || []).length })),
+        // Every player's chips, spot by spot, so the table can show who bet where.
+        bets: bets.map((x) => ({ name: x.name, avatar: x.avatar, role: x.role, amount: x.amount, payout: x.payout, net: x.net, settled: x.settled, mine: x.member_id === me.id, spots: (x.bets || []).map((c) => ({ type: c.type, amount: c.amount })) })),
         mine
       });
     }
@@ -132,8 +138,8 @@ export default async function(req) {
     if (p.action === 'bet') {
       const raw = Array.isArray(p.bets) ? p.bets : [];
       if (!raw.length) throw new UserError('Place at least one chip.');
-      if (raw.length > 40) throw new UserError('Too many separate bets. Use bigger chips.');
-      const chips = raw.map((x) => ({ type: x.type, value: x.value, amount: Math.floor(Number(x.amount)) }));
+      if (raw.length > 5) throw new UserError('Too many separate bets.');
+      const chips = raw.map((x) => ({ type: String(x.type), amount: Math.floor(Number(x.amount)) }));
       if (!chips.every((x) => validRouletteBet(x) && Number.isInteger(x.amount) && x.amount > 0)) throw new UserError('One of those bets is not valid.');
       const total = chips.reduce((a, x) => a + x.amount, 0);
 
@@ -167,7 +173,7 @@ export default async function(req) {
           // Merge with chips already on the same spots.
           const merged = [...(existing.bets || [])];
           for (const c of chips) {
-            const k = merged.find((m) => m.type === c.type && m.value === c.value);
+            const k = merged.find((m) => m.type === c.type);
             if (k) k.amount += c.amount; else merged.push(c);
           }
           row = await b.asServiceRole.entities.RouletteBet.update(existing.id, { bets: merged, amount: already + total });

@@ -7,6 +7,7 @@ import {
 import { pointsWebhookUrl, announceRankings } from '../../shared/discordPost.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
 import { postSystem, GUILD_CHANNEL } from '../../shared/chat.ts';
+import { resilient } from '../../shared/points.ts';
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const isSnowflake = (s: string) => /^\d{15,21}$/.test(s);
@@ -19,7 +20,7 @@ function int(v, { min = 0, max = 1e9, name = 'value' } = {}) {
 
 export default async function(req) {
   try {
-    const b = createClientFromRequest(req);
+    const b = resilient(createClientFromRequest(req));
     const user = await sessionUser(b, req);
     if (!user) throw new UserError('Link your Discord first.', 401);
     const caller = await getMemberByUserId(b, user.id);

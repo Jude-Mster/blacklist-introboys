@@ -5,6 +5,7 @@ import {
 } from '../../shared/points.ts';
 import { act, forceFold, tick, newSeat, viewFor } from '../../shared/poker.ts';
 import { postSystem, tableChannel, announceBigWin } from '../../shared/chat.ts';
+import { resilient } from '../../shared/points.ts';
 
 const BETTING = ['preflop', 'flop', 'turn', 'river'];
 const DEFAULT_TABLES = [
@@ -128,7 +129,7 @@ function needsTick(row) {
 
 export default async function(req) {
   try {
-    const b = createClientFromRequest(req);
+    const b = resilient(createClientFromRequest(req));
     const user = await sessionUser(b, req);
     if (!user) throw new UserError('Link your Discord first.', 401);
     const me = await getMemberByUserId(b, user.id);
