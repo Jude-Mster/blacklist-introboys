@@ -19,6 +19,8 @@ const SPIN_SECONDS = 5;   // length of the ball animation on the page (SPIN_MS i
 const RESULT_SECONDS = SPIN_SECONDS + 3;
 const CLOSE_MARGIN_MS = 1500;
 const SETTLE_LOCK_MS = 120000; // paying out a full table can take a while; nobody else may settle meanwhile // bets stop a moment before the deadline
+// Bumped whenever the wheel changes, so results from an older wheel are never read as this one's.
+const LAYOUT = 'v4';
 const POCKET_NAME = { red: 'Red', black: 'Black', green: 'Green', dragon: 'the Dragon', tiger: 'the Tiger' };
 const NAME = GAME_NAMES.roulette;
 
@@ -97,16 +99,16 @@ async function settle(b, t, now: number, settings) {
     result_index: number,
     settled_at: iso(now),
     next_at: iso(now + RESULT_SECONDS * 1000),
-    layout: 'v2',
+    layout: LAYOUT,
     // Results from the old numbered wheel don't belong in this history.
-    recent: [number, ...(t.layout === 'v2' ? t.recent || [] : [])].slice(0, 20)
+    recent: [number, ...(t.layout === LAYOUT ? t.recent || [] : [])].slice(0, 20)
   });
 }
 
 const publicTable = (t) => ({
   round_no: t.round_no, status: t.status, bets_close_at: t.bets_close_at, settled_at: t.settled_at, next_at: t.next_at,
-  result_number: t.layout === 'v2' ? t.result_number : null, result_kind: t.layout === 'v2' && Number.isInteger(t.result_number) ? ROULETTE_POCKETS[t.result_number] : null,
-  recent: t.layout === 'v2' ? (t.recent || []).map((n) => ROULETTE_POCKETS[n]).filter(Boolean) : [], total_bet: t.total_bet || 0,
+  result_number: t.layout === LAYOUT ? t.result_number : null, result_kind: t.layout === LAYOUT && Number.isInteger(t.result_number) ? ROULETTE_POCKETS[t.result_number] : null,
+  recent: t.layout === LAYOUT ? (t.recent || []).map((n) => ROULETTE_POCKETS[n]).filter(Boolean) : [], total_bet: t.total_bet || 0,
   players: t.players || 0, server_now: new Date().toISOString()
 });
 
@@ -138,7 +140,7 @@ export default async function(req) {
     if (p.action === 'bet') {
       const raw = Array.isArray(p.bets) ? p.bets : [];
       if (!raw.length) throw new UserError('Place at least one chip.');
-      if (raw.length > 5) throw new UserError('Too many separate bets.');
+      if (raw.length > 20) throw new UserError('Too many separate bets at once.');
       const chips = raw.map((x) => ({ type: String(x.type), amount: Math.floor(Number(x.amount)) }));
       if (!chips.every((x) => validRouletteBet(x) && Number.isInteger(x.amount) && x.amount > 0)) throw new UserError('One of those bets is not valid.');
       const total = chips.reduce((a, x) => a + x.amount, 0);

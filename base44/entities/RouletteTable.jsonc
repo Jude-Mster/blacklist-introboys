@@ -44,7 +44,7 @@
     },
     "layout": {
       "type": "string",
-      "description": "v2 = the 30-pocket guild wheel (red, black, green, dragon, tiger)"
+      "description": "Which wheel the saved results belong to. v4 = 25 pockets: 12 red, 12 black, 1 green, with one Dragon and one Tiger"
     },
     "total_bet": {
       "type": "integer",

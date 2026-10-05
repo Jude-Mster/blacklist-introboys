@@ -212,7 +212,7 @@ export function nullSafe(E, dateFields: string[]) {
 }
 
 // ---------- Record locks ----------
-// A real mutex (Lamort's bakery algorithm) on top of the Lock entity. It needs
+// A real mutex (Lamport's bakery algorithm) on top of the Lock entity. It needs
 // nothing atomic from the platform, only that a row we wrote can be read back.
 //   1. Add a row for the record, marked "choosing".
 //   2. Read every row for that record and take a ticket number one higher than the
@@ -266,7 +266,7 @@ export async function withRecordLock(b, entity: string, id: string, fn: () => Pr
     // A lock that isn't removed blocks everyone else on this record until it expires,
     // so make sure it really goes.
     await L.delete(mine.id).catch(async () => { await sleep(400); await L.delete(mine.id).catch(() => {}); });
-
+   
   }
 }
 
@@ -413,16 +413,18 @@ export function resolveSkyWheel(wager, pick, edge) {
   const payout = won ? payoutOf(multiplier, wager) : 0;
   return { won, payout, outcome: { index, landed, pick, multiplier } };
 }
-// Jade Roulette (guild rules): a wheel of 30 pockets.
-//   14 red, 14 black, 2 green. Four of the reds carry the Dragon and four of the
-//   blacks carry the Tiger.
+// Jade Roulette (guild rules): a wheel of 25 pockets.
+//   12 red, 12 black, 1 green. One of the reds carries the Dragon and one of the blacks
+//   carries the Tiger.
 //   Red or Black returns 2x, Green 14x, Dragon 7x, Tiger 7x (the stake included).
-//   A Dragon pocket is still red and a Tiger pocket is still black, so colour bets win on them too.
-// Every bet returns 14/15 of what is staked over time (about 93.3%).
+//   The Dragon pocket is still red and the Tiger pocket is still black, so colour bets win on them too.
+// Long-run return: Red and Black 24/25 (96%); Green 14/25 (56%); Dragon and Tiger 7/25 (28%).
+// Green, the Dragon and the Tiger are single pockets, paid at the guild's chosen 14x and 7x.
 export const ROULETTE_POCKETS = [
-  "green", "red", "black", "dragon", "black", "red", "tiger", "red", "black", "red",
-  "black", "dragon", "black", "red", "tiger", "green", "black", "red", "tiger", "red",
-  "black", "dragon", "black", "red", "black", "red", "tiger", "red", "black", "dragon"
+  "green", "red", "black", "red", "black", "red", "black", "dragon",
+  "black", "red", "black", "red", "black", "red", "black", "red",
+  "black", "red", "tiger", "red", "black", "red", "black", "red",
+  "black"
 ];
 export const ROULETTE_RETURNS = { red: 2, black: 2, green: 14, dragon: 7, tiger: 7 };
 export const ROULETTE_SPOTS = Object.keys(ROULETTE_RETURNS);

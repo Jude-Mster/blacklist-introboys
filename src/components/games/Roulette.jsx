@@ -11,10 +11,16 @@ import { cn } from "@/lib/utils";
 
 const SPIN_MS = 5000;
 const POLL_MS = 2500;
-const COLORS = { red: "#C8161D", black: "#141414", green: "#2E7F5E" };
-const GLYPH = { dragon: "龍", tiger: "虎", green: "玉" };
+const COLORS = { red: "#C8161D", black: "#141414", green: "#12A150" };
+const GLYPH = { dragon: "龍", tiger: "虎" };
 const POCKET_NAME = { red: "Red", black: "Black", green: "Green", dragon: "the Dragon", tiger: "the Tiger" };
-const SEGMENTS = ROULETTE_POCKETS.map((k) => ({ label: GLYPH[k] || "", color: COLORS[pocketColor(k)], fontSize: 11 }));
+// The single green pocket is the 14x one: bright green, gold edge, and its prize written on it.
+// Dragon and Tiger pockets show their sign in gold.
+const SEGMENTS = ROULETTE_POCKETS.map((k) =>
+  k === "green"
+    ? { label: "14×", color: COLORS.green, fontSize: 11, textColor: "#FFE9A3", stroke: "#F5C542" }
+    : { label: GLYPH[k] || "", color: COLORS[pocketColor(k)], fontSize: 13, textColor: GLYPH[k] ? "#FFD966" : "#FFFFFF" }
+);
 const CHIP_VALUES = [10, 50, 100, 500, 1000, 5000];
 const short = (v) => (v >= 1000 ? `${Math.round(v / 100) / 10}k` : String(v));
 
@@ -228,7 +234,7 @@ export default function Roulette({ settings, balance }) {
             </span>
             {spot.note && <span className="mt-0.5 block text-[10px] leading-tight text-[hsl(0_0%_90%/0.75)]">{spot.note}</span>}
           </span>
-          <span className="shrink-0 rounded bg-black/45 px-1.5 py-0.5 font-heading text-sm font-extrabold text-gold">{ROULETTE_RETURNS[spot.id]}×</span>
+          <span className={cn("shrink-0 rounded px-1.5 py-0.5 font-heading font-extrabold", spot.id === "green" ? "bg-gold text-base text-black" : "bg-black/45 text-sm text-gold")}>{ROULETTE_RETURNS[spot.id]}×</span>
         </span>
 
         {/* the coins on this spot, biggest first */}
@@ -271,7 +277,15 @@ export default function Roulette({ settings, balance }) {
           myNet !== null && (myNet > 0 ? "win-glow" : myNet < 0 ? "loss-shake" : "")
         )}
       >
-        <Wheel segments={SEGMENTS} rotation={rotation} spinMs={SPIN_MS} spinning={spinning} size={250} highlight={showResult ? table.result_number : null} />
+        <Wheel segments={SEGMENTS} rotation={rotation} spinMs={SPIN_MS} spinning={spinning} size={250} highlight={showResult ? table.result_number : null} flat hub="黑" />
+        {/* what each pocket pays */}
+        <ul className="mx-auto mt-3 flex max-w-[330px] flex-wrap items-center justify-center gap-x-3 gap-y-1 px-2 text-xs text-mist" aria-label="What each pocket pays">
+          <li className="flex items-center gap-1"><span className="h-3 w-3 rounded-sm" style={{ background: COLORS.red }} /> Red <b className="text-gold">2×</b></li>
+          <li className="flex items-center gap-1"><span className="h-3 w-3 rounded-sm border border-white/30" style={{ background: COLORS.black }} /> Black <b className="text-gold">2×</b></li>
+          <li className="flex items-center gap-1"><span lang="zh-Hant" className="flex h-4 w-4 items-center justify-center rounded-sm text-[10px] font-bold text-[#FFD966]" style={{ background: COLORS.red }}>龍</span> Dragon <b className="text-gold">7×</b></li>
+          <li className="flex items-center gap-1"><span lang="zh-Hant" className="flex h-4 w-4 items-center justify-center rounded-sm border border-white/30 text-[10px] font-bold text-[#FFD966]" style={{ background: COLORS.black }}>虎</span> Tiger <b className="text-gold">7×</b></li>
+          <li className="flex items-center gap-1"><span className="h-3 w-3 rounded-sm ring-1 ring-gold" style={{ background: COLORS.green }} /> Green <b className="text-gold">14×</b></li>
+        </ul>
         <div className="mt-3 px-4 text-center" aria-live="polite">
           {betting && open && (
             <>
@@ -339,6 +353,7 @@ export default function Roulette({ settings, balance }) {
         ))}
       </div>
 
+      <p className="mb-2 text-xs text-mist">Tap a spot to put the chosen chip on it. You can bet on as many spots as you like, tap again to add more, and keep adding until bets close.</p>
       {/* the table: tap a spot to put the chosen chip on it */}
       <div className="select-none space-y-2">
         <div className="grid grid-cols-3 gap-2">
@@ -384,7 +399,7 @@ export default function Roulette({ settings, balance }) {
       )}
 
       <p className="mt-4 text-xs text-mist/80">
-        The wheel has 30 pockets: 14 red, 14 black and 2 green. Four of the reds carry the Dragon and four of the blacks carry the Tiger. Red or Black returns 2× your chips, Green 14×, Dragon 7×, Tiger 7×. A Dragon pocket still counts as red and a Tiger pocket as black, so colour bets win on them too. Bets close after 10 seconds. Over time every bet on this table returns 93.3% of what is staked, whatever the guild's house edge is set to.
+        The wheel has 25 pockets: 12 red, 12 black and 1 green. One red pocket carries the Dragon and one black pocket carries the Tiger. Red or Black returns 2× your chips, Green 14×, Dragon 7×, Tiger 7×. The Dragon pocket still counts as red and the Tiger pocket as black, so colour bets win on them too. You can bet on several spots in the same spin and keep adding until bets close after 10 seconds. Over time Red and Black return 96% of what is staked. Green, the Dragon and the Tiger are single pockets, so Green returns 56% and Dragon and Tiger 28%.
       </p>
     </Panel>
   );

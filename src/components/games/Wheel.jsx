@@ -2,7 +2,7 @@ import React from "react";
 
 // A spinning prize wheel drawn in SVG. Segment i spans i*step..(i+1)*step degrees
 // clockwise from the top pointer. Use `angleFor(i, current, n)` to land segment i.
-export default function Wheel({ segments, rotation, spinMs = 3000, spinning, size = 260, highlight = null }) {
+export default function Wheel({ segments, rotation, spinMs = 3000, spinning, size = 260, highlight = null, flat = false, hub = "天" }) {
   const n = segments.length;
   const step = 360 / n;
   const r = 100;
@@ -41,9 +41,9 @@ export default function Wheel({ segments, rotation, spinMs = 3000, spinning, siz
               <path
                 d={`M0 0 L${x1} ${y1} A${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`}
                 fill={s.color}
-                fillOpacity={lit ? 1 : i % 2 ? 0.78 : 0.92}
-                stroke="#050505"
-                strokeWidth="1.2"
+                fillOpacity={lit || flat ? 1 : i % 2 ? 0.78 : 0.92}
+                stroke={s.stroke || "#050505"}
+                strokeWidth={s.stroke ? 2.4 : 1.2}
               />
               <text
                 x={tx}
@@ -54,7 +54,7 @@ export default function Wheel({ segments, rotation, spinMs = 3000, spinning, siz
                 fontFamily="'Oswald', sans-serif"
                 fontWeight="800"
                 fontSize={s.fontSize || (n > 8 ? 15 : 17)}
-                fill="#FFFFFF"
+                fill={s.textColor || "#FFFFFF"}
               >
                 {s.label}
               </text>
@@ -68,7 +68,7 @@ export default function Wheel({ segments, rotation, spinMs = 3000, spinning, siz
         })}
         <circle r="22" fill="#050505" stroke="#F2F2F2" strokeWidth="2" />
         <text textAnchor="middle" dominantBaseline="central" fontFamily="'Oswald', sans-serif" fontWeight="800" fontSize="16" fill="#F2F2F2">
-          天
+          {hub}
         </text>
       </svg>
     </div>

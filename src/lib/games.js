@@ -49,19 +49,20 @@ export const wheelMultiplier = (pick, edge) => {
 
 export const GAME_NAME = Object.fromEntries(GAMES.map((g) => [g.id, g.name]));
 // ---------- Roulette (guild rules) ----------
-// A wheel of 30 pockets: 14 red, 14 black, 2 green. Four reds carry the Dragon and
-// four blacks carry the Tiger. Must match ROULETTE_POCKETS in base44/shared/points.ts.
+// A wheel of 25 pockets: 12 red, 12 black, 1 green. One red carries the Dragon and one
+// black carries the Tiger. Must match ROULETTE_POCKETS in base44/shared/points.ts.
 export const ROULETTE_POCKETS = [
-  "green", "red", "black", "dragon", "black", "red", "tiger", "red", "black", "red",
-  "black", "dragon", "black", "red", "tiger", "green", "black", "red", "tiger", "red",
-  "black", "dragon", "black", "red", "black", "red", "tiger", "red", "black", "dragon"
+  "green", "red", "black", "red", "black", "red", "black", "dragon",
+  "black", "red", "black", "red", "black", "red", "black", "red",
+  "black", "red", "tiger", "red", "black", "red", "black", "red",
+  "black"
 ];
 export const ROULETTE_RETURNS = { red: 2, black: 2, green: 14, dragon: 7, tiger: 7 };
 export const pocketColor = (kind) => (kind === "dragon" ? "red" : kind === "tiger" ? "black" : kind);
 export const rouletteWins = (spot, kind) => spot === kind || spot === pocketColor(kind);
 export const ROULETTE_SPOTS = [
   { id: "red", name: "Red", glyph: "", color: "red" },
-  { id: "green", name: "Green", glyph: "玉", color: "green" },
+  { id: "green", name: "Green", glyph: "", color: "green" },
   { id: "black", name: "Black", glyph: "", color: "black" },
   { id: "dragon", name: "Dragon", glyph: "龍", color: "red", note: "a red pocket" },
   { id: "tiger", name: "Tiger", glyph: "虎", color: "black", note: "a black pocket" }
