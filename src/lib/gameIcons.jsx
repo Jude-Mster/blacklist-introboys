@@ -42,6 +42,11 @@ export const GAME_ICONS = {
       ♠
     </span>
   ),
+  fortune: (
+    <span className="font-heading text-base font-extrabold leading-none text-gold" lang="zh-Hant" aria-hidden="true">
+      福
+    </span>
+  ),
   pusoy: (
     <span className="font-heading text-base font-extrabold leading-none text-gold" aria-hidden="true">
       2

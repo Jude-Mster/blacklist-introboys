@@ -28,7 +28,12 @@ function describe(b) {
     case "lanternslots":
       return (o.reels || []).join(" · ");
     case "roulette":
-      return `Ball on ${o.number} · ${(o.bets || []).length} bet${(o.bets || []).length === 1 ? "" : "s"}`;
+      // Older rows are from the numbered wheel; newer ones name the pocket.
+      return o.kind
+        ? `Landed on ${{ red: "Red", black: "Black", green: "Green", dragon: "the Dragon", tiger: "the Tiger" }[o.kind] || o.kind} · ${(o.bets || []).length} bet${(o.bets || []).length === 1 ? "" : "s"}`
+        : `Ball on ${o.number} · ${(o.bets || []).length} bet${(o.bets || []).length === 1 ? "" : "s"}`;
+    case "fortune":
+      return o.free_spins ? `${o.free_spins} free spins · ${o.multiplier}× the bet` : o.best ? `${o.best.count} × ${o.best.symbol} · ${o.multiplier}× the bet` : "No win";
     case "skywheel":
       return `Backed ${FACTIONS[o.pick]?.name || o.pick}, landed ${FACTIONS[o.landed]?.name || o.landed}`;
     case "blackjack":

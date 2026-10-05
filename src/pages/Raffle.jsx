@@ -11,7 +11,7 @@ import { Ingot, Points } from "@/components/SealLogo";
 import { useGuild, errorText } from "@/lib/GuildContext";
 import { cn } from "@/lib/utils";
 
-const POLL_MS = 6000;
+const POLL_MS = 10000;
 const SPIN_MS = 6500;
 const PLACE = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"];
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useGuild, errorText } from "@/lib/GuildContext";
+import { balanceHold } from "@/lib/balanceHold";
 
 // Shared play loop for every game.
 // 1. send the bet; the server decides the result
@@ -24,12 +25,14 @@ export default function useGame(game, { revealMs = 900 } = {}) {
       setError("");
       setResult(null);
       try {
+        balanceHold.active = true; // the result isn't shown until the animation ends
         const res = await base44.functions.invoke("playGame", { game, wager, choice });
         const r = res.data;
         setLanding(r);
         await new Promise((resolve) => {
           timer.current = setTimeout(resolve, revealMs);
         });
+        balanceHold.active = false;
         setResult(r);
         setBalance(r.balance);
         setHistory((h) => [{ won: r.won, net: r.net, key: Date.now() }, ...h].slice(0, 14));
@@ -39,6 +42,7 @@ export default function useGame(game, { revealMs = 900 } = {}) {
         setError(errorText(e, "The bet didn't go through. Try again."));
         return null;
       } finally {
+        balanceHold.active = false;
         setBusy(false);
       }
     },

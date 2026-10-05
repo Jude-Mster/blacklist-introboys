@@ -4,6 +4,7 @@ import {
   getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, UserError, errorResponse, clearSettingsCache
 } from '../../shared/points.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
+import { resilient } from '../../shared/points.ts';
 
 // The guild shop.
 //   1 point = 1 CP = 0.5 GP = 1M silver (in-game value)
@@ -106,7 +107,7 @@ async function seedCatalog(b, settings) {
 
 export default async function(req) {
   try {
-    const b = createClientFromRequest(req);
+    const b = resilient(createClientFromRequest(req));
     const user = await sessionUser(b, req);
     if (!user) throw new UserError('Link your Discord first.', 401);
     let p; try { p = await req.json(); } catch { p = {}; }

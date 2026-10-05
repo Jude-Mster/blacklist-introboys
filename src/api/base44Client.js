@@ -35,7 +35,17 @@ const client = createClient({
 const READ_FUNCTIONS = { getChatMessages: 3000, getGameFeed: 3000, getLeaderboard: 3000 };
 const READ_ACTIONS = { state: 900, list: 900 };
 const BACKOFF_MS = 8000;
-const lastGood = new Map(); // key -> { at, promise }
+const LOAD_ACTIONS = new Set(["state", "list", "catalog", "adminOverview", "roster", "totals", "search", "discordStatus", "ping"]);
+const LOAD_RETRY_MS = [1200, 2500, 5000];
+// Games that play an animation before the result should be seen set the balance themselves.
+const HOLD_BALANCE = new Set(["playGame"]);
+// Calls that can't change anyone's points.
+const NO_POINTS = new Set(["getMyAccount", "chatSend", "sessionLogout", "discordAuthStart", "discordLogin"]);
+const announce = (type, detail) => {
+  try { window.dispatchEvent(new CustomEvent(type, { detail })); } catch { /* not in a browser */ }
+};
+const lastGood = new Map(); // key -> { at, promise } of the last answer that worked
+const inFlight = new Map();
 let backoffUntil = 0;
 
 const isRateLimit = (e) => {
@@ -57,11 +67,30 @@ functions.invoke = (name, data) => {
   if (token) payload._s = token;
 
   const ttl = READ_FUNCTIONS[name] ?? (payload.action && !payload.first ? READ_ACTIONS[payload.action] : undefined);
-  const call = () => client.functions.invoke(name, payload).catch((e) => {
-    if (!isRateLimit(e)) throw e;
-    backoffUntil = Date.now() + BACKOFF_MS;
-    throw busyError(e);
+  // Loading something (not changing anything) is safe to ask for again, so a busy
+  // answer is retried quietly a few times before the member ever sees an error.
+  const isLoad = ttl !== undefined || /^(get|list)/i.test(name) || LOAD_ACTIONS.has(payload.action);
+  // Any answer that says what the member's balance is now updates the top bar straight
+  // away. A change that doesn't say (a table paying out later) asks for a fresh look.
+  const once = () => client.functions.invoke(name, payload).then((res) => {
+    const d = res && res.data;
+    if (HOLD_BALANCE.has(name)) return res;
+    if (d && typeof d.balance === "number") announce("bi:balance", { points: d.balance });
+    else if (ttl === undefined && !isLoad && !NO_POINTS.has(name)) announce("bi:changed", {});
+    return res;
   });
+  const call = async () => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await once();
+      } catch (e) {
+        if (!isRateLimit(e)) throw e;
+        backoffUntil = Date.now() + BACKOFF_MS;
+        if (!isLoad || attempt >= LOAD_RETRY_MS.length) throw busyError(e);
+        await new Promise((r) => setTimeout(r, LOAD_RETRY_MS[attempt]));
+      }
+    }
+  };
 
   if (ttl === undefined) {
     // A member did something: the remembered answers for this function are out of date.
@@ -73,10 +102,16 @@ functions.invoke = (name, data) => {
   const hit = lastGood.get(key);
   const now = Date.now();
   const hidden = typeof document !== "undefined" && document.hidden;
-  if (hit && (now - hit.at < ttl || hidden || now < backoffUntil)) return hit.promise;
+  const resting = hidden || now < backoffUntil;
+  // Reuse the last good answer when it is fresh, the tab is hidden, or we were just told to slow down.
+  if (hit && (now - hit.at < ttl || resting)) return hit.promise;
+  if (inFlight.has(key)) return inFlight.get(key);
   const promise = call();
-  lastGood.set(key, { at: now, promise });
-  promise.catch(() => { if (lastGood.get(key) && lastGood.get(key).promise === promise) lastGood.delete(key); });
+  inFlight.set(key, promise);
+  promise
+    .then(() => lastGood.set(key, { at: Date.now(), promise }))
+    .catch(() => {})
+    .finally(() => inFlight.delete(key));
   return promise;
 };
 

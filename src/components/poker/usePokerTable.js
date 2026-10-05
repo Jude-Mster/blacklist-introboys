@@ -14,7 +14,11 @@ export default function usePokerTable(tableId) {
   const queued = useRef(false);
   const lastNudge = useRef(0);
 
-  const refresh = useCallback(async () => {
+  const idle = useRef(false);
+  const tickNo = useRef(0);
+  const refresh = useCallback(async (fromTimer) => {
+    // A table waiting for players only needs checking every third tick.
+    if (fromTimer === true && idle.current && tickNo.current++ % 3) return;
     if (inflight.current) {
       queued.current = true;
       return;
@@ -23,9 +27,10 @@ export default function usePokerTable(tableId) {
     try {
       const res = await base44.functions.invoke("pokerAction", { action: "state", tableId });
       setState(res.data);
+      idle.current = !!(res.data && res.data.table && res.data.table.phase === "waiting");
       setError("");
     } catch (e) {
-      setError(errorText(e, "Lost the table. Retrying."));
+      if (!(e && e.rateLimited)) setError(errorText(e, "Lost the table. Retrying."));
     } finally {
       inflight.current = false;
       if (queued.current) {
@@ -48,7 +53,7 @@ export default function usePokerTable(tableId) {
     } catch {
       /* polling below keeps things moving */
     }
-    const poll = setInterval(refresh, 2000); // live updates aren't guaranteed, so this is what keeps the table moving
+    const poll = setInterval(() => refresh(true), 2000); // live updates aren't guaranteed, so this is what keeps the table moving
     return () => {
       clearInterval(poll);
       clearTimeout(timer);

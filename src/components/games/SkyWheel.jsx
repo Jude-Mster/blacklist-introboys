@@ -10,7 +10,7 @@ import { WHEEL_SEGMENTS, FACTIONS, wheelMultiplier, edgeOf } from "@/lib/games";
 import { cn } from "@/lib/utils";
 
 const SPIN_MS = 4500;
-const POLL_MS = 2000;
+const POLL_MS = 2500;
 const SEGMENTS = WHEEL_SEGMENTS.map((id) => ({ label: FACTIONS[id].glyph, color: FACTIONS[id].color }));
 const PICKS = ["guanyin", "fujin", "jinong", "dragon"];
 
@@ -111,7 +111,7 @@ export default function SkyWheel({ settings, balance }) {
   const open = betting && Date.parse(table.bets_close_at) - serverNow > 1500;
   const showResult = !!table && table.status === "settled" && revealed === table.round_no;
   const nextIn = table && table.status === "settled" && table.next_at ? Math.max(0, Math.ceil((Date.parse(table.next_at) - serverNow) / 1000)) : 0;
-  const betSeconds = 15; // must match BET_SECONDS in wheelAction
+  const betSeconds = 10; // must match BET_SECONDS in wheelAction
 
   const mine = state && state.mine && state.mine.round_no === round ? state.mine : null;
   const myBets = useMemo(() => Object.fromEntries(((mine && mine.bets) || []).map((b) => [b.faction, b.amount])), [mine]);

@@ -21,23 +21,28 @@ export function FullLogo({ className }) {
   return <img src="https://base44.app/api/apps/6abe8bba244ec63c6d6d2855/files/mp/public/6abe8bba244ec63c6d6d2855/68df4465e_logo.png" alt="BLACKLIST INTROBOYS, TwelveSky guild" draggable={false} className={cn("select-none", className)} />;
 }
 
-// The gold star that marks a points amount. (Still exported as Ingot so every
+// The gold coin that marks a points amount. (Still exported as Ingot so every
 // page that already shows points picks up the new icon.)
 export function Ingot({ className, size = 18 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={cn("shrink-0", className)} aria-hidden="true">
-      <path
-        d="M12 2.2l2.9 6.2 6.7.8-4.9 4.7 1.3 6.7L12 17.3l-6 3.3 1.3-6.7-4.9-4.7 6.7-.8L12 2.2Z"
-        fill="#F5C542"
-        stroke="#B8860B"
-        strokeWidth="1"
-        strokeLinejoin="round"
-      />
+      <defs>
+        <radialGradient id="bi-coin" cx="36%" cy="30%" r="75%">
+          <stop offset="0" stopColor="#FFE9A3" />
+          <stop offset="0.45" stopColor="#F5C542" />
+          <stop offset="1" stopColor="#B8860B" />
+        </radialGradient>
+      </defs>
+      <circle cx="12" cy="12" r="10.4" fill="url(#bi-coin)" stroke="#8A6508" strokeWidth="1.2" />
+      <circle cx="12" cy="12" r="7.3" fill="none" stroke="#8A6508" strokeOpacity="0.55" strokeWidth="1" />
+      {/* square hole, like an old cash coin */}
+      <rect x="9.6" y="9.6" width="4.8" height="4.8" rx="0.6" fill="#7A5A07" fillOpacity="0.85" />
+      <path d="M6.2 8.2a7 7 0 0 1 4.1-3.1" fill="none" stroke="#FFF6D6" strokeOpacity="0.8" strokeWidth="1.1" strokeLinecap="round" />
     </svg>
   );
 }
 
-// Points amount with the gold star.
+// Points amount with the gold coin.
 export function Points({ value, className, iconSize = 16 }) {
   return (
     <span className={cn("inline-flex items-center gap-1.5 tabular-nums", className)}>

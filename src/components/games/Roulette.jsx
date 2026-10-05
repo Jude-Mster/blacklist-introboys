@@ -6,18 +6,21 @@ import Avatar from "@/components/Avatar";
 import { Ingot } from "@/components/SealLogo";
 import Wheel, { angleFor } from "./Wheel";
 import { useGuild, errorText } from "@/lib/GuildContext";
-import { ROULETTE_ORDER, ROULETTE_PAYS, rouletteColor, rouletteWins, betKey, betLabel } from "@/lib/games";
+import { ROULETTE_POCKETS, ROULETTE_RETURNS, ROULETTE_SPOTS, pocketColor, rouletteWins } from "@/lib/games";
 import { cn } from "@/lib/utils";
 
 const SPIN_MS = 5000;
-const POLL_MS = 2000;
-const COLORS = { red: "#C8161D", black: "#111111", green: "#2E7F5E" };
-const SEGMENTS = ROULETTE_ORDER.map((n) => ({ label: String(n), color: COLORS[rouletteColor(n)], fontSize: 9 }));
+const POLL_MS = 2500;
+const COLORS = { red: "#C8161D", black: "#141414", green: "#2E7F5E" };
+const GLYPH = { dragon: "龍", tiger: "虎", green: "玉" };
+const POCKET_NAME = { red: "Red", black: "Black", green: "Green", dragon: "the Dragon", tiger: "the Tiger" };
+const SEGMENTS = ROULETTE_POCKETS.map((k) => ({ label: GLYPH[k] || "", color: COLORS[pocketColor(k)], fontSize: 11 }));
 const CHIP_VALUES = [10, 50, 100, 500, 1000, 5000];
-const ROWS = Array.from({ length: 12 }, (_, r) => [r * 3 + 1, r * 3 + 2, r * 3 + 3]);
+const short = (v) => (v >= 1000 ? `${Math.round(v / 100) / 10}k` : String(v));
 
 // One shared table for the whole guild. The server runs the rounds on a timer:
-// betting -> spin -> result -> next round. Everyone sees the same ball.
+// betting -> spin -> result -> next round. Everyone sees the same wheel.
+// Guild rules: Red 2x, Black 2x, Green 14x, Dragon (a red pocket) 7x, Tiger (a black pocket) 7x.
 export default function Roulette({ settings, balance }) {
   const { setBalance, reload } = useGuild();
   const chips = useMemo(() => CHIP_VALUES.filter((v) => v <= settings.max_bet), [settings.max_bet]);
@@ -25,7 +28,7 @@ export default function Roulette({ settings, balance }) {
   const [state, setState] = useState(null); // { table, bets, mine }
   const [offset, setOffset] = useState(0); // server clock minus this device's clock
   const [now, setNow] = useState(Date.now());
-  const [pending, setPending] = useState([]); // chips not sent yet
+  const [pending, setPending] = useState([]); // chips not sent yet: [{ type, amount }]
   const [history, setHistory] = useState([]);
   const [lastBets, setLastBets] = useState(null);
   const [placing, setPlacing] = useState(false);
@@ -37,6 +40,7 @@ export default function Roulette({ settings, balance }) {
   const seenBetting = useRef(0);
   const animated = useRef(0);
   const inFlight = useRef(false);
+  const loaded = useRef(false);
 
   const refresh = useCallback(async () => {
     if (inFlight.current) return;
@@ -46,11 +50,13 @@ export default function Roulette({ settings, balance }) {
       const d = res.data;
       if (d && d.table) {
         setOffset(Date.parse(d.table.server_now) - Date.now());
+        loaded.current = true;
         setState(d);
         setLoadError("");
       }
     } catch (e) {
-      setLoadError(errorText(e, "Couldn't reach the roulette table."));
+      // A missed background refresh isn't worth an error once the table is showing.
+      if (!loaded.current && !(e && e.rateLimited)) setLoadError(errorText(e, "Couldn't reach the roulette table."));
     } finally {
       inFlight.current = false;
     }
@@ -60,16 +66,9 @@ export default function Roulette({ settings, balance }) {
     refresh();
     const poll = setInterval(refresh, POLL_MS);
     const tick = setInterval(() => setNow(Date.now()), 250);
-    let unsub = () => {};
-    try {
-      unsub = base44.entities.RouletteTable.subscribe(() => refresh());
-    } catch {
-      /* polling covers it */
-    }
     return () => {
       clearInterval(poll);
       clearInterval(tick);
-      unsub && unsub();
     };
   }, [refresh]);
 
@@ -77,28 +76,29 @@ export default function Roulette({ settings, balance }) {
   const round = table ? table.round_no : 0;
   const serverNow = now + offset;
 
-  // Run the wheel when a round we watched gets its number.
+  // Run the wheel when a round we watched gets its pocket.
   useEffect(() => {
     if (!table) return;
     if (table.status === "betting") {
       seenBetting.current = table.round_no;
       return;
     }
+    if (table.result_number === null || table.result_number === undefined) return;
     if (animated.current === table.round_no) return;
     animated.current = table.round_no;
     const fresh = seenBetting.current === table.round_no || Date.now() + offset - Date.parse(table.settled_at) < 4000;
     if (!fresh) {
-      // Arrived after the spin: show the number without the show.
-      setRotation((r) => angleFor(table.result_index, r, ROULETTE_ORDER.length, 0));
+      // Arrived after the spin: show the pocket without the show.
+      setRotation((r) => angleFor(table.result_number, r, ROULETTE_POCKETS.length, 0));
       setRevealed(table.round_no);
       return;
     }
     setSpinning(true);
-    setRotation((r) => angleFor(table.result_index, r, ROULETTE_ORDER.length, 6));
+    setRotation((r) => angleFor(table.result_number, r, ROULETTE_POCKETS.length, 6));
     const t = setTimeout(() => {
       setSpinning(false);
       setRevealed(table.round_no);
-      reload();
+      reload(); // points only change once the wheel has stopped
     }, SPIN_MS + 100);
     return () => {
       clearTimeout(t);
@@ -107,32 +107,31 @@ export default function Roulette({ settings, balance }) {
     };
   }, [table && table.round_no, table && table.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // New round: remember last round's chips for "repeat", clear the board.
+  // New round: clear the chips that were waiting to go down.
   useEffect(() => {
     setPending([]);
     setHistory([]);
     setError("");
   }, [round]);
   useEffect(() => {
-    if (state && state.mine && state.mine.bets && state.mine.bets.length) setLastBets(state.mine.bets);
+    if (state && state.mine && state.mine.bets && state.mine.bets.length) setLastBets(state.mine.bets.map((b) => ({ type: b.type, amount: b.amount })));
   }, [state]);
 
   const betting = !!table && table.status === "betting";
   const closeIn = betting ? Math.max(0, Math.ceil((Date.parse(table.bets_close_at) - serverNow) / 1000)) : 0;
   const open = betting && Date.parse(table.bets_close_at) - serverNow > 1500;
-  const showResult = !!table && table.status === "settled" && revealed === table.round_no;
+  const showResult = !!table && table.status === "settled" && revealed === table.round_no && !!table.result_kind;
   const nextIn = table && table.status === "settled" && table.next_at ? Math.max(0, Math.ceil((Date.parse(table.next_at) - serverNow) / 1000)) : 0;
-  const betSeconds = 15; // must match BET_SECONDS in rouletteAction
+  const betSeconds = 10; // must match BET_SECONDS in rouletteAction
 
   const mine = (state && state.mine) || null;
   const placed = useMemo(() => (mine && mine.round_no === round ? mine.bets || [] : []), [mine, round]);
   const placedTotal = placed.reduce((t, b) => t + b.amount, 0);
   const pendingTotal = pending.reduce((t, b) => t + b.amount, 0);
-  const placedMap = useMemo(() => Object.fromEntries(placed.map((b) => [betKey(b), b.amount])), [placed]);
-  const pendingMap = useMemo(() => Object.fromEntries(pending.map((b) => [betKey(b), b.amount])), [pending]);
-  const number = showResult ? table.result_number : null;
+  const pendingOn = (type) => (pending.find((b) => b.type === type) || { amount: 0 }).amount;
+  const kind = showResult ? table.result_kind : null;
 
-  const place = (type, value) => {
+  const place = (type) => {
     if (!open || placing) return;
     if (pendingTotal + chip > balance || placedTotal + pendingTotal + chip > settings.max_bet) {
       setError(pendingTotal + chip > balance ? "Not enough points for another chip." : `You can bet up to ${settings.max_bet.toLocaleString()} per spin.`);
@@ -140,10 +139,7 @@ export default function Roulette({ settings, balance }) {
     }
     setError("");
     setHistory((h) => [...h, pending]);
-    setPending((bs) => {
-      const k = betKey({ type, value });
-      return bs.some((b) => betKey(b) === k) ? bs.map((b) => (betKey(b) === k ? { ...b, amount: b.amount + chip } : b)) : [...bs, { type, value, amount: chip }];
-    });
+    setPending((bs) => (bs.some((b) => b.type === type) ? bs.map((b) => (b.type === type ? { ...b, amount: b.amount + chip } : b)) : [...bs, { type, amount: chip }]));
   };
   const undo = () => {
     setPending(history[history.length - 1] || []);
@@ -181,39 +177,12 @@ export default function Roulette({ settings, balance }) {
     }
   };
 
-  const cell = (type, value, children, className, style) => {
-    const k = betKey({ type, value });
-    const on = placedMap[k] || 0;
-    const wait = pendingMap[k] || 0;
-    const hit = number !== null && rouletteWins({ type, value }, number);
-    return (
-      <button
-        key={k}
-        type="button"
-        onClick={() => place(type, value)}
-        disabled={!open}
-        aria-label={`Bet on ${betLabel({ type, value })}${on + wait ? `, ${on + wait} on it` : ""}`}
-        className={cn(
-          "relative flex items-center justify-center border border-bronze/45 font-heading font-bold text-[hsl(0_0%_92%)] transition-[filter] enabled:hover:brightness-125 disabled:cursor-default",
-          hit && "z-10 outline outline-2 outline-gold",
-          number !== null && !hit && "opacity-60",
-          className
-        )}
-        style={style}
-      >
-        {children}
-        {on + wait > 0 && <Chip amount={on + wait} waiting={wait > 0} />}
-      </button>
-    );
-  };
-
   if (!table) {
     return (
       <Panel title="Blacklist Jade Roulette">
         {loadError ? (
           <div className="py-6 text-center">
             <p role="alert" className="text-sm text-ember">{loadError}</p>
-            <p className="mt-2 text-xs text-mist">If this keeps happening, the Guild Leader can run the system check in the admin hall.</p>
             <button onClick={refresh} className="btn-bronze mx-auto mt-4 h-10 px-5 text-sm">Try again</button>
           </div>
         ) : (
@@ -226,10 +195,72 @@ export default function Roulette({ settings, balance }) {
   const players = (state.bets || []).slice().sort((a, b) => b.amount - a.amount);
   const myRow = players.find((p) => p.mine);
   const myNet = showResult && myRow && myRow.settled ? myRow.net : null;
+  // Everyone's chips, grouped by the spot they sit on.
+  const chipsOn = (type) => players.flatMap((p) => (p.spots || []).filter((c) => c.type === type).map((c) => ({ name: p.name, avatar: p.avatar, mine: p.mine, amount: c.amount }))).sort((a, b) => b.amount - a.amount);
+  const recent = table.recent.slice(showResult || table.status === "betting" ? 0 : 1);
+
+  const renderSpot = (spot, tall) => {
+    const all = chipsOn(spot.id);
+    const waiting = pendingOn(spot.id);
+    const total = all.reduce((t, c) => t + c.amount, 0);
+    const hit = kind !== null && rouletteWins(spot.id, kind);
+    const shown = all.slice(0, 5);
+    return (
+      <button
+        key={spot.id}
+        type="button"
+        onClick={() => place(spot.id)}
+        disabled={!open}
+        aria-label={`Bet on ${spot.name}, returns ${ROULETTE_RETURNS[spot.id]} times${total + waiting ? `, ${total + waiting} on it` : ""}`}
+        className={cn(
+          "relative flex flex-col items-stretch rounded-md border-2 p-2 text-left transition-[filter,opacity] enabled:hover:brightness-125 disabled:cursor-default",
+          tall ? "min-h-[132px]" : "min-h-[116px]",
+          hit ? "border-gold win-glow" : "border-bronze/50",
+          kind !== null && !hit && "opacity-45"
+        )}
+        style={{ background: `linear-gradient(160deg, ${COLORS[spot.color]}, ${COLORS[spot.color]}cc 55%, #0a0a0a)` }}
+      >
+        <span className="flex items-start justify-between gap-1">
+          <span className="min-w-0">
+            <span className="flex items-center gap-1 font-heading text-sm font-extrabold leading-none text-[hsl(0_0%_95%)]">
+              {spot.glyph && <span lang="zh-Hant" className="text-base leading-none" aria-hidden="true">{spot.glyph}</span>}
+              {spot.name}
+            </span>
+            {spot.note && <span className="mt-0.5 block text-[10px] leading-tight text-[hsl(0_0%_90%/0.75)]">{spot.note}</span>}
+          </span>
+          <span className="shrink-0 rounded bg-black/45 px-1.5 py-0.5 font-heading text-sm font-extrabold text-gold">{ROULETTE_RETURNS[spot.id]}×</span>
+        </span>
+
+        {/* the coins on this spot, biggest first */}
+        <span className="mt-2 flex flex-1 flex-wrap content-start gap-1">
+          {waiting > 0 && (
+            <span className="flex items-center gap-1 rounded-full border border-dashed border-gold bg-black/60 py-0.5 pl-0.5 pr-1.5 text-[11px] font-bold text-gold">
+              <Ingot size={14} /> +{short(waiting)}
+            </span>
+          )}
+          {shown.map((c, i) => (
+            <span key={i} className={cn("flex items-center gap-1 rounded-full bg-black/60 py-0.5 pl-0.5 pr-1.5 text-[11px] font-bold", c.mine ? "border border-gold text-gold" : "border border-transparent text-[hsl(0_0%_92%)]")} title={`${c.mine ? "You" : c.name}: ${c.amount.toLocaleString()}`}>
+              <span className="relative flex">
+                <Ingot size={14} />
+                <Avatar url={c.avatar} name={c.name} size={14} className="-ml-1.5" />
+              </span>
+              {short(c.amount)}
+            </span>
+          ))}
+          {all.length > shown.length && <span className="self-center text-[11px] text-[hsl(0_0%_90%/0.8)]">+{all.length - shown.length} more</span>}
+        </span>
+
+        <span className="mt-1 flex items-center justify-between text-[11px] text-[hsl(0_0%_90%/0.8)]">
+          <span>{all.length} {all.length === 1 ? "bet" : "bets"}</span>
+          <span className="flex items-center gap-1 font-bold tabular-nums"><Ingot size={11} /> {total.toLocaleString()}</span>
+        </span>
+      </button>
+    );
+  };
+  const spot = (id) => ROULETTE_SPOTS.find((s) => s.id === id);
 
   return (
     <Panel title="Blacklist Jade Roulette">
-      {/* round status */}
       <div className="mb-3 flex items-center justify-between gap-3 text-sm">
         <span className="text-mist">Round {round.toLocaleString()}</span>
         <span className="flex items-center gap-1.5 text-mist"><Users className="h-4 w-4" aria-hidden="true" /> {players.length} at the table</span>
@@ -240,7 +271,7 @@ export default function Roulette({ settings, balance }) {
           myNet !== null && (myNet > 0 ? "win-glow" : myNet < 0 ? "loss-shake" : "")
         )}
       >
-        <Wheel segments={SEGMENTS} rotation={rotation} spinMs={SPIN_MS} spinning={spinning} size={250} highlight={showResult ? table.result_index : null} />
+        <Wheel segments={SEGMENTS} rotation={rotation} spinMs={SPIN_MS} spinning={spinning} size={250} highlight={showResult ? table.result_number : null} />
         <div className="mt-3 px-4 text-center" aria-live="polite">
           {betting && open && (
             <>
@@ -252,12 +283,13 @@ export default function Roulette({ settings, balance }) {
               </div>
             </>
           )}
-          {((betting && !open) || spinning) && <p className="font-heading text-base font-bold text-gold">No more bets. The ball is rolling.</p>}
+          {((betting && !open) || spinning) && <p className="font-heading text-base font-bold text-gold">No more bets. The wheel is turning.</p>}
           {showResult && !spinning && (
             <p className="text-sm text-mist">
-              The ball lands on{" "}
-              <span className="rounded px-2 py-0.5 font-heading text-base font-extrabold text-[hsl(0_0%_92%)]" style={{ background: COLORS[rouletteColor(number)] }}>
-                {number}
+              Landed on{" "}
+              <span className="rounded px-2 py-0.5 font-heading text-base font-extrabold text-[hsl(0_0%_95%)]" style={{ background: COLORS[pocketColor(kind)] }}>
+                {GLYPH[kind] ? <span lang="zh-Hant" className="mr-1">{GLYPH[kind]}</span> : null}
+                {POCKET_NAME[kind]}
               </span>
               <span className="ml-2">Next spin in {nextIn} s</span>
             </p>
@@ -271,17 +303,18 @@ export default function Roulette({ settings, balance }) {
         </p>
       )}
 
-      {/* recent numbers */}
-      {table.recent.length > 0 && (
-        <div className="mb-4 flex items-center gap-1.5 overflow-hidden" aria-label="Recent numbers, newest first">
+      {recent.length > 0 && (
+        <div className="mb-4 flex items-center gap-1.5 overflow-hidden" aria-label="Recent results, newest first">
           <span className="shrink-0 text-xs text-mist">Last</span>
-          {table.recent.slice(showResult || table.status === "betting" ? 0 : 1).map((n, i) => (
+          {recent.map((k, i) => (
             <span
-              key={`${n}-${i}`}
-              className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-[hsl(0_0%_92%)]", i === 0 && "ring-1 ring-gold")}
-              style={{ background: COLORS[rouletteColor(n)] }}
+              key={`${k}-${i}`}
+              title={POCKET_NAME[k]}
+              lang={GLYPH[k] ? "zh-Hant" : undefined}
+              className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/15 text-[11px] font-bold text-[hsl(0_0%_95%)]", i === 0 && "ring-1 ring-gold")}
+              style={{ background: COLORS[pocketColor(k)] }}
             >
-              {n}
+              {GLYPH[k] || ""}
             </span>
           ))}
         </div>
@@ -301,113 +334,58 @@ export default function Roulette({ settings, balance }) {
               chip === v ? "scale-110 border-gold bg-crimson text-[hsl(0_0%_92%)]" : "border-bronze/70 bg-black/40 text-gold"
             )}
           >
-            {v >= 1000 ? `${v / 1000}k` : v}
+            {short(v)}
           </button>
         ))}
       </div>
 
-      {/* board */}
-      <div className="select-none overflow-hidden rounded-md border border-bronze/60 bg-[hsl(0_0%_9%)]">
-        {cell("straight", 0, "0", "h-10 w-full", { background: COLORS.green })}
-        <div className="grid grid-cols-3">
-          {ROWS.flat().map((n) => cell("straight", n, n, "h-10", { background: COLORS[rouletteColor(n)] }))}
+      {/* the table: tap a spot to put the chosen chip on it */}
+      <div className="select-none space-y-2">
+        <div className="grid grid-cols-3 gap-2">
+          {renderSpot(spot("red"), true)}
+          {renderSpot(spot("green"), true)}
+          {renderSpot(spot("black"), true)}
         </div>
-        <div className="grid grid-cols-3">
-          {[1, 2, 3].map((c) => cell("column", c, "2:1", "h-9 bg-black/30 text-xs"))}
-        </div>
-        <div className="grid grid-cols-3">
-          {[1, 2, 3].map((d) => cell("dozen", d, betLabel({ type: "dozen", value: d }), "h-10 bg-black/20 text-sm"))}
-        </div>
-        <div className="grid grid-cols-3">
-          {cell("half", "low", "1–18", "h-10 bg-black/20 text-sm")}
-          {cell("parity", "even", "Even", "h-10 bg-black/20 text-sm")}
-          {cell("color", "red", <span className="h-4 w-4 rotate-45 bg-[#C42A2A]" aria-hidden="true" />, "h-10", { background: "hsl(0 0% 9%)" })}
-          {cell("color", "black", <span className="h-4 w-4 rotate-45 border border-mist/40 bg-[#0B0F10]" aria-hidden="true" />, "h-10", { background: "hsl(0 0% 9%)" })}
-          {cell("parity", "odd", "Odd", "h-10 bg-black/20 text-sm")}
-          {cell("half", "high", "19–36", "h-10 bg-black/20 text-sm")}
-        </div>
-      </div>
-      <p className="mt-2 text-xs text-mist/80">
-        Pays {ROULETTE_PAYS.straight}:1 on a number, 2:1 on a dozen or column, 1:1 on red, black, odd, even, 1–18 and 19–36. Zero loses every outside bet.
-      </p>
-
-      {/* controls */}
-      <div className="mt-4 flex items-center justify-between gap-2">
-        <div className="text-sm">
-          <p className="flex items-center gap-1.5">
-            <span className="text-mist">Your bets this spin</span>
-            <Ingot size={15} />
-            <span className="font-heading text-lg font-bold text-gold tabular-nums">{placedTotal.toLocaleString()}</span>
-          </p>
-          {pendingTotal > 0 && <p className="text-xs text-mist">White chips aren't placed yet.</p>}
-        </div>
-        <div className="flex gap-1.5">
-          <IconBtn onClick={undo} disabled={!open || !history.length} label="Undo last chip"><Undo2 className="h-4 w-4" /></IconBtn>
-          <IconBtn onClick={clear} disabled={!open || !pending.length} label="Clear unplaced chips"><RotateCcw className="h-4 w-4" /></IconBtn>
-          <IconBtn onClick={rebet} disabled={!open || !lastBets || pending.length > 0} label="Repeat my last bets"><Repeat className="h-4 w-4" /></IconBtn>
+        <div className="grid grid-cols-2 gap-2">
+          {renderSpot(spot("dragon"), false)}
+          {renderSpot(spot("tiger"), false)}
         </div>
       </div>
 
       {error && <p role="alert" className="mt-3 rounded-md border border-ember/40 bg-ember/10 px-3 py-2 text-sm text-ember">{error}</p>}
 
-      <button onClick={submit} disabled={!open || placing || !pending.length || placedTotal + pendingTotal < settings.min_bet} className="btn-seal mt-3 h-12 w-full text-base">
-        {placing ? (
-          <><Loader2 className="h-4 w-4 animate-spin" /> Placing chips</>
-        ) : !open ? (
-          "Bets are closed for this spin"
-        ) : pendingTotal ? (
-          `Place ${pendingTotal.toLocaleString()} on the table`
-        ) : placedTotal ? (
-          "Bets placed. Add more chips or wait for the spin"
-        ) : (
-          "Tap the board to add chips"
-        )}
-      </button>
-      {open && pendingTotal > 0 && placedTotal + pendingTotal < settings.min_bet && <p className="mt-1.5 text-xs text-mist">Put at least {settings.min_bet} on the board.</p>}
-
-      {/* who is in */}
-      <div className="mt-5 border-t border-bronze/30 pt-3">
-        <p className="label">At the table · {Number(players.reduce((t, p) => t + p.amount, 0)).toLocaleString()} points in play</p>
-        {players.length === 0 ? (
-          <p className="text-sm text-mist">Nobody has bet on this spin yet.</p>
-        ) : (
-          <ul className="space-y-1.5">
-            {players.slice(0, 12).map((p, i) => (
-              <li key={`${p.name}-${i}`} className="flex items-center gap-2 text-sm">
-                <Avatar url={p.avatar} name={p.name} size={22} />
-                <span className={cn("min-w-0 flex-1 truncate", p.mine && "font-bold text-gold")}>{p.name}{p.mine ? " (you)" : ""}</span>
-                <span className="tabular-nums text-mist">{p.amount.toLocaleString()}</span>
-                {showResult && p.settled && (
-                  <span className={cn("w-16 text-right font-bold tabular-nums", p.net > 0 ? "text-jade" : p.net < 0 ? "text-ember" : "text-mist")}>
-                    {p.net > 0 ? "+" : p.net < 0 ? "−" : ""}{Math.abs(p.net).toLocaleString()}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button type="button" onClick={undo} disabled={!history.length || placing} className="btn-bronze h-10 px-3 text-sm"><Undo2 className="h-4 w-4" aria-hidden="true" /> Undo</button>
+        <button type="button" onClick={clear} disabled={!pending.length || placing} className="btn-bronze h-10 px-3 text-sm"><RotateCcw className="h-4 w-4" aria-hidden="true" /> Clear</button>
+        <button type="button" onClick={rebet} disabled={!lastBets || !open || placing} className="btn-bronze h-10 px-3 text-sm"><Repeat className="h-4 w-4" aria-hidden="true" /> Repeat</button>
+        <p className="ml-auto flex items-center gap-1.5 text-sm text-mist">
+          On the table <Ingot size={14} /> <span className="font-bold text-gold tabular-nums">{placedTotal.toLocaleString()}</span>
+        </p>
       </div>
-    </Panel>
-  );
-}
+      <button type="button" onClick={submit} disabled={!pending.length || !open || placing} className="btn-seal mt-3 h-12 w-full text-base">
+        {placing ? <><Loader2 className="h-4 w-4 animate-spin" /> Placing</> : pending.length ? <>Place bets · <Ingot size={15} /> {pendingTotal.toLocaleString()}</> : open ? "Tap a spot to place a chip" : "Wait for the next round"}
+      </button>
 
-function Chip({ amount, waiting }) {
-  return (
-    <span
-      className={cn(
-        "pointer-events-none absolute right-0.5 top-0.5 flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-dashed px-1 text-[10px] font-extrabold text-[hsl(0_0%_7%)] shadow",
-        waiting ? "border-bronze bg-[hsl(0_0%_92%)]" : "border-[hsl(0_0%_88%)] bg-gold"
+      {players.length > 0 && (
+        <ul className="mt-4 divide-y divide-bronze/25 rounded-md border border-bronze/40 bg-black/20 px-3" aria-label="Players this round">
+          {players.slice(0, 12).map((p, i) => (
+            <li key={i} className="flex items-center gap-2 py-1.5 text-sm">
+              <Avatar url={p.avatar} name={p.name} size={22} />
+              <span className={cn("min-w-0 flex-1 truncate", p.mine && "font-bold text-gold")}>{p.mine ? "You" : p.name}</span>
+              <span className="flex items-center gap-1 text-mist tabular-nums"><Ingot size={12} /> {p.amount.toLocaleString()}</span>
+              {showResult && p.settled && (
+                <span className={cn("w-16 text-right font-heading font-bold tabular-nums", p.net > 0 ? "text-jade" : p.net < 0 ? "text-ember" : "text-mist")}>
+                  {p.net > 0 ? "+" : ""}{p.net.toLocaleString()}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
-    >
-      {amount >= 1000 ? `${Math.round(amount / 100) / 10}k` : amount}
-    </span>
-  );
-}
 
-function IconBtn({ children, label, ...rest }) {
-  return (
-    <button type="button" aria-label={label} title={label} className="btn-bronze h-9 w-9" {...rest}>
-      {children}
-    </button>
+      <p className="mt-4 text-xs text-mist/80">
+        The wheel has 30 pockets: 14 red, 14 black and 2 green. Four of the reds carry the Dragon and four of the blacks carry the Tiger. Red or Black returns 2× your chips, Green 14×, Dragon 7×, Tiger 7×. A Dragon pocket still counts as red and a Tiger pocket as black, so colour bets win on them too. Bets close after 10 seconds. Over time every bet on this table returns 93.3% of what is staked, whatever the guild's house edge is set to.
+      </p>
+    </Panel>
   );
 }

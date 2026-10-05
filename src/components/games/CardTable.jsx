@@ -13,7 +13,8 @@ import { cn } from "@/lib/utils";
 // A shared card table (Blackjack, Lucky 9) with six chairs. Members sit down, then
 // bet each round from their chair and play their own hand against the same dealer. The server deals and decides everything;
 // this page only shows what it is told, and asks again every couple of seconds.
-const POLL_MS = 2000;
+const POLL_MS = 2500;
+const NO_TABLE = "Couldn't reach the table.";
 
 const RESULT_TEXT = {
   blackjack: { text: "Blackjack!", win: true },
@@ -97,24 +98,33 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
   const [shownRound, setShownRound] = useState(0);
   const dealerSeen = useRef({ round: 0, count: -1 });
   const busyRef = useRef("");
+  const hasData = useRef(false);
   busyRef.current = busy;
 
   const take = useCallback((d) => {
     if (!d || !d.table) return;
+    hasData.current = true;
+    idle.current = d.table.status === "betting" && !d.table.bets_close_at && !d.mine;
     setData(d);
     setOffset(Date.parse(d.table.server_now) - Date.now());
     if (typeof d.balance === "number") setBalance(d.balance);
     if (d.table.status !== "settled") dealerSeen.current = { round: d.table.round_no, count: d.table.dealer.cards.length };
   }, [setBalance, reload]);
 
+  const idle = useRef(false);
+  const tickNo = useRef(0);
   const refresh = useCallback(async () => {
     if (busyRef.current) return;
+    // Nothing is happening at an empty table, so it only needs checking half as often.
+    if (idle.current && tickNo.current++ % 2) return;
     try {
       const res = await base44.functions.invoke(fn, { action: "state", first: first.current });
       first.current = false;
       take(res.data);
+      setError((prev) => (prev === NO_TABLE ? "" : prev));
     } catch (e) {
-      setError((prev) => prev || errorText(e, "Couldn't reach the table."));
+      // A missed background refresh isn't worth an error: the next one will catch up.
+      if (!hasData.current && !(e && e.rateLimited)) setError(NO_TABLE);
     }
   }, [fn, take]);
 

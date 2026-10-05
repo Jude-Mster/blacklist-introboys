@@ -3,6 +3,7 @@ import { secrets } from 'base44:runtime';
 import { getSettings, clearSettingsCache } from '../../shared/points.ts';
 import { requiredRoleId, markAccessDenied } from '../../shared/access.ts';
 import { sha256Hex, createSession } from '../../shared/session.ts';
+import { resilient } from '../../shared/points.ts';
 
 // Step 2 of "Continue with Discord". The /login page calls this with the code
 // and state Discord sent back. We ask Discord who this is, and ONLY if they are
@@ -177,7 +178,7 @@ async function verifyOnce(b, st, code: string, codeHash: string) {
 
 export default async function(req) {
   try {
-    const b = createClientFromRequest(req);
+    const b = resilient(createClientFromRequest(req));
     let p; try { p = await req.json(); } catch { p = {}; }
     const code = String(p.code || '').trim();
     const state = String(p.state || '').trim();

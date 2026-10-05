@@ -5,11 +5,27 @@ import Avatar from "@/components/Avatar";
 import { cn } from "@/lib/utils";
 
 const rows = (res) => (Array.isArray(res) ? res : (res && res.items) || []);
-const POLL_MS = 12000;
+// "just now", "4m ago", then the clock time; the full date and time on hover.
+const clockTime = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+function when(iso, now) {
+  const t = Date.parse(iso);
+  if (!t) return "";
+  const s = Math.max(0, Math.round((now - t) / 1000));
+  if (s < 45) return "just now";
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  const sameDay = new Date(t).toDateString() === new Date(now).toDateString();
+  return sameDay ? clockTime(iso) : new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + clockTime(iso);
+}
+const POLL_MS = 30000;
 
 // What the guild is winning and losing right now, across every game.
 export default function LiveFeed({ className, limit = 14 }) {
   const [items, setItems] = useState(null);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 20000);
+    return () => clearInterval(t);
+  }, []);
 
   const merge = useCallback(
     (incoming) =>
@@ -68,10 +84,15 @@ export default function LiveFeed({ className, limit = 14 }) {
                   {f.detail ? ` · ${f.detail}` : ""}
                 </p>
               </div>
-              <span className={cn("shrink-0 font-heading font-bold tabular-nums", f.net > 0 ? "text-jade" : f.net < 0 ? "text-ember" : "text-mist")}>
-                {f.net > 0 ? "+" : f.net < 0 ? "−" : ""}
-                {Math.abs(f.net || 0).toLocaleString()}
-              </span>
+              <div className="shrink-0 text-right leading-tight">
+                <p className={cn("font-heading font-bold tabular-nums", f.net > 0 ? "text-jade" : f.net < 0 ? "text-ember" : "text-mist")}>
+                  {f.net > 0 ? "+" : f.net < 0 ? "−" : ""}
+                  {Math.abs(f.net || 0).toLocaleString()}
+                </p>
+                <time dateTime={f.created_date} title={new Date(f.created_date).toLocaleString()} className="block text-[11px] text-mist/80">
+                  {f.net > 0 ? "won" : f.net < 0 ? "lost" : "tied"} {when(f.created_date, now)}
+                </time>
+              </div>
             </li>
           ))}
         </ul>

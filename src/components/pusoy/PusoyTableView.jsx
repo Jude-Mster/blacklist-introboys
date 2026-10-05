@@ -83,6 +83,7 @@ export default function PusoyTableView({ tableId }) {
 
   const take = useCallback((d) => {
     if (!d || !d.table) return;
+    idle.current = d.table.status === "waiting" && !d.table.start_at;
     setData(d);
     setOffset(Date.parse(d.table.server_now) - Date.now());
     if (typeof d.balance === "number") setBalance(d.balance);
@@ -93,8 +94,12 @@ export default function PusoyTableView({ tableId }) {
     }
   }, [setBalance, reload]);
 
+  const idle = useRef(false);
+  const tickNo = useRef(0);
   const refresh = useCallback(async () => {
     if (busyRef.current) return;
+    // A table still waiting for a second player only needs checking half as often.
+    if (idle.current && tickNo.current++ % 2) return;
     try {
       const res = await base44.functions.invoke("pusoyAction", { action: "state", tableId });
       take(res.data);

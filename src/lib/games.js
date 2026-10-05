@@ -8,8 +8,9 @@ export const GAMES = [
   { id: "coinflip", name: "Blacklist Yin Yang Toss", blurb: "Call Yin or Yang, or duel another member." },
   { id: "dragondice", name: "Blacklist Dragon Dice", blurb: "Set your own odds on a roll of 1 to 100." },
   { id: "lanternslots", name: "Blacklist Lantern Slots", blurb: "Three reels. Three seals pays 50×." },
+  { id: "fortune", name: "Blacklist Dragon's Fortune", blurb: "Five reels, ten lines, wilds and free spins." },
   { id: "skywheel", name: "Blacklist Twelve Skies Wheel", blurb: "One shared wheel. Back a faction each round." },
-  { id: "roulette", name: "Blacklist Jade Roulette", blurb: "One shared table. A new spin every round." },
+  { id: "roulette", name: "Blacklist Jade Roulette", blurb: "Red, Black, Green, Dragon or Tiger. A new spin every round." },
   { id: "blackjack", name: "Blacklist Blackjack", blurb: "One shared table. Beat the dealer to 21 together." },
   { id: "lucky9", name: "Blacklist Lucky 9", blurb: "One shared table. Closest to 9 beats the banker." },
   { id: "poker", name: "Poker Room", blurb: "Texas Hold'em against other members.", href: "/poker" },
@@ -47,35 +48,21 @@ export const wheelMultiplier = (pick, edge) => {
 };
 
 export const GAME_NAME = Object.fromEntries(GAMES.map((g) => [g.id, g.name]));
-// ---------- Roulette ----------
-export const ROULETTE_ORDER = [
-  0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10,
-  5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26
+// ---------- Roulette (guild rules) ----------
+// A wheel of 30 pockets: 14 red, 14 black, 2 green. Four reds carry the Dragon and
+// four blacks carry the Tiger. Must match ROULETTE_POCKETS in base44/shared/points.ts.
+export const ROULETTE_POCKETS = [
+  "green", "red", "black", "dragon", "black", "red", "tiger", "red", "black", "red",
+  "black", "dragon", "black", "red", "tiger", "green", "black", "red", "tiger", "red",
+  "black", "dragon", "black", "red", "black", "red", "tiger", "red", "black", "dragon"
 ];
-export const ROULETTE_RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
-export const rouletteColor = (n) => (n === 0 ? "green" : ROULETTE_RED.has(n) ? "red" : "black");
-export const ROULETTE_PAYS = { straight: 35, color: 1, parity: 1, half: 1, dozen: 2, column: 2 };
-export const betKey = (b) => `${b.type}:${b.value}`;
-export function betLabel(b) {
-  switch (b.type) {
-    case "straight": return String(b.value);
-    case "color": return b.value === "red" ? "Red" : "Black";
-    case "parity": return b.value === "odd" ? "Odd" : "Even";
-    case "half": return b.value === "low" ? "1–18" : "19–36";
-    case "dozen": return ["1st 12", "2nd 12", "3rd 12"][b.value - 1];
-    case "column": return `Column ${b.value}`;
-    default: return "";
-  }
-}
-export function rouletteWins(b, n) {
-  if (b.type === "straight") return b.value === n;
-  if (n === 0) return false;
-  switch (b.type) {
-    case "color": return rouletteColor(n) === b.value;
-    case "parity": return (n % 2 === 0 ? "even" : "odd") === b.value;
-    case "half": return (n <= 18 ? "low" : "high") === b.value;
-    case "dozen": return Math.ceil(n / 12) === b.value;
-    case "column": return ((n - 1) % 3) + 1 === b.value;
-    default: return false;
-  }
-}
+export const ROULETTE_RETURNS = { red: 2, black: 2, green: 14, dragon: 7, tiger: 7 };
+export const pocketColor = (kind) => (kind === "dragon" ? "red" : kind === "tiger" ? "black" : kind);
+export const rouletteWins = (spot, kind) => spot === kind || spot === pocketColor(kind);
+export const ROULETTE_SPOTS = [
+  { id: "red", name: "Red", glyph: "", color: "red" },
+  { id: "green", name: "Green", glyph: "玉", color: "green" },
+  { id: "black", name: "Black", glyph: "", color: "black" },
+  { id: "dragon", name: "Dragon", glyph: "龍", color: "red", note: "a red pocket" },
+  { id: "tiger", name: "Tiger", glyph: "虎", color: "black", note: "a black pocket" }
+];

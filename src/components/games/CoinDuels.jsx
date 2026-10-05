@@ -9,7 +9,7 @@ import { useGuild, errorText } from "@/lib/GuildContext";
 import { cn } from "@/lib/utils";
 
 const SPIN_MS = 1800;
-const POLL_MS = 5000;
+const POLL_MS = 8000;
 const other = (side) => (side === "heads" ? "tails" : "heads");
 
 // 1v1 coin duels: post a challenge, another member matches the stake, winner takes both.
