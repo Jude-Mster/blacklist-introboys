@@ -30,11 +30,44 @@
     },
     "staked": {
       "type": "integer",
-      "description": "Total points on this hand (twice the wager after a double)"
+      "description": "Total points on this hand: the wager, any side bets, and the extra wager after a double or a split"
     },
     "doubled": {
       "type": "boolean",
       "default": false
+    },
+    "sides": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Side bets placed with the wager: { pairs: n, plus3: n }"
+    },
+    "side_total": {
+      "type": "integer",
+      "default": 0,
+      "description": "Points on side bets (part of staked)"
+    },
+    "side_wins": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "How each side bet came out, decided at the deal"
+    },
+    "side_payout": {
+      "type": "integer",
+      "default": 0,
+      "description": "What the side bets return; paid with the hand"
+    },
+    "split_hands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "description": "After a split: the two hands, each { cards, status, note, doubled, stake, result, payout }"
+    },
+    "hand_ix": {
+      "type": "integer",
+      "default": 0,
+      "description": "Which split hand is being played"
     },
     "cards": {
       "type": "array",

@@ -21,7 +21,7 @@ const SEGMENTS = ROULETTE_POCKETS.map((k) =>
     ? { label: "14×", color: COLORS.green, fontSize: 11, textColor: "#FFE9A3", stroke: "#F5C542" }
     : { label: GLYPH[k] || "", color: COLORS[pocketColor(k)], fontSize: 13, textColor: GLYPH[k] ? "#FFD966" : "#FFFFFF" }
 );
-const CHIP_VALUES = [10, 50, 100, 500, 1000, 5000];
+const CHIP_VALUES = [1, 5, 10, 50, 100, 500, 1000, 5000];
 const short = (v) => (v >= 1000 ? `${Math.round(v / 100) / 10}k` : String(v));
 
 // One shared table for the whole guild. The server runs the rounds on a timer:
@@ -29,7 +29,8 @@ const short = (v) => (v >= 1000 ? `${Math.round(v / 100) / 10}k` : String(v));
 // Guild rules: Red 2x, Black 2x, Green 14x, Dragon (a red pocket) 7x, Tiger (a black pocket) 7x.
 export default function Roulette({ settings, balance }) {
   const { setBalance, reload } = useGuild();
-  const chips = useMemo(() => CHIP_VALUES.filter((v) => v <= settings.max_bet), [settings.max_bet]);
+  // Small chips only appear when the guild's minimum wager is low enough to use them.
+  const chips = useMemo(() => CHIP_VALUES.filter((v) => v <= settings.max_bet && v >= Math.min(10, settings.min_bet)), [settings.max_bet, settings.min_bet]);
   const [chip, setChip] = useState(chips[Math.min(1, chips.length - 1)] || settings.min_bet);
   const [state, setState] = useState(null); // { table, bets, mine }
   const [offset, setOffset] = useState(0); // server clock minus this device's clock

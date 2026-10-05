@@ -51,6 +51,13 @@ export type CardGame = {
   dealerPlay: (dealer: string[]) => string[];
   resolve: (seat, dealer: string[], settings) => { result: string; payout: number };
   total: (cards: string[]) => number;
+  // Optional side bets, placed with the main wager and decided the moment cards are dealt.
+  // sideResolve returns, for each side bet, what it is called and what it returns per point staked (0 = lost).
+  // Optional: splitting a pair into two hands. splitOneCardOnly = pairs that get one card each and stop (aces).
+  canSplit?: (cards: string[]) => boolean;
+  splitOneCardOnly?: (cards: string[]) => boolean;
+  sideBets?: string[];
+  sideResolve?: (cards: string[], dealerUp: string) => Record<string, { name: string; returns: number }>;
   dealerView: (dealer: string[], revealed: boolean) => { cards: string[]; hidden: number; total: number | null };
   feedDetail: (seat, dealer: string[], result: string) => string;
   extra?: (settings) => Record<string, unknown>; // extra numbers for the page (e.g. win multiplier)
@@ -106,7 +113,23 @@ export function cardTableHandler(game: CardGame) {
           if (s.status !== 'waiting') continue;
           const cards = [drawCard(), drawCard()];
           const note = over ? 'dealer' : game.seatDoneOnDeal(cards);
-          await S.update(s.id, { cards, status: note ? 'done' : 'playing', note: note || '' });
+          // Side bets only need the first cards, so they are decided (and saved) right here.
+          const fields: Record<string, unknown> = { cards, status: note ? 'done' : 'playing', note: note || '' };
+          if (game.sideResolve && s.side_total > 0) {
+            const found = game.sideResolve(cards, dealer[0]);
+            const wins = {};
+            let sidePayout = 0;
+            for (const [id, amount] of Object.entries(s.sides || {})) {
+              if (!(Number(amount) > 0)) continue;
+              const hit = found[id] || { name: '', returns: 0 };
+              const win = Math.floor(Number(amount) * hit.returns);
+              wins[id] = { name: hit.name, returns: hit.returns, staked: amount, win };
+              sidePayout += win;
+            }
+            fields.side_wins = wins;
+            fields.side_payout = sidePayout;
+          }
+          await S.update(s.id, fields);
         }
         return await T.update(t.id, { status: 'playing', dealer, act_close_at: iso(now + game.actSeconds * 1000) });
       };
@@ -129,19 +152,34 @@ export function cardTableHandler(game: CardGame) {
             if (s.settled) return;
             const dealt = Array.isArray(s.cards) && s.cards.length > 0;
             // A bet that arrived too late to be dealt in is simply returned.
-            const { result, payout } = dealt ? game.resolve(s, dealer, settings) : { result: 'void', payout: s.staked };
+            // The main hand, plus whatever the side bets won when the cards were dealt.
+            let main = dealt ? null : { result: 'void', payout: s.staked };
+            // A split seat holds two hands; each is settled on its own against the same dealer.
+            let handsOut = null;
+            if (dealt && Array.isArray(s.split_hands) && s.split_hands.length > 0) {
+              let pay = 0, st = 0;
+              handsOut = s.split_hands.map((h) => {
+                const r = game.resolve({ cards: h.cards, doubled: !!h.doubled, staked: h.stake, side_total: 0, split: true }, dealer, settings);
+                pay += r.payout; st += h.stake;
+                return { ...h, status: 'done', result: r.result, payout: r.payout };
+              });
+              main = { result: pay > st ? 'win' : pay === st ? 'push' : 'lose', payout: pay };
+            }
+            if (!main) main = game.resolve(s, dealer, settings);
+            const result = main.result;
+            const payout = main.payout + (dealt ? s.side_payout || 0 : 0);
             const note = s.status === 'playing' ? 'timeout' : s.note || '';
-            await S.update(s.id, { settled: true, status: 'done', result, payout, note });
+            await S.update(s.id, { settled: true, status: 'done', result, payout, note, ...(handsOut ? { split_hands: handsOut } : {}) });
             if (payout > 0) {
-              await changePoints(b, s.member_id, payout, 'game', `${NAME} ${result === 'void' ? 'bet returned' : result === 'push' ? 'wager returned' : 'win'}`, null);
+              await changePoints(b, s.member_id, payout, 'game', `${NAME} ${result === 'void' ? 'bet returned' : payout > s.staked ? 'win' : result === 'push' && !(s.side_payout > 0) ? 'wager returned' : handsOut ? 'split hands paid' : 'win'}`, null);
             }
             if (!dealt) return;
             await b.asServiceRole.entities.Bet.create({
               member_id: s.member_id, discord_id: '', game: game.id, wager: s.staked, payout, won: payout > s.staked,
-              outcome: { player: s.cards, dealer, result, doubled: !!s.doubled, player_total: game.total(s.cards), dealer_total: game.total(dealer), round: t.round_no }
+              outcome: { player: s.cards, dealer, result, doubled: !!s.doubled, player_total: game.total(s.cards), dealer_total: game.total(dealer), round: t.round_no, ...(handsOut ? { split: handsOut.map((h) => ({ cards: h.cards, total: game.total(h.cards), stake: h.stake, result: h.result })) } : {}), ...(s.side_total > 0 ? { sides: s.side_wins || {} } : {}) }
             });
             await postFeed(b, { id: s.member_id, discord_name: s.name, avatar_url: s.avatar, role: s.role }, {
-              game: game.id, game_name: NAME, wager: s.staked, payout, detail: game.feedDetail(s, dealer, result)
+              game: game.id, game_name: NAME, wager: s.staked, payout, detail: handsOut ? `Split hands ${handsOut.map((h) => game.total(h.cards)).join(' and ')}, dealer ${game.total(dealer)}` + (s.side_payout > 0 ? ' · side bet won' : '') : game.feedDetail(s, dealer, result)
             });
           });
         }
@@ -169,26 +207,42 @@ export function cardTableHandler(game: CardGame) {
           } else if (t.status === 'playing') {
             const timeUp = !t.act_close_at || Date.parse(t.act_close_at) <= now;
             if (timeUp || allDone(await seatsOf(t.round_no))) t = await settle(t, now);
-          } else if (t.status === 'settled') {
-            t = await T.update(t.id, { status: 'betting', round_no: t.round_no + 1, bets_close_at: null, act_close_at: null, next_at: null, dealer: [], settling_round: null });
+          } else if (t.status === 'settled' && (!t.next_at || Date.parse(t.next_at) <= now)) {
+            // Anyone who bet in the round that just ended keeps their chair; idle ones are freed.
+            const chairs = chairsOf(t);
+            const played = new Set((await seatsOf(t.round_no)).map((x) => x.member_id));
+            for (let i = 0; i < chairs.length; i++) if (chairs[i] && played.has(chairs[i].member_id)) chairs[i] = { ...chairs[i], active_at: iso(now) };
+            sweepChairs(chairs, new Set());
+            t = await T.update(t.id, { round_no: (t.round_no || 0) + 1, status: 'betting', bets_close_at: null, act_close_at: null, next_at: null, dealer: [], seats: chairs.map((c) => c || {}) });
           }
           return t;
-        });
+        }, SETTLE_LOCK_MS);
       };
 
-      // ---------- the view sent to the page ----------
+      // ---------- what a player may see ----------
 
-      const seatView = (s) => ({
-        seat: s.seat_no, wager: s.wager, staked: s.staked, doubled: s.doubled, cards: s.cards || [],
-        status: s.status, note: s.note, result: s.result, payout: s.payout, settled: s.settled
-      });
-
+      const seatView = (s) => {
+        const dealt = Array.isArray(s.cards) && s.cards.length > 0;
+        const split = Array.isArray(s.split_hands) && s.split_hands.length > 0;
+        return {
+          hands: split ? s.split_hands.map((h) => ({
+            cards: h.cards, total: game.total(h.cards), status: h.status, note: h.note || '', doubled: !!h.doubled, stake: h.stake,
+            result: s.settled ? h.result || null : null, payout: s.settled ? h.payout || 0 : 0
+          })) : null,
+          hand_ix: split ? s.hand_ix || 0 : 0,
+          can_split: !!game.canSplit && !split && s.status === 'playing' && !s.settled && !s.doubled && dealt && s.cards.length === 2 && game.canSplit(s.cards),
+          name: s.name, avatar: s.avatar, role: s.role, wager: s.wager, staked: s.staked, doubled: !!s.doubled,
+          cards: s.cards || [], total: dealt ? game.total(s.cards) : null, status: s.status, note: s.note || '',
+          result: s.settled ? s.result : null, payout: s.settled ? s.payout : 0, net: s.settled ? s.payout - s.staked : 0,
+          sides: s.sides || {}, side_total: s.side_total || 0, side_wins: dealt ? s.side_wins || {} : null, side_payout: dealt ? s.side_payout || 0 : 0,
+          mine: s.member_id === me.id
+        };
+      };
       const stateOf = async (t, extra = {}) => {
         const seats = await seatsOf(t.round_no);
-        const mine = seats.find((x) => x.member_id === me.id);
-        const revealed = t.status === 'settled' || t.settling_round === t.round_no;
+        const revealed = t.status === 'settled';
+        const mine = seats.find((s) => s.member_id === me.id);
         return {
-          ok: true, version: BACKEND_VERSION,
           open,
           table: {
             round_no: t.round_no, status: t.status, bets_close_at: t.bets_close_at || null, act_close_at: t.act_close_at || null,
@@ -279,6 +333,21 @@ export function cardTableHandler(game: CardGame) {
         if (wager < settings.min_bet) throw new UserError(`The minimum wager is ${settings.min_bet}.`);
         if (wager > settings.max_bet) throw new UserError(`The maximum wager is ${settings.max_bet}.`);
 
+        // Optional side bets: each is a whole number of points, no bigger than the main wager.
+        const sides: Record<string, number> = {};
+        let sideTotal = 0;
+        for (const id of game.sideBets || []) {
+          const raw = p.sides && p.sides[id];
+          if (raw === undefined || raw === null || raw === '' || Number(raw) === 0) continue;
+          const amount = Math.floor(Number(raw));
+          if (!Number.isInteger(amount) || amount < 1) throw new UserError('Enter a whole number for the side bet.');
+          if (amount > wager) throw new UserError('A side bet can be at most the size of your main wager.');
+          sides[id] = amount;
+          sideTotal += amount;
+        }
+        const stake = wager + sideTotal;
+        if (stake > settings.max_bet) throw new UserError(`Your wager and side bets together can be at most ${settings.max_bet}.`);
+
         let t = await advance();
         const closed = (x) => x.status !== 'betting' || (x.bets_close_at && Date.parse(x.bets_close_at) - CLOSE_MARGIN_MS <= Date.now());
         if (closed(t)) throw new UserError('This round has started. Bet on the next one.');
@@ -288,12 +357,12 @@ export function cardTableHandler(game: CardGame) {
         const balance = await withMemberLock(b, me.id, async () => {
           const member = await b.asServiceRole.entities.Member.get(me.id);
           if (member.banned) throw new UserError('You are banned from the games.', 403);
-          if (wager > (member.points || 0)) throw new UserError('Not enough points for that wager.');
+          if (stake > (member.points || 0)) throw new UserError(sideTotal ? 'Not enough points for that wager and those side bets.' : 'Not enough points for that wager.');
           const seats = await seatsOf(round);
           if (seats.some((s) => s.member_id === me.id)) throw new UserError('You already have a bet on this round.');
           const today = todayStr();
           const used = member.daily_bet_date === today ? member.daily_bet_total || 0 : 0;
-          if (used + wager > settings.daily_bet_cap) {
+          if (used + stake > settings.daily_bet_cap) {
             const left = Math.max(0, settings.daily_bet_cap - used);
             throw new UserError(left ? `Daily wager limit: ${left} left today.` : 'Daily wager limit reached. It resets at 00:00 UTC.');
           }
@@ -303,16 +372,16 @@ export function cardTableHandler(game: CardGame) {
           const seatNo = chairIndex(live, me.id);
           if (seatNo < 0) throw new UserError('Sit down at the table first.');
 
-          const { balance } = await changePoints(b, me.id, -wager, 'game', `${NAME} round ${round} bet`, null);
+          const { balance } = await changePoints(b, me.id, -stake, 'game', `${NAME} round ${round} bet`, null);
           try {
-            await b.asServiceRole.entities.Member.update(me.id, { daily_bet_total: used + wager, daily_bet_date: today });
+            await b.asServiceRole.entities.Member.update(me.id, { daily_bet_total: used + stake, daily_bet_date: today });
             await S.create({
               game: game.id, round_no: round, seat_no: seatNo, member_id: me.id, name: member.discord_name || member.discord_id,
-              avatar: member.avatar_url || '', role: member.role, wager, staked: wager, doubled: false, cards: [],
+              avatar: member.avatar_url || '', role: member.role, wager, staked: stake, sides, side_total: sideTotal, side_payout: 0, doubled: false, cards: [],
               status: 'waiting', note: '', payout: 0, settled: false
             });
           } catch (e) {
-            await changePoints(b, me.id, wager, 'game', `${NAME} bet returned`, null).catch(() => {});
+            await changePoints(b, me.id, stake, 'game', `${NAME} bet returned`, null).catch(() => {});
             throw e;
           }
           return balance;
@@ -345,17 +414,61 @@ export function cardTableHandler(game: CardGame) {
           if (!s) throw new UserError("You're not in this round. Bet on the next one.");
           if (s.settled || s.status !== 'playing') throw new UserError('Your hand is already finished.');
 
-          const next = game.act({ ...s, cards: [...(s.cards || [])] }, action);
-          let balance;
-          const fields: Record<string, unknown> = { cards: next.cards, status: next.status, note: next.note };
-          if (next.extraStake && next.extraStake > 0) {
+          // Take more points for a double or a split, counting them toward today's limit.
+          const charge = async (amount: number, what: string) => {
             const member = await b.asServiceRole.entities.Member.get(me.id);
-            if (next.extraStake > (member.points || 0)) throw new UserError('Not enough points to double.');
+            if (amount > (member.points || 0)) throw new UserError(`Not enough points to ${what}.`);
             const today = todayStr();
             const used = member.daily_bet_date === today ? member.daily_bet_total || 0 : 0;
-            if (used + next.extraStake > settings.daily_bet_cap) throw new UserError('Daily wager limit reached. It resets at 00:00 UTC.');
-            ({ balance } = await changePoints(b, me.id, -next.extraStake, 'game', `${NAME} round ${round} double`, null));
-            await b.asServiceRole.entities.Member.update(me.id, { daily_bet_total: used + next.extraStake, daily_bet_date: today });
+            if (used + amount > settings.daily_bet_cap) throw new UserError('Daily wager limit reached. It resets at 00:00 UTC.');
+            const { balance } = await changePoints(b, me.id, -amount, 'game', `${NAME} round ${round} ${what}`, null);
+            await b.asServiceRole.entities.Member.update(me.id, { daily_bet_total: used + amount, daily_bet_date: today });
+            return balance;
+          };
+          const hands = Array.isArray(s.split_hands) && s.split_hands.length > 0 ? s.split_hands.map((h) => ({ ...h, cards: [...h.cards] })) : null;
+          let balance;
+
+          // Split: the two cards become two hands, each with the opening wager on it.
+          if (action === 'split') {
+            if (!game.canSplit) throw new UserError('Unknown action.');
+            if (hands) throw new UserError('You can only split once in a round.');
+            const cards = s.cards || [];
+            if (cards.length !== 2 || s.doubled || !game.canSplit(cards)) throw new UserError('You can only split your first two cards when they are the same number or face.');
+            const one = !!(game.splitOneCardOnly && game.splitOneCardOnly(cards));
+            const made = cards.map((c) => {
+              const hc = [c, drawCard()];
+              const done = one || game.total(hc) === 21;
+              return { cards: hc, status: done ? 'done' : 'playing', note: done ? 'stood' : '', doubled: false, stake: s.wager };
+            });
+            const ix = made.findIndex((h) => h.status === 'playing');
+            balance = await charge(s.wager, 'split');
+            await S.update(s.id, { split_hands: made, hand_ix: Math.max(0, ix), cards: made[0].cards, staked: s.staked + s.wager, status: ix < 0 ? 'done' : 'playing', note: ix < 0 ? 'split' : '' });
+            return { done: ix < 0, balance };
+          }
+
+          // After a split, moves go to the hand being played; the next hand follows when it is finished.
+          if (hands) {
+            const ix = s.hand_ix || 0;
+            const h = hands[ix];
+            if (!h || h.status !== 'playing') throw new UserError('Your hand is already finished.');
+            const next = game.act({ ...s, cards: h.cards, doubled: !!h.doubled, split: true }, action);
+            const fields: Record<string, unknown> = {};
+            if (next.extraStake && next.extraStake > 0) {
+              balance = await charge(next.extraStake, 'double');
+              h.stake += next.extraStake; h.doubled = true;
+              fields.staked = s.staked + next.extraStake;
+            }
+            h.cards = next.cards; h.status = next.status; h.note = next.note;
+            const nx = hands.findIndex((x) => x.status === 'playing');
+            Object.assign(fields, { split_hands: hands, hand_ix: nx < 0 ? ix : nx, cards: hands[0].cards, status: nx < 0 ? 'done' : 'playing', note: nx < 0 ? 'split' : '' });
+            await S.update(s.id, fields);
+            return { done: nx < 0, balance };
+          }
+
+          const next = game.act({ ...s, cards: [...(s.cards || [])] }, action);
+          const fields: Record<string, unknown> = { cards: next.cards, status: next.status, note: next.note };
+          if (next.extraStake && next.extraStake > 0) {
+            balance = await charge(next.extraStake, 'double');
             fields.staked = s.staked + next.extraStake;
             fields.doubled = true;
           }

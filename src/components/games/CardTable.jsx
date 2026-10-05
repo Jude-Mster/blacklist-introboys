@@ -24,7 +24,7 @@ const RESULT_TEXT = {
   lose: { text: "The house wins", win: false },
   void: { text: "Your bet arrived too late and was returned.", win: null }
 };
-const NOTE = { stood: "Stayed", bust: "Bust", blackjack: "Blackjack", drew: "Drew", doubled: "Doubled", timeout: "Timed out", dealer: "" };
+const NOTE = { stood: "Stayed", bust: "Bust", blackjack: "Blackjack", drew: "Drew", doubled: "Doubled", split: "Split", timeout: "Timed out", dealer: "" };
 
 // One chair at the table: empty (tap to sit) or a member with this round's hand.
 function Chair({ chair, canSit, busy, onSit, hideResult }) {
@@ -58,11 +58,15 @@ function Chair({ chair, canSit, busy, onSit, hideResult }) {
       {h ? (
         <>
           <div className="mt-1 flex min-h-[30px] flex-wrap items-center justify-center gap-0.5">
-            <DealtCards cards={h.cards} size="xs" offset={chair.seat * 150} />
+            {h.hands ? h.hands.map((x, i) => (
+              <span key={i} className={cn("flex items-center gap-0.5 rounded px-0.5", i === h.hand_ix && h.status === "playing" && "ring-1 ring-gold/60")}>
+                <DealtCards cards={x.cards} size="xs" offset={chair.seat * 150} />
+              </span>
+            )) : <DealtCards cards={h.cards} size="xs" offset={chair.seat * 150} />}
           </div>
           <p className="mt-1 text-[11px] leading-tight text-mist">
             <Points value={h.staked} iconSize={10} />
-            {h.total !== null && <> · {h.total}</>}
+            {h.hands ? <> · {h.hands.map((x) => x.total).join(" / ")}</> : h.total !== null && <> · {h.total}</>}
           </p>
           <p className={cn("text-[11px] font-bold leading-tight", r ? (r.win === true ? "text-gold" : r.win === false ? "text-ember" : "text-mist") : "text-mist")}>
             {r ? (h.net > 0 ? `+${h.net.toLocaleString()}` : h.net < 0 ? h.net.toLocaleString() : "Tie")
@@ -85,7 +89,7 @@ function Cards({ cards, hidden = 0, size = "lg", empty }) {
   );
 }
 
-export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, rules, settings, balance, feltClass, winNote }) {
+export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, rules, settings, balance, feltClass, winNote, sideBets, tips }) {
   const { setBalance, reload } = useGuild();
   const [data, setData] = useState(null);
   const [offset, setOffset] = useState(0);
@@ -93,6 +97,7 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [wager, setWager] = useState(settings.min_bet);
+  const [sides, setSides] = useState({}); // optional side bets: { id: amount }
   const first = useRef(true);
   const paidRound = useRef(0);
   // The dealer's last cards are dealt one at a time; results wait until they're all down.
@@ -188,10 +193,20 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
   const betLeft = table.status === "betting" ? left(table.bets_close_at) : null;
   const actLeft = table.status === "playing" ? left(table.act_close_at) : null;
   const nextLeft = table.status === "settled" ? left(table.next_at) : null;
+  // After a split the buttons act on the hand being played.
+  const cur = mine && mine.hands ? mine.hands[mine.hand_ix] || mine.hands[0] : mine;
   const myTurn = table.status === "playing" && mine && mine.status === "playing";
   const drawing = table.status === "settled" && shownRound !== table.round_no;
   const res = mine && mine.result && !drawing ? RESULT_TEXT[mine.result] : null;
-  const canBet = seated && table.status === "betting" && !mine && (betLeft === null || betLeft > 1) && wager >= settings.min_bet && wager <= settings.max_bet && wager <= balance;
+  const sideList = sideBets || [];
+  const sideAmount = (id) => Math.max(0, Math.floor(Number(sides[id]) || 0));
+  const sideTotal = sideList.reduce((t, b) => t + sideAmount(b.id), 0);
+  const stake = wager + sideTotal;
+  const sideProblem = sideList.some((b) => sideAmount(b.id) > wager) ? "A side bet can be at most the size of your main wager."
+    : stake > settings.max_bet ? `Your wager and side bets together can be at most ${settings.max_bet.toLocaleString()}.`
+    : stake > balance ? "Not enough points for that wager and those side bets." : "";
+  const canBet = seated && table.status === "betting" && !mine && (betLeft === null || betLeft > 1) && wager >= settings.min_bet && wager <= settings.max_bet && wager <= balance && !sideProblem;
+  const sidePayload = Object.fromEntries(sideList.map((b) => [b.id, sideAmount(b.id)]).filter(([, v]) => v > 0));
   const inHand = mine && (!mine.result || drawing);
   const Spin = <Loader2 className="h-4 w-4 animate-spin" />;
 
@@ -252,26 +267,77 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
         <div className="mb-4 rounded-md border border-bronze/40 bg-black/25 p-3">
           <p className="mb-1.5 text-xs uppercase tracking-wide text-mist">
             Your hand
-            {mine.total !== null && <span className="ml-2 font-heading text-sm font-bold normal-case text-gold">{mine.total}</span>}
+            {!mine.hands && mine.total !== null && <span className="ml-2 font-heading text-sm font-bold normal-case text-gold">{mine.total}</span>}
             <span className="ml-2 normal-case text-mist">· <Points value={mine.staked} iconSize={12} className="text-gold" /> on the table</span>
           </p>
-          <Cards cards={mine.cards} empty="Cards are dealt when betting closes" />
+          {mine.hands ? (
+            <div className="space-y-2">
+              {mine.hands.map((h, i) => {
+                const active = myTurn && i === mine.hand_ix;
+                const hr = h.result && !drawing ? h.result : null;
+                return (
+                  <div key={i} className={cn("rounded-md border p-2", active ? "border-gold bg-gold/5" : "border-bronze/40")}>
+                    <p className="mb-1 text-xs text-mist">
+                      <span className="font-bold text-[hsl(var(--foreground))]">Hand {i + 1}</span>
+                      <span className="ml-2 font-heading text-sm font-bold text-gold">{h.total}</span>
+                      <span className="ml-2">· <Points value={h.stake} iconSize={11} className="text-gold" /></span>
+                      <span className={cn("ml-2 font-bold", hr === "win" ? "text-gold" : hr === "lose" ? "text-ember" : active ? "text-gold" : "text-mist")}>
+                        {hr ? (hr === "win" ? `Won +${h.stake.toLocaleString()}` : hr === "lose" ? "Lost" : "Tie") : active ? "Your move" : h.status === "playing" ? "Up next" : NOTE[h.note] || "Done"}
+                      </span>
+                    </p>
+                    <Cards cards={h.cards} />
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <Cards cards={mine.cards} empty="Cards are dealt when betting closes" />
+          )}
+          {mine.side_total > 0 && (
+            <ul className="mt-2 flex flex-wrap gap-1.5 text-xs" aria-label="Your side bets">
+              {sideList.filter((b) => mine.sides && mine.sides[b.id] > 0).map((b) => {
+                const w = mine.side_wins && mine.side_wins[b.id];
+                return (
+                  <li key={b.id} className={cn("rounded-full border px-2 py-0.5", !w ? "border-bronze/50 text-mist" : w.win > 0 ? "border-gold bg-gold/15 font-bold text-gold" : "border-bronze/40 text-mist/70 line-through")}>
+                    {b.name} · {mine.sides[b.id].toLocaleString()}
+                    {w ? (w.win > 0 ? ` · ${w.name} +${(w.win - mine.sides[b.id]).toLocaleString()}` : " · no win") : ""}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
       )}
 
       {error && <p role="alert" className="mb-3 rounded-md border border-ember/40 bg-ember/10 px-3 py-2 text-sm text-ember">{error}</p>}
 
       {myTurn ? (
-        <div className={cn("grid gap-2", actions.length === 3 ? "grid-cols-3" : "grid-cols-2")}>
-          {actions.map((a) => {
-            const blocked = a.firstTwoOnly && (mine.cards.length !== 2 || mine.doubled || mine.wager > balance);
-            return (
-              <button key={a.id} onClick={() => send(a.id)} disabled={!!busy || blocked} className={cn(a.primary ? "btn-seal" : "btn-bronze", "h-12 text-base")}>
-                {busy === a.id ? Spin : a.label}
-              </button>
-            );
-          })}
-        </div>
+        <>
+          <div className={cn("grid gap-2", actions.length === 4 ? "grid-cols-4" : actions.length === 3 ? "grid-cols-3" : "grid-cols-2")}>
+            {actions.map((a) => {
+              const blocked = (a.firstTwoOnly && (cur.cards.length !== 2 || cur.doubled || mine.wager > balance)) || (a.splitOnly && (!mine.can_split || mine.wager > balance));
+              return (
+                <button key={a.id} onClick={() => send(a.id)} disabled={!!busy || blocked} className={cn(a.primary ? "btn-seal" : "btn-bronze", "h-12 px-1", actions.length === 4 ? "text-sm" : "text-base")}>
+                  {busy === a.id ? Spin : a.label}
+                </button>
+              );
+            })}
+          </div>
+          {/* say why an option is greyed out, and what it costs when it isn't */}
+          {actions.filter((a) => a.firstTwoOnly).map((a) => (
+            <p key={a.id} className="mt-2 text-center text-xs text-mist">
+              {cur.cards.length !== 2 || cur.doubled ? `${a.label} is only offered on your first two cards.`
+                : mine.wager > balance ? `${a.label} needs ${mine.wager.toLocaleString()} more points and you have ${balance.toLocaleString()}.`
+                : `${a.label}: put ${mine.wager.toLocaleString()} more on the hand, take exactly one more card, then stand.`}
+            </p>
+          ))}
+          {mine.can_split && actions.filter((a) => a.splitOnly).map((a) => (
+            <p key={a.id} className="mt-1 text-center text-xs text-mist">
+              {mine.wager > balance ? `${a.label} needs ${mine.wager.toLocaleString()} more points and you have ${balance.toLocaleString()}.`
+                : `${a.label}: put ${mine.wager.toLocaleString()} more down and play your two cards as two separate hands.`}
+            </p>
+          ))}
+        </>
       ) : !seated && !mine ? (
         <p className="rounded-md border border-bronze/40 bg-black/25 px-3 py-3 text-center text-sm text-mist">
           {data.open === false ? "This table is closed right now."
@@ -281,8 +347,41 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
       ) : table.status === "betting" && !mine ? (
         <div className="space-y-4">
           <WagerInput wager={wager} setWager={setWager} minBet={settings.min_bet} maxBet={settings.max_bet} balance={balance} disabled={!!busy} />
-          <button onClick={() => send("bet", { wager })} disabled={!!busy || !canBet || data.open === false} className="btn-seal h-12 w-full text-base">
-            {busy === "bet" ? <>{Spin} Placing bet</> : data.open === false ? "Table closed" : "Place bet"}
+          {sideList.length > 0 && (
+            <div className="rounded-md border border-bronze/40 bg-black/25 p-3">
+              <p className="label !mb-0">Side bets <span className="font-normal normal-case text-mist">(optional)</span></p>
+              <p className="mb-2 text-xs text-mist">Extra bets on the first cards dealt. They win or lose on their own, whatever happens to your hand.</p>
+              <div className="grid grid-cols-2 gap-3">
+                {sideList.map((b) => (
+                  <div key={b.id}>
+                    <label htmlFor={`side-${b.id}`} className="text-sm font-bold text-[hsl(var(--foreground))]">{b.name}</label>
+                    <input
+                      id={`side-${b.id}`}
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      max={wager}
+                      placeholder="0"
+                      value={sides[b.id] || ""}
+                      onChange={(e) => setSides((cur) => ({ ...cur, [b.id]: Math.max(0, Math.floor(Number(e.target.value) || 0)) }))}
+                      disabled={!!busy}
+                      className={cn("field mt-1 h-10 text-base font-bold text-gold", sideAmount(b.id) > wager && "border-ember/80")}
+                    />
+                    <p className="mt-1 text-[11px] leading-snug text-mist">{b.blurb}</p>
+                  </div>
+                ))}
+              </div>
+              {sideProblem && <p role="alert" className="mt-2 text-xs text-ember">{sideProblem}</p>}
+              {tips && (
+                <details className="mt-3 rounded border border-bronze/30 bg-black/30 px-2.5 py-2" open={sideTotal > 0 ? undefined : false}>
+                  <summary className="cursor-pointer text-sm text-gold">How side bets and splitting work, and what they pay</summary>
+                  <div className="mt-2 text-xs text-mist">{tips}</div>
+                </details>
+              )}
+            </div>
+          )}
+          <button onClick={() => send("bet", { wager, sides: sidePayload })} disabled={!!busy || !canBet || data.open === false} className="btn-seal h-12 w-full text-base">
+            {busy === "bet" ? <>{Spin} Placing bet</> : data.open === false ? "Table closed" : sideTotal > 0 ? <>Place bet · {stake.toLocaleString()} in total</> : "Place bet"}
           </button>
           {winNote && <p className="text-center text-sm text-mist">{winNote}</p>}
         </div>
