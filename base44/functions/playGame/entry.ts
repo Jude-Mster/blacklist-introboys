@@ -33,6 +33,7 @@ export default async function(req) {
     if (game === 'poker') throw new UserError('Poker is played at the tables.');
 
     if (game === 'roulette') throw new UserError('Roulette is played at the shared table now.');
+    if (game === 'dragondice') throw new UserError('Dragon Dice is now Dragon Sic Bo, played at the shared table.');
     const w = Math.floor(Number(wager));
     if (!Number.isInteger(w) || w < 1) throw new UserError('Enter a wager.');
     if (w < settings.min_bet) throw new UserError(`The minimum wager is ${settings.min_bet}.`);
@@ -100,9 +101,9 @@ function feedDetail(game, o) {
   switch (game) {
     case 'coinflip': return `Called ${o.choice === 'tails' ? 'Yin' : 'Yang'}, landed ${o.side === 'tails' ? 'Yin' : 'Yang'}`;
     case 'dragondice': return `Rolled ${o.roll}, ${o.direction} ${o.target}`;
-    case 'lanternslots': return (o.reels || []).join(' ');
+    case 'lanternslots': return (o.reels || []).join(" ");
     case 'skywheel': return `Backed ${o.pick}, landed ${o.landed}`;
     case 'fortune': return o.free_spins ? `${o.free_spins} free spins, ${o.multiplier}× the bet` : o.best ? `${o.best.count} ${o.best.symbol}${o.multiplier ? `, ${o.multiplier}×` : ''}` : 'No win';
-    default: return '';
+    default: return "";
   }
 }

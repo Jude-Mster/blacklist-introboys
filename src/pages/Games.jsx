@@ -5,7 +5,7 @@ import LanternSpinner from "@/components/LanternSpinner";
 import { useGuild } from "@/lib/GuildContext";
 import { Points } from "@/components/SealLogo";
 import CoinFlip from "@/components/games/CoinFlip";
-import DragonDice from "@/components/games/DragonDice";
+import SicBo from "@/components/games/SicBo";
 import LanternSlots from "@/components/games/LanternSlots";
 import FortuneSlots from "@/components/games/FortuneSlots";
 import SkyWheel from "@/components/games/SkyWheel";
@@ -19,7 +19,7 @@ import { GAMES } from "@/lib/games";
 import { cn } from "@/lib/utils";
 import { tableGuard } from "@/lib/tableGuard";
 
-const COMPONENTS = { coinflip: CoinFlip, dragondice: DragonDice, lanternslots: LanternSlots, fortune: FortuneSlots, skywheel: SkyWheel, roulette: Roulette, blackjack: Blackjack, lucky9: Lucky9 };
+const COMPONENTS = { coinflip: CoinFlip, dragondice: SicBo, lanternslots: LanternSlots, fortune: FortuneSlots, skywheel: SkyWheel, roulette: Roulette, blackjack: Blackjack, lucky9: Lucky9 };
 const ICONS = GAME_ICONS;
 
 export default function Games() {

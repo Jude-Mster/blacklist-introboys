@@ -1,0 +1,69 @@
+{
+  "name": "SicBoTable",
+  "type": "object",
+  "description": "The one shared Dragon Sic Bo table: current round and recent rolls",
+  "properties": {
+    "round_no": {
+      "type": "integer",
+      "default": 0
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "betting",
+        "settled"
+      ]
+    },
+    "bets_close_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "settling_round": {
+      "type": "integer",
+      "description": "Round whose result has been decided and is being paid out"
+    },
+    "settled_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "next_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "result_dice": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      },
+      "description": "The three dice of the round being settled or just settled"
+    },
+    "recent": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Recent rolls, newest first, each as three digits like 436"
+    },
+    "total_bet": {
+      "type": "integer",
+      "default": 0
+    },
+    "players": {
+      "type": "integer",
+      "default": 0
+    },
+    "lock_token": {
+      "type": "string"
+    },
+    "lock_until": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

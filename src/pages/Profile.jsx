@@ -24,7 +24,8 @@ function describe(b) {
     case "coinflip":
       return `Called ${o.choice === "tails" ? "Yin" : "Yang"}, landed ${o.side === "tails" ? "Yin" : "Yang"}`;
     case "dragondice":
-      return `Rolled ${o.roll} · needed ${o.direction} ${o.target}`;
+      // Newer rows are Dragon Sic Bo (three dice); older ones are the 1 to 100 roll.
+      return Array.isArray(o.dice) ? `Rolled ${o.dice.join(" · ")} = ${o.total} · ${(o.bets || []).length} bet${(o.bets || []).length === 1 ? "" : "s"}` : `Rolled ${o.roll} · needed ${o.direction} ${o.target}`;
     case "lanternslots":
       return (o.reels || []).join(" · ");
     case "roulette":

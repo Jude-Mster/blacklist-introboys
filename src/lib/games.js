@@ -6,7 +6,7 @@ export const edgeOf = (settings) => Math.min(Math.max(Number(settings?.house_edg
 
 export const GAMES = [
   { id: "coinflip", name: "Blacklist Yin Yang Toss", blurb: "Call Yin or Yang, or duel another member." },
-  { id: "dragondice", name: "Blacklist Dragon Dice", blurb: "Set your own odds on a roll of 1 to 100." },
+  { id: "dragondice", name: "Blacklist Dragon Sic Bo", blurb: "Three dice, one live table. Bet Big, Small, a number, a total or a triple." },
   { id: "lanternslots", name: "Blacklist Lantern Slots", blurb: "Three reels. Three seals pays 50×." },
   { id: "fortune", name: "Blacklist Dragon's Fortune", blurb: "Five reels, ten lines, wilds and free spins." },
   { id: "skywheel", name: "Blacklist Twelve Skies Wheel", blurb: "One shared wheel. Back a faction each round." },
