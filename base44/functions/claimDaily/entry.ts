@@ -1,13 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-
 import { sessionUser } from '../../shared/session.ts';
 import { getSettings, getMemberByUserId, changePoints, withMemberLock, randInt, UserError, errorResponse } from '../../shared/points.ts';
+import { resilient } from '../../shared/points.ts';
 
 const DAY = 24 * 60 * 60 * 1000;
 
 export default async function(req) {
   try {
-    const b = createClientFromRequest(req);
+    const b = resilient(createClientFromRequest(req));
     const user = await sessionUser(b, req);
     if (!user) throw new UserError('Link your Discord first.', 401);
     const found = await getMemberByUserId(b, user.id);

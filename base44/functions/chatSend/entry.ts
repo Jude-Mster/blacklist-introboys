@@ -1,9 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-
 import { sessionUser } from '../../shared/session.ts';
 import { getSettings, getMemberByUserId, UserError, errorResponse } from '../../shared/points.ts';
 import { GUILD_CHANNEL, postToDiscord } from '../../shared/chat.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
+import { resilient } from '../../shared/points.ts';
 
 // Copy a guild-chat message into the linked Discord channel (optional).
 // Set the secret DISCORD_CHAT_WEBHOOK_URL to a channel webhook to turn it on.
@@ -16,7 +16,7 @@ const MIN_GAP_MS = 1200;
 
 export default async function(req) {
   try {
-    const b = createClientFromRequest(req);
+    const b = resilient(createClientFromRequest(req));
     const user = await sessionUser(b, req);
     if (!user) throw new UserError('Link your Discord first.', 401);
     const me = await getMemberByUserId(b, user.id);

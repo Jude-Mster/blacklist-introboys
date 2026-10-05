@@ -1,9 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-
 import { secrets } from 'base44:runtime';
 import { getSettings, getMemberByDiscordId } from '../../shared/points.ts';
 import { GUILD_CHANNEL } from '../../shared/chat.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
+import { resilient } from '../../shared/points.ts';
 
 // Receives messages from the Discord bridge bot (see /discord-bridge) and puts
 // them into the website's guild chat. Protected by the BRIDGE_SECRET secret,
@@ -27,7 +27,7 @@ export default async function(req) {
     const given = req.headers.get('X-Bridge-Secret') || '';
     if (!same(given, expected)) return Response.json({ error: 'Wrong bridge secret.' }, { status: 401 });
 
-    const b = createClientFromRequest(req);
+    const b = resilient(createClientFromRequest(req));
     const settings = await getSettings(b);
     if (settings.chat_enabled === false) return Response.json({ ok: true, skipped: 'chat off' });
 

@@ -1,5 +1,4 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-
 import { sessionUser } from '../../shared/session.ts';
 import {
   getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, randInt, GAME_NAMES, UserError, errorResponse
@@ -7,6 +6,7 @@ import {
 import { postFeed } from '../../shared/feed.ts';
 import { postSystem, GUILD_CHANNEL } from '../../shared/chat.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
+import { resilient } from '../../shared/points.ts';
 
 // 1v1 Yin Yang Toss. The creator puts up a wager and calls a side; anyone can
 // accept by matching it. The coin decides who takes both stakes. No house cut.
@@ -30,7 +30,7 @@ async function expireOld(b) {
 
 export default async function(req) {
   try {
-    const b = createClientFromRequest(req);
+    const b = resilient(createClientFromRequest(req));
     const user = await sessionUser(b, req);
     if (!user) throw new UserError('Link your Discord first.', 401);
     let p; try { p = await req.json(); } catch { p = {}; }

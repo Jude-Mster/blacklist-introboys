@@ -3,6 +3,7 @@ import { getSettings, errorResponse } from '../../shared/points.ts';
 import { refreshAccess } from '../../shared/access.ts';
 import { sessionUser, destroyMemberSessions } from '../../shared/session.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
+import { resilient } from '../../shared/points.ts';
 
 const PUBLIC_MEMBER_FIELDS = [
   'id', 'discord_id', 'discord_name', 'discord_username', 'avatar_url', 'points', 'role',
@@ -11,7 +12,7 @@ const PUBLIC_MEMBER_FIELDS = [
 
 export default async function(req) {
   try {
-    const b = createClientFromRequest(req);
+    const b = resilient(createClientFromRequest(req));
     const user = await sessionUser(b, req);
     if (!user) return Response.json({ error: 'Link your Discord first.' }, { status: 401 });
 

@@ -1,5 +1,4 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-
 import { sessionUser } from '../../shared/session.ts';
 import {
   getSettings, getMemberByUserId, getMemberByDiscordId, changePoints, withMemberLock,
@@ -7,10 +6,11 @@ import {
 } from '../../shared/points.ts';
 import { announcePoints } from '../../shared/discordPost.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
+import { resilient } from '../../shared/points.ts';
 
 export default async function(req) {
   try {
-    const b = createClientFromRequest(req);
+    const b = resilient(createClientFromRequest(req));
     const user = await sessionUser(b, req);
     if (!user) throw new UserError('Link your Discord first.', 401);
     const caller = await getMemberByUserId(b, user.id);
