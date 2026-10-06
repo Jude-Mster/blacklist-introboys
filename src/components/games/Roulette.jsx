@@ -198,7 +198,7 @@ export default function Roulette({ settings, balance }) {
   };
   // Lift chips that are already on the table. Only possible while bets are open.
   const lift = async (payload) => {
-    if (placingRef.current) return;
+    if (placingRef.current) return false;
     placingRef.current = true;
     setPlacing(true);
     try {
@@ -208,6 +208,7 @@ export default function Roulette({ settings, balance }) {
       setState((s) => (s ? { ...s, mine: res.data.mine } : s));
       setError("");
       refresh();
+      return true;
     } catch (e) {
       setError(errorText(e, "Those chips couldn't be taken back."));
       changedAt.current = Date.now();
@@ -221,8 +222,14 @@ export default function Roulette({ settings, balance }) {
     const last = log[log.length - 1];
     if (!last || !open) return;
     setLog((l) => l.slice(0, -1));
-    if (pendingOn(last.type) >= last.amount) setPending((cur) => subtract(cur, [last]));
-    else lift({ bets: [last] });
+    if (pendingOn(last.type) >= last.amount) { setPending((cur) => subtract(cur, [last])); return; }
+    // Taking this chip back would leave less than the minimum on the table. The table can't hold
+    // a bet that small, so everything comes off and the rest waits on the board until more is added.
+    const remaining = placedTotal - last.amount;
+    if (remaining > 0 && remaining < settings.min_bet) {
+      const rest = subtract(placed.map((b) => ({ ...b })), [last]);
+      lift({ all: true }).then((ok) => { if (ok) setPending((cur) => { const out = cur.map((b) => ({ ...b })); for (const b of rest) { const k = out.find((x) => x.type === b.type); if (k) k.amount += b.amount; else out.push({ ...b }); } return out; }); });
+    } else lift({ bets: [last] });
   };
   const clear = () => {
     if (!open) return;
@@ -447,7 +454,7 @@ export default function Roulette({ settings, balance }) {
       <p className="mt-3 rounded-md border border-bronze/40 bg-black/25 px-3 py-2 text-center text-sm font-bold" aria-live="polite">
         {!open ? (placedTotal ? `Bets are closed. You have ${placedTotal.toLocaleString()} on the table.` : "Wait for the next spin.")
           : !placedTotal && !pendingTotal ? "Tap a spot to put a chip on it and you're in."
-          : !enough ? `Add more chips: the minimum is ${settings.min_bet.toLocaleString()}.`
+          : !enough ? `Below the minimum of ${settings.min_bet.toLocaleString()}, so you are not in yet. Add more chips.`
           : pendingTotal ? "Placing your chips…"
           : `Your bet is in: ${placedTotal.toLocaleString()}. Add or remove chips until bets close.`}
       </p>

@@ -5,7 +5,7 @@ import {
 } from '../../shared/points.ts';
 import { SICBO_NAME, validSicboBet, validDice, sicboPayout, describeRoll } from '../../shared/sicbo.ts';
 import { postFeed } from '../../shared/feed.ts';
-import { announceBigWin } from '../../shared/chat.ts';
+import { announceBigWin, announceLoss, lossWorthTelling } from '../../shared/chat.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
 import { resilient } from '../../shared/points.ts';
 
@@ -133,6 +133,7 @@ async function payBet(b, t, row, settings) {
       const net = payout - cur.amount;
       const threshold = Number(settings.big_win_threshold) || 0;
       if (net > 0 && net >= threshold) await announceBigWin(cur.name || 'A member', NAME, net, `rolled ${describeRoll(dice)}`);
+      if (lossWorthTelling(settings, -net)) await announceLoss(cur.name || 'A member', NAME, -net, `rolled ${describeRoll(dice)}`);
     } catch (e) {
       console.error('sic bo history write failed', e);
     }

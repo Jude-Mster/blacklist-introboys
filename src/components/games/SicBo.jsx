@@ -196,7 +196,7 @@ export default function SicBo({ settings, balance }) {
   };
   // Lift chips that are already on the table. Only possible while bets are open.
   const lift = async (payload) => {
-    if (placingRef.current) return;
+    if (placingRef.current) return false;
     placingRef.current = true;
     setPlacing(true);
     try {
@@ -206,6 +206,7 @@ export default function SicBo({ settings, balance }) {
       setState((s) => (s ? { ...s, mine: res.data.mine } : s));
       setError("");
       refresh();
+      return true;
     } catch (e) {
       setError(errorText(e, "Those chips couldn't be taken back."));
       changedAt.current = Date.now();
@@ -219,8 +220,14 @@ export default function SicBo({ settings, balance }) {
     const last = log[log.length - 1];
     if (!last || !open) return;
     setLog((l) => l.slice(0, -1));
-    if (amountIn(pending, last.type) >= last.amount) setPending((cur) => subtract(cur, [last]));
-    else lift({ bets: [last] });
+    if (amountIn(pending, last.type) >= last.amount) { setPending((cur) => subtract(cur, [last])); return; }
+    // Taking this chip back would leave less than the minimum on the table. The table can't hold
+    // a bet that small, so everything comes off and the rest waits on the board until more is added.
+    const remaining = placedTotal - last.amount;
+    if (remaining > 0 && remaining < settings.min_bet) {
+      const rest = subtract(placed.map((b) => ({ ...b })), [last]);
+      lift({ all: true }).then((ok) => { if (ok) setPending((cur) => { const out = cur.map((b) => ({ ...b })); for (const b of rest) { const k = out.find((x) => x.type === b.type); if (k) k.amount += b.amount; else out.push({ ...b }); } return out; }); });
+    } else lift({ bets: [last] });
   };
   const clear = () => {
     if (!open) return;
@@ -386,7 +393,7 @@ export default function SicBo({ settings, balance }) {
           <p className="text-center text-sm font-bold text-white/90" aria-live="polite">
             {!open ? (placedTotal ? `Bets are closed. You have ${placedTotal.toLocaleString()} on the table.` : "Wait for the next roll.")
               : !placedTotal && !pendingTotal ? "Put chips on the board and you're in."
-              : !enough ? `Add more chips: the minimum is ${settings.min_bet.toLocaleString()}.`
+              : !enough ? `Below the minimum of ${settings.min_bet.toLocaleString()}, so you are not in yet. Add more chips.`
               : pendingTotal ? "Sending your chips to the table…"
               : <>Your bet is in: <Points value={placedTotal} className="text-gold" />. Add or remove chips until bets close.</>}
           </p>

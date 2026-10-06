@@ -43,6 +43,15 @@ export async function postToDiscord(content: string, opts?: { username?: string;
   }
 }
 
+// Tell the Discord channel about a loss at the tables. Sent for every loss of at least
+// `big_loss_threshold` points (a guild setting; when it isn't set, every loss is sent).
+export async function announceLoss(name: string, gameName: string, amount: number, detail?: string) {
+  const n = Math.max(0, Math.round(amount)).toLocaleString();
+  const extra = detail ? ` — ${detail}` : '';
+  await postToDiscord(`💸 **${name}** lost **${n}** points on **${gameName}**${extra}`);
+}
+export const lossWorthTelling = (settings, lost: number) => lost > 0 && lost >= (Number(settings && settings.big_loss_threshold) || 0);
+
 // Announce a massive win to the Discord channel. Called from the roulette and
 // poker settle code when the win meets the big_win_threshold setting.
 export async function announceBigWin(name: string, gameName: string, amount: number, detail?: string) {

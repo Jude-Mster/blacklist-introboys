@@ -5,7 +5,7 @@ import Panel from "@/components/Panel";
 import LanternSpinner from "@/components/LanternSpinner";
 import DealtCards, { DEAL_STEP_MS, DealerDeck } from "@/components/DealtCards";
 import Avatar from "@/components/Avatar";
-import { BetSpot, ChipRack, ChipTray, FeltPrint, CHIP_VALUES } from "./ChipBetting";
+import { BetSpot, ChipRack, ChipTray, FeltPrint, CHIP_VALUES, chipsFor } from "./ChipBetting";
 import { Points } from "@/components/SealLogo";
 import { useGuild, errorText } from "@/lib/GuildContext";
 import { ReactionBar, ReactionBubble, useReactions } from "./Reactions";
@@ -231,13 +231,16 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
 
   // Send the spots to the table a moment after they change.
   useEffect(() => {
-    if (!betOpen || localKey === sentKey.current) return undefined;
-    if (wager > 0 && wager < settings.min_bet) return undefined; // waits for more chips
-    if (Object.values(cleanSides).some((v) => v > wager)) return undefined;
+    // What the table should hold: the chips as they are, or nothing at all while they are below
+    // the minimum. (It used to send nothing in that case, which left the OLD, bigger bet on the
+    // table after an undo while the page showed the smaller one.)
+    const tooLow = wager < settings.min_bet;
+    const want = tooLow ? { wager: 0, sides: {}, key: keyOf(0, {}) } : { wager, sides: cleanSides, key: localKey };
+    if (!betOpen || want.key === sentKey.current) return undefined;
+    if (!tooLow && Object.values(cleanSides).some((v) => v > wager)) return undefined;
     const timer = setTimeout(async () => {
       if (syncing.current) return;
       syncing.current = true;
-      const want = latest.current;
       try {
         const res = await base44.functions.invoke(fn, { action: "bet", wager: want.wager, sides: want.sides });
         sentKey.current = want.key;
@@ -294,7 +297,7 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
   const onTable = mine && mine.status === "waiting" ? mine.staked || 0 : 0;
   const funds = balance + onTable;
   const spendable = Math.min(settings.max_bet, funds);
-  const placed = canChip && localKey === sentKey.current && onTable > 0;
+  const placed = canChip && localKey === sentKey.current && onTable > 0 && wager >= settings.min_bet;
   const rebet = () => {
     if (!lastBet || !canChip) return;
     const total = lastBet.wager + Object.values(lastBet.sides || {}).reduce((a, v) => a + (Number(v) || 0), 0);
@@ -310,10 +313,28 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
     setMoves((m) => [...m.slice(-60), { id, value }]);
   };
   const undoChip = () => {
-    const last = moves[moves.length - 1];
-    if (!last) return;
+    // The last chip put down; if the page was reloaded and has no memory of it, the smallest
+    // chip on the table (a side bet first, then the main bet).
+    let last = moves[moves.length - 1];
+    if (!last) {
+      const side = [...sideList].reverse().find((b) => sideAmount(b.id) > 0);
+      const amount = side ? sideAmount(side.id) : wager;
+      if (!amount) return;
+      const parts = chipsFor(amount, 20);
+      last = { id: side ? side.id : "main", value: parts[parts.length - 1] || amount };
+    }
     setChipNote("");
-    if (last.id === "main") setWager((w) => Math.max(0, w - last.value)); else setSides((cur) => ({ ...cur, [last.id]: Math.max(0, (Number(cur[last.id]) || 0) - last.value) }));
+    if (last.id === "main") {
+      const next = Math.max(0, wager - last.value);
+      setWager(next);
+      // A side bet can't be bigger than the main bet, so side chips come down with it.
+      if (sideList.some((b) => sideAmount(b.id) > next)) {
+        setSides((cur) => Object.fromEntries(Object.entries(cur).map(([k, v]) => [k, Math.min(Number(v) || 0, next)])));
+        setChipNote(next ? "Your side bets were lowered to match the main bet." : "");
+      }
+    } else {
+      setSides((cur) => ({ ...cur, [last.id]: Math.max(0, (Number(cur[last.id]) || 0) - last.value) }));
+    }
     setMoves((m) => m.slice(0, -1));
   };
   const clearChips = () => { setWager(0); setSides({}); setMoves([]); setChipNote(""); };
@@ -444,7 +465,7 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
                 <ReactionBar onSend={react} />
                 <ChipTray chips={chipList} selected={useChip} onSelect={setChip} onDrop={putChip} disabled={!!busy} />
                 <div className="flex items-center justify-center gap-2">
-                  <button type="button" onClick={undoChip} disabled={!moves.length} className="btn-bronze h-8 px-3 text-xs">Undo</button>
+                  <button type="button" onClick={undoChip} disabled={!stake} className="btn-bronze h-8 px-3 text-xs">Undo</button>
                   <button type="button" onClick={clearChips} disabled={!stake} className="btn-bronze h-8 px-3 text-xs">Remove all</button>
                   <button type="button" onClick={doubleChips} disabled={!stake} className="btn-bronze h-8 px-3 text-xs">Double</button>
                   {lastBet && !stake && <button type="button" onClick={rebet} className="btn-bronze h-8 px-3 text-xs">Same as last</button>}
@@ -453,7 +474,7 @@ export default function CardTable({ fn, title, dealerLabel = "Dealer", actions, 
                 {/* no button to press: chips on the spots are the bet */}
                 <p className="text-center text-sm font-bold text-white/90" aria-live="polite">
                   {!stake ? "Put chips on BET and you're in."
-                    : wager < settings.min_bet ? `Add more chips: the minimum is ${settings.min_bet.toLocaleString()}.`
+                    : wager < settings.min_bet ? `Below the minimum of ${settings.min_bet.toLocaleString()}, so you are not in yet. Add more chips.`
                     : placed ? <>Your bet is in: <Points value={onTable} className="text-gold" />. Add or remove chips until bets close{betLeft !== null ? ` in ${betLeft}s` : ""}.</>
                     : sideProblem ? "" : "Placing your chips…"}
                 </p>

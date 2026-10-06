@@ -5,7 +5,7 @@ import {
   validRouletteBet, roulettePayout, ROULETTE_POCKETS, GAME_NAMES, UserError, errorResponse
 } from '../../shared/points.ts';
 import { postFeed } from '../../shared/feed.ts';
-import { announceBigWin } from '../../shared/chat.ts';
+import { announceBigWin, announceLoss, lossWorthTelling } from '../../shared/chat.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
 import { resilient } from '../../shared/points.ts';
 
@@ -122,6 +122,7 @@ async function settle(b, t, now: number, settings) {
     if (net > 0 && net >= threshold) {
       await announceBigWin(rb.name || 'A member', NAME, net, `landed on ${POCKET_NAME[kind]}`);
     }
+    if (lossWorthTelling(settings, -net)) await announceLoss(rb.name || 'A member', NAME, -net, `landed on ${POCKET_NAME[kind]}`);
   }
   // If another request finished this round while we were paying, don't record it twice.
   const done = await b.asServiceRole.entities.RouletteTable.get(t.id);

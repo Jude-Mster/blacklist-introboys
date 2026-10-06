@@ -35,6 +35,7 @@ const SETTLE_LOCK_MS = -5000;
 // While one request is dealing or settling, the others don't queue behind it.
 const BUSY_MS = 10000;
 import { addReaction, liveReactions } from './reactions.ts';
+import { announceLoss, lossWorthTelling } from './chat.ts';
 export const SEAT_COUNT = 6;         // chairs at each table
 const IDLE_MS = 10 * 60 * 1000;     // a chair with no bet for this long is given up
 
@@ -191,6 +192,9 @@ export function cardTableHandler(game: CardGame) {
             await postFeed(b, { id: s.member_id, discord_name: s.name, avatar_url: s.avatar, role: s.role }, {
               game: game.id, game_name: NAME, wager: s.staked, payout, detail: handsOut ? `Split hands ${handsOut.map((h) => game.total(h.cards)).join(' and ')}, dealer ${game.total(dealer)}` + (s.side_payout > 0 ? ' · side bet won' : '') : game.feedDetail(s, dealer, result)
             });
+            // A loss is also told to the Discord channel (never allowed to hold up the table).
+            const lost = s.staked - payout;
+            if (lossWorthTelling(settings, lost)) await announceLoss(s.name || 'A member', NAME, lost, `dealer ${game.total(dealer)}`).catch(() => {});
           });
         }
         // Count the results pause from when paying finished, so a busy table still shows its results.
@@ -409,7 +413,12 @@ export function cardTableHandler(game: CardGame) {
 
           if (diff < 0) {
             // Chips coming off: change the bet FIRST, then hand the points back.
-            if (removing) await S.delete(existing.id);
+            if (removing) {
+              await S.delete(existing.id);
+              // The table is empty again: stop the countdown, so the next chip starts a fresh one
+              // (otherwise taking a bet off left only the last seconds of the old countdown to bet again).
+              if (!seats.some((x) => x.member_id !== me.id)) await T.update(t.id, { bets_close_at: null }).catch(() => {});
+            }
             else await S.update(existing.id, { wager, staked: stake, sides, side_total: sideTotal });
             const { balance } = await changePoints(b, me.id, -diff, 'game', `${NAME} round ${round} chips taken back`, null);
             await daily();
