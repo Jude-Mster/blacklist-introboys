@@ -1,4 +1,6 @@
 import WarTimer from "@/components/WarTimer";
+import HsbTimer from "@/components/HsbTimer";
+import EventAlerts from "@/components/EventAlerts";
 import AppPrompt from "@/components/AppPrompt";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
@@ -102,13 +104,15 @@ function Shell() {
         )}
       >
         <div className="mx-auto w-full max-w-5xl">
-          <WarTimer variant="strip" className="mb-3 md:hidden" />
+          <WarTimer variant="strip" className="mb-2 md:hidden" />
+          <HsbTimer variant="strip" className="mb-3 md:hidden" />
           <Outlet />
         </div>
       </main>
       {account && account.linked && <ChatDrawer open={chatOpen} onClose={closeChat} onIncoming={onIncoming} />}
       {playing && <ChatFloaters items={floaters} onDone={dropFloater} />}
       <LeaveTableGuard />
+      <EventAlerts />
       <AppPrompt />
       <MobileTabBar onChat={toggleChat} chatOpen={chatOpen} unread={unread} />
     </div>

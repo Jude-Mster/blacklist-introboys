@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { MessageSquare } from "lucide-react";
 import SealLogo, { Points } from "@/components/SealLogo";
 import WarTimer from "@/components/WarTimer";
+import HsbTimer from "@/components/HsbTimer";
 import { useGuild } from "@/lib/GuildContext";
 import AccountMenu from "./AccountMenu";
 import { cn } from "@/lib/utils";
@@ -31,6 +32,7 @@ export default function TopBar({ onChat, chatOpen, unread }) {
 
         <div className="flex items-center gap-1.5 sm:gap-2.5">
           <WarTimer className="hidden sm:inline-flex" />
+          <HsbTimer className="hidden md:inline-flex" />
           {member && (
             <Link
               to="/profile"
