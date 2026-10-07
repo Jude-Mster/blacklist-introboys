@@ -129,6 +129,11 @@ async function verifyMember(b, code: string): Promise<Outcome> {
   return { result: 'ok', member_id: member.id, name: profile.discord_name, avatar: profile.avatar_url };
 }
 
+// A short code both screens can show, so a person can check that the browser asking
+// "sign in the app?" is talking about the app in their own hand. It is worked out from the
+// hash of the secret the app keeps, so only that app and this server can know it.
+const pairCode = (nonceHash: string) => String(parseInt(String(nonceHash || '').slice(0, 8) || '0', 16) % 10000).padStart(4, '0');
+
 const stored = (row): Outcome => ({ result: row.result, member_id: row.result_member_id, name: row.result_name, avatar: row.result_avatar });
 
 // Verify once per state, guarded by a lock so two calls arriving together can't
@@ -184,6 +189,32 @@ export default async function(req) {
     const state = String(p.state || '').trim();
     const nonce = typeof p.nonce === 'string' ? p.nonce.trim() : '';
     const confirmed = p.confirm === true;
+
+    // ----- Pick-up: the phone app started the sign-in, but Android sent Discord's answer to
+    // the browser instead of back to the app. The app keeps asking here with the secret it
+    // made at the start. It is handed a session only after the person pressed "Yes" in the
+    // browser (with the matching code on both screens), only once, and only for a few minutes.
+    if (p.action === 'pickup') {
+      if (!/^[a-f0-9]{32,64}$/.test(nonce)) return Response.json({ error: 'state' });
+      const E = b.asServiceRole.entities.OAuthState;
+      const { items: mine } = await E.filter({ nonce_hash: await sha256Hex(nonce) }, { limit: 1 });
+      const st = mine[0];
+      if (!st || !st.expires_at || new Date(st.expires_at) < new Date()) return Response.json({ error: 'state' });
+      if (st.result && st.result !== 'ok') {
+        const s2 = await getSettings(b);
+        return Response.json({ error: st.result, invite_url: s2.discord_invite_url || '' });
+      }
+      if (st.handoff_done) return Response.json({ error: 'state' });
+      if (!st.handoff_ok || st.result !== 'ok' || !st.result_member_id) return Response.json({ waiting: true });
+      if (!st.consumed_at || Date.now() - Date.parse(st.consumed_at) > REPLAY_MS) return Response.json({ error: 'state' });
+      await E.update(st.id, { handoff_done: true }); // one pick-up only
+      let m = null;
+      try { m = await b.asServiceRole.entities.Member.get(st.result_member_id); } catch { m = null; }
+      if (!m || m.no_access) return Response.json({ error: 'no_role' });
+      const s = await createSession(b, m);
+      return Response.json({ token: s.token, expires_at: s.expires_at });
+    }
+
     if (!code || !state || code.length > 200 || state.length > 100) return Response.json({ error: 'state' });
 
     const settings = await getSettings(b);
@@ -211,15 +242,21 @@ export default async function(req) {
     // person to confirm the Discord account before signing this device in.
     const sameBrowser = !!st.nonce_hash && !!nonce && (await sha256Hex(nonce)) === st.nonce_hash;
     if (!sameBrowser && !confirmed) {
-      return Response.json({ confirm_needed: true, name: out.name || '', avatar: out.avatar || '' });
+      // `pair_code` is shown here and in the app that started this, so the person can compare them.
+      return Response.json({ confirm_needed: true, name: out.name || '', avatar: out.avatar || '', pair_code: st.nonce_hash ? pairCode(st.nonce_hash) : '' });
     }
 
     let member = null;
     try { member = await b.asServiceRole.entities.Member.get(out.member_id); } catch { member = null; }
     if (!member || member.no_access) return Response.json({ error: 'no_role', invite_url });
 
+    // Finished in a different browser from the one that started, and confirmed: the app
+    // that started it may now pick up its own session.
+    const handoff = !sameBrowser && confirmed && !!st.nonce_hash;
+    if (handoff) await b.asServiceRole.entities.OAuthState.update(st.id, { handoff_ok: true });
+
     const session = await createSession(b, member);
-    return Response.json({ token: session.token, expires_at: session.expires_at });
+    return Response.json({ token: session.token, expires_at: session.expires_at, handoff });
   } catch (e) {
     console.error('discordLogin error', e);
     return Response.json({ error: 'server' });

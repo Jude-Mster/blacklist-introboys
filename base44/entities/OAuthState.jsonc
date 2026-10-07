@@ -42,6 +42,16 @@
     "lock_until": {
       "type": "string",
       "format": "date-time"
+    },
+    "handoff_ok": {
+      "type": "boolean",
+      "default": false,
+      "description": "The sign-in was finished and confirmed in another browser; the app that started it may pick up its session"
+    },
+    "handoff_done": {
+      "type": "boolean",
+      "default": false,
+      "description": "The app has picked up its session (once only)"
     }
   },
   "rls": {
