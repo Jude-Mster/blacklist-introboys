@@ -3,6 +3,7 @@ import Avatar from "@/components/Avatar";
 import { Navigate, Link } from "react-router-dom";
 import Panel from "@/components/Panel";
 import LanternSpinner from "@/components/LanternSpinner";
+import NotificationSettings from "@/components/NotificationSettings";
 import ActivityList from "@/components/ActivityList";
 import { useGuild } from "@/lib/GuildContext";
 import { Points, ROLE_TITLE } from "@/components/SealLogo";
@@ -78,6 +79,8 @@ export default function Profile() {
           </div>
         )}
       </Panel>
+
+      <NotificationSettings />
 
       <Panel title="Point history">
         <div className="-mx-1 mb-3 flex gap-1.5 overflow-x-auto px-1" role="tablist" aria-label="Filter history">

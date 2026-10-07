@@ -57,6 +57,14 @@ function normalizeInvite(url) {
   return m ? `https://discord.com/invite/${m[1]}` : String(url);
 }
 
+// True inside the phone app (Android's in-app web view, or the installed home-screen app).
+// Only there can Discord's answer land in a different place from where it started.
+function inApp() {
+  try {
+    return /; wv\)|\bwv\b/.test(navigator.userAgent) || window.matchMedia("(display-mode: standalone)").matches || document.referrer.startsWith("android-app://");
+  } catch { return false; }
+}
+
 export default function Login() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -322,7 +330,11 @@ export default function Login() {
           : (problem ? "Link Discord again" : "Link Discord")}
       </button>
 
-      {busy && (
+      {busy && !inApp() && (
+        <button type="button" onClick={() => { setBusy(false); waitingSince.current = 0; }} className="mt-3 block w-full text-center text-xs text-mist underline hover:text-white">Nothing happening? Cancel and start again</button>
+      )}
+
+      {busy && inApp() && (
         <div className="mt-3 rounded-md border border-bronze/60 bg-panel p-3 text-center">
           <p className="text-sm text-mist">Finish in Discord, then come back here. If Discord opens your browser instead, press Yes there and return to this app: it will sign you in by itself.</p>
           {pairCode && <p className="mt-2 text-xs text-mist">Your code <span className="ml-1 font-heading text-xl font-extrabold tracking-[0.25em] text-white">{pairCode}</span></p>}
