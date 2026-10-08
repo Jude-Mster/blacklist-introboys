@@ -45,20 +45,38 @@ async function verifyMember(b, code: string): Promise<Outcome> {
     })
   });
   if (!tokenRes.ok) {
-    console.log('Token exchange failed', tokenRes.status, await tokenRes.text());
+    console.log('Token exchange failed', tokenRes.status, await tokenRes.text(), 'redirect_uri used:', secret('DISCORD_REDIRECT_URI'));
     return { result: 'token' };
   }
   const { access_token: accessToken } = await tokenRes.json();
+  if (!accessToken) return { result: 'token' };
+  // Discord only accepts a code once. So if anything after this point fails for a moment
+  // (Discord or our database being busy), try the rest again with the token we already
+  // hold instead of throwing the sign-in away.
+  let last: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt) await sleep(900 * attempt);
+    try {
+      const out = await identify(b, accessToken);
+      if (out.result !== 'retry') return out;
+    } catch (e) { last = e; console.log('Sign-in step failed, trying again', String(e)); }
+  }
+  if (last) throw last;
+  return { result: 'busy' };
+}
+
+async function identify(b, accessToken: string): Promise<Outcome> {
   const auth = { headers: { Authorization: `Bearer ${accessToken}` } };
 
   const [meRes, guildsRes] = await Promise.all([
     fetch(`${DISCORD_API}/users/@me`, auth),
     fetch(`${DISCORD_API}/users/@me/guilds?limit=200`, auth)
   ]);
-  if (!meRes.ok) return { result: 'token' };
+  if (meRes.status === 429 || meRes.status >= 500) return { result: 'retry' };
+  if (!meRes.ok) { console.log('Discord /users/@me failed', meRes.status); return { result: 'token' }; }
   const me = await meRes.json();
   if (!me || !me.id) return { result: 'token' };
-  if (guildsRes.status === 429) return { result: 'busy' };
+  if (guildsRes.status === 429 || guildsRes.status >= 500) return { result: 'retry' };
   const guilds = guildsRes.ok ? await guildsRes.json() : [];
 
   const settings = await getSettings(b);
@@ -76,7 +94,7 @@ async function verifyMember(b, code: string): Promise<Outcome> {
   const roleId = requiredRoleId(settings);
   if (!isGuildOwner) {
     const mRes = await fetch(`${DISCORD_API}/users/@me/guilds/${guildId}/member`, auth);
-    if (mRes.status === 429) return { result: 'busy' };
+    if (mRes.status === 429 || mRes.status >= 500) return { result: 'retry' };
     let roles: string[] = [];
     if (mRes.ok) {
       const gm = await mRes.json();
