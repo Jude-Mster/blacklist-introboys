@@ -181,6 +181,16 @@ async function verifyOnce(b, st, code: string, codeHash: string) {
 
   try {
     const out = await verifyMember(b, code);
+    // Discord takes a code once. If the page was loaded twice (some browsers do this), the
+    // other load may have used the code and already saved the real answer: use that one
+    // rather than recording a failure over it.
+    if (out.result === 'token') {
+      for (let i = 0; i < 6; i++) {
+        const other = await E.get(st.id);
+        if (other.result && other.code_hash === codeHash) return other;
+        await sleep(500);
+      }
+    }
     const fields = {
       result: out.result,
       result_member_id: out.member_id || '',
