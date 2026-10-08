@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Menu, LogOut, ChevronRight } from "lucide-react";
+import { Menu, LogOut, ChevronRight, Download } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { Drawer, DrawerContent, DrawerTitle, DrawerDescription } from "@/components/ui/drawer";
 import Avatar from "@/components/Avatar";
@@ -9,6 +9,8 @@ import { Points } from "@/components/SealLogo";
 import { useGuild } from "@/lib/GuildContext";
 import { GAME_ICONS } from "@/lib/gameIcons";
 import { HOME, GAMES_HUB, POKER, RANKINGS, CHAT, RAFFLE, SHOP, GUIDE, PROFILE, ADMIN, gameLinks, isActive, isAdminRole, tableLinks } from "./navConfig";
+import { shouldShowAppDownload, inOldApp } from "@/lib/appMode";
+import AppDownloadGuide from "@/components/AppDownloadGuide";
 import { cn } from "@/lib/utils";
 
 // Phone navigation. Four destinations within thumb reach plus "More", which
@@ -19,7 +21,10 @@ export default function MobileTabBar({ onChat, chatOpen, unread }) {
   const { account, settings } = useGuild();
   const member = account && account.linked ? account.member : null;
   const [more, setMore] = useState(false);
+  const [dlGuide, setDlGuide] = useState(false);
   const { logout: signOut } = useAuth();
+  const dlUrl = settings && settings.app_download_url;
+  const showDownload = shouldShowAppDownload() && dlUrl;
 
   // Close the sheet after moving to another page.
   useEffect(() => setMore(false), [location.pathname, location.search]);
@@ -127,12 +132,25 @@ export default function MobileTabBar({ onChat, chatOpen, unread }) {
               ))}
             </ul>
 
+            {showDownload && (
+              <button
+                onClick={() => { setMore(false); setDlGuide(true); }}
+                className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-crimson/70 text-[15px] text-white active:bg-white/10"
+              >
+                <Download className="h-4 w-4" /> {inOldApp() ? "Get the new app" : "Download app"}
+              </button>
+            )}
+
             <button onClick={logout} className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-bronze text-[15px] text-ember active:bg-white/10">
               <LogOut className="h-4 w-4" /> Log out
             </button>
           </div>
         </DrawerContent>
       </Drawer>
+
+      {showDownload && (
+        <AppDownloadGuide open={dlGuide} onOpenChange={setDlGuide} url={dlUrl} oldApp={inOldApp()} />
+      )}
     </>
   );
 }
