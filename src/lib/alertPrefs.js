@@ -28,22 +28,25 @@ export const canVibrate = () => typeof navigator !== "undefined" && typeof navig
 // Returns true when the phone accepted the buzz.
 export function buzz() { try { return canVibrate() ? navigator.vibrate(VIBRATE_PATTERN) !== false : false; } catch { return false; } }
 
-export const canSpeak = () => typeof window !== "undefined" && "speechSynthesis" in window && typeof window.SpeechSynthesisUtterance === "function";
-export const SPOKEN = { war: "Get ready for War", hsb: "Get ready for H S B" };
-// Says the line out loud. Resolves true once it starts, false if this device can't speak
+// The spoken line is a recorded clip (public/sounds), so it sounds the same everywhere and
+// also works inside the phone app, which has no built-in voice.
+export const SPOKEN = { war: "/sounds/get-ready-war.mp3", hsb: "/sounds/get-ready-hsb.mp3" };
+export const canSpeak = () => typeof window !== "undefined" && typeof window.Audio === "function";
+const clips = {};
+// Plays the line. Resolves true once it is playing, false if this device refused
 // (the caller then plays the chime instead).
 export function speak(kind) {
   return new Promise((done) => {
     if (!canSpeak()) return done(false);
+    let settled = false; const end = (ok) => { if (!settled) { settled = true; done(ok); } };
     try {
-      const u = new window.SpeechSynthesisUtterance(SPOKEN[kind] || SPOKEN.war);
-      u.lang = "en-US"; u.rate = 0.95; u.pitch = 0.9; u.volume = 1;
-      let settled = false; const end = (ok) => { if (!settled) { settled = true; done(ok); } };
-      u.onstart = () => end(true); u.onerror = () => end(false);
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(u);
-      setTimeout(() => end(false), 1500); // no voice installed: fall back
-    } catch { done(false); }
+      const src = SPOKEN[kind] || SPOKEN.war;
+      const a = clips[src] || (clips[src] = new window.Audio(src));
+      a.currentTime = 0; a.volume = 1;
+      const p = a.play();
+      if (p && p.then) p.then(() => end(true), () => end(false)); else end(true);
+      setTimeout(() => end(false), 4000);
+    } catch { end(false); }
   });
 }
 

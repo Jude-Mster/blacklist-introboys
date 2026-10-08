@@ -42,7 +42,7 @@ const DEVICE_TEXT = {
   granted: "Allowed. You get a notification even when this page is in another tab.",
   default: "Not allowed yet. Switch this on and press Allow when your browser asks.",
   denied: "Blocked in your browser settings. Allow notifications for this site there, then come back.",
-  unsupported: "Not available here (the phone app can't show these). The banner and sound still work while the app is open."
+  unsupported: "The phone app can't show these yet. You still get the banner, voice and vibration while the app is open."
 };
 const RESULT_TEXT = {
   sent: "Device notification sent.",
@@ -51,6 +51,19 @@ const RESULT_TEXT = {
   failed: "Device notification failed on this device.",
   off: "Device notification is switched off."
 };
+
+// Can this device play the recorded line? Played muted so it doesn't talk over the alert.
+function probeVoice(kind) {
+  return new Promise((done) => {
+    try {
+      const a = new window.Audio(kind === "hsb" ? "/sounds/get-ready-hsb.mp3" : "/sounds/get-ready-war.mp3");
+      a.muted = true;
+      const p = a.play();
+      if (p && p.then) p.then(() => { a.pause(); done(true); }, () => done(false)); else done(true);
+      setTimeout(() => done(false), 4000);
+    } catch { done(false); }
+  });
+}
 
 export default function NotificationSettings() {
   const [prefs, setPrefs] = useState(getAlertPrefs);
@@ -68,7 +81,10 @@ export default function NotificationSettings() {
     window.dispatchEvent(new CustomEvent("bi:alert-test", { detail: kind }));
     const dev = !prefs.device ? "off"
       : await deviceNotify(`BLACKLIST INTROBOYS: Test ${kind === "war" ? "war" : "HSB"} alert`, "Device notifications are working.", "test-" + kind).catch(() => "failed");
-    setResult(`Banner shown. ${!prefs.sound ? "Sound is switched off." : prefs.voice && canSpeak() ? "Voice played." : "Chime played."} ${!prefs.vibrate ? "Vibrate is switched off." : canVibrate() ? "Vibration sent." : "Vibration not available here."} ${RESULT_TEXT[dev] || ""}`);
+    // Checked with a real (silent) play, so the line says what this device actually did.
+    let voiceOk = false;
+    if (prefs.sound && prefs.voice) { voiceOk = await probeVoice(kind); }
+    setResult(`Banner shown. ${!prefs.sound ? "Sound is switched off." : voiceOk ? "Voice played." : "Chime played."} ${!prefs.vibrate ? "Vibrate is switched off." : canVibrate() ? "Vibration sent." : "Vibration not available here."} ${RESULT_TEXT[dev] || ""}`);
   };
 
   return (
@@ -85,7 +101,7 @@ export default function NotificationSettings() {
         <Toggle label="Alert sound" on={prefs.sound} onChange={(sound) => save({ sound })} />
       </Row>
       {prefs.sound && (
-        <Row icon={Mic} title="Spoken alert" hint={canSpeak() ? "Says \"Get ready for War\" or \"Get ready for HSB\". Off plays a chime." : "This device has no voice, so a chime plays instead."}>
+        <Row icon={Mic} title="Spoken alert" hint={"Says \"Get ready for War\" or \"Get ready for HSB\". Off plays a chime."}>
           <Toggle label="Spoken alert" on={prefs.voice && canSpeak()} onChange={(voice) => save({ voice })} />
         </Row>
       )}

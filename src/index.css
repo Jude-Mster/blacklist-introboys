@@ -450,3 +450,9 @@
   100% { opacity: 1; transform: none; }
 }
 .card-fly { animation: card-fly 0.55s cubic-bezier(0.2, 0.8, 0.25, 1) both; position: relative; z-index: 6; }
+
+/* Space kept clear at the bottom of the screen for the phone's own bar. */
+:root { --safe-bottom: env(safe-area-inset-bottom, 0px); }
+/* Inside the Android app the system bar is already outside the page, but the web view
+   still reports its height, which left an empty band under the tab bar. */
+html.in-webview { --safe-bottom: 0px; }
