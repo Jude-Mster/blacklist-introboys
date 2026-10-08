@@ -1,0 +1,47 @@
+{
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "event_push_alerts",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "send": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "pushAlerts",
+            "args": {
+              "__wf_secret": "4b786cb5dd6d5dc2a3e4e08a64dc6ac53c9d26a55472d1f8"
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Send war and HSB push alerts",
+            "description": "Sends the push notifications that are due"
+          }
+        }
+      }
+    ]
+  },
+  "description": "Every 5 minutes, send the war and HSB push notifications that are due to members' phones and browsers, using each device's own choices. Passes a shared secret so the function can reject anonymous callers.",
+  "name": "Event Push Alerts",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "interval",
+      "cron_expression": null,
+      "one_time_date": null,
+      "timezone": "UTC",
+      "interval_value": 5,
+      "interval_unit": "minutes",
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  }
+}

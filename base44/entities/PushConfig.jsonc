@@ -1,0 +1,27 @@
+{
+  "name": "PushConfig",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "'vapid'"
+    },
+    "public_key": {
+      "type": "string"
+    },
+    "private_jwk": {
+      "type": "string",
+      "description": "The site's private push signing key. Made automatically; never shown to anyone."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

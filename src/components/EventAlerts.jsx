@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Bell, Flame, Swords, X } from "lucide-react";
 import { warStatus, localTime } from "@/lib/war";
 import { hsbStatus } from "@/lib/hsb";
-import { getAlertPrefs, speak, buzz, askDevicePermission, deviceNotify, devicePermission } from "@/lib/alertPrefs";
+import { getAlertPrefs, getPushEndpoint, pushSupported, enablePush, speak, buzz, askDevicePermission, deviceNotify, devicePermission } from "@/lib/alertPrefs";
 
 // Heads-up alerts for guild events, shown on every page of the site:
 //   - Regular Battle (the war): 6 minutes before the entrance opens
@@ -67,7 +67,8 @@ export default function EventAlerts() {
       // when the voice is switched off or this device has none.
       if (prefs.sound) { if (prefs.voice) speak(due.kind).then((ok) => { if (!ok) chime(); }); else chime(); }
       if (prefs.vibrate) buzz();
-      if (prefs.device && !quiet) deviceNotify(`BLACKLIST INTROBOYS: ${due.title}`, due.body, due.id);
+      // With push on, the server sends the device notification (same tag), so the page does not.
+      if (prefs.device && !quiet && !getPushEndpoint()) deviceNotify(`BLACKLIST INTROBOYS: ${due.title}`, due.body, due.id);
       clearTimeout(hide.current);
       hide.current = setTimeout(() => setAlert(null), SHOW_MS);
     };
@@ -87,6 +88,10 @@ export default function EventAlerts() {
     };
     check();
     const t = setInterval(check, 5000);
+    // Members who already allowed notifications get push set up on this device without
+    // having to visit the settings (once per visit; nothing is asked of them).
+    const p0 = getAlertPrefs();
+    if (p0.device && pushSupported() && Notification.permission === "granted" && !getPushEndpoint()) enablePush();
     window.addEventListener("bi:alert-test", onTest);
     return () => { clearInterval(t); clearTimeout(hide.current); window.removeEventListener("bi:alert-test", onTest); };
   }, []);

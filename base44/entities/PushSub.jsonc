@@ -1,0 +1,65 @@
+{
+  "name": "PushSub",
+  "type": "object",
+  "properties": {
+    "member_id": {
+      "type": "string",
+      "description": "The member this phone or browser belongs to"
+    },
+    "endpoint": {
+      "type": "string",
+      "description": "Push address given by the browser (Google, Mozilla, Apple or Microsoft push service)"
+    },
+    "p256dh": {
+      "type": "string",
+      "description": "The browser's public encryption key"
+    },
+    "auth": {
+      "type": "string",
+      "description": "The browser's encryption secret"
+    },
+    "war": {
+      "type": "boolean",
+      "default": true
+    },
+    "hsb": {
+      "type": "boolean",
+      "default": true
+    },
+    "war_min": {
+      "type": "number",
+      "default": 6,
+      "description": "Minutes before the war entrance opens"
+    },
+    "hsb_min": {
+      "type": "number",
+      "default": 10,
+      "description": "Minutes before HSB opens"
+    },
+    "sent": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Alerts already sent to this device (last few)"
+    },
+    "fails": {
+      "type": "number",
+      "default": 0
+    },
+    "last_ok_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "device": {
+      "type": "string",
+      "description": "Short device description, for the member's own list"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

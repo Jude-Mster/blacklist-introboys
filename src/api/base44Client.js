@@ -40,7 +40,7 @@ const LOAD_RETRY_MS = [1200, 2500, 5000];
 // Games that play an animation before the result should be seen set the balance themselves.
 const HOLD_BALANCE = new Set(["playGame"]);
 // Calls that can't change anyone's points.
-const NO_POINTS = new Set(["getMyAccount", "chatSend", "sessionLogout", "discordAuthStart", "discordLogin"]);
+const NO_POINTS = new Set(["getMyAccount", "chatSend", "sessionLogout", "discordAuthStart", "discordLogin", "pushAction"]);
 const announce = (type, detail) => {
   try { window.dispatchEvent(new CustomEvent(type, { detail })); } catch { /* not in a browser */ }
 };

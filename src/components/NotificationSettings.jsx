@@ -3,7 +3,8 @@ import { Bell, Flame, Swords, Volume2, Smartphone, Mic, Vibrate } from "lucide-r
 import Panel from "@/components/Panel";
 import { cn } from "@/lib/utils";
 import {
-  getAlertPrefs, setAlertPrefs, WAR_MIN_CHOICES, HSB_MIN_CHOICES, devicePermission, askDevicePermission, deviceNotify, canVibrate, canSpeak
+  getAlertPrefs, setAlertPrefs, WAR_MIN_CHOICES, HSB_MIN_CHOICES, devicePermission, askDevicePermission, deviceNotify, canVibrate, canSpeak,
+  pushSupported, getPushEndpoint, enablePush, disablePush, testPush
 } from "@/lib/alertPrefs";
 
 // Profile > Notifications. Choices are saved on this device only, so the phone app and
@@ -39,6 +40,7 @@ const Minutes = ({ value, choices, onChange, label }) => (
 );
 
 const DEVICE_TEXT = {
+  push: "On. Alerts arrive even when the app or site is closed.",
   granted: "Allowed. You get a notification even when this page is in another tab.",
   default: "Not allowed yet. Switch this on and press Allow when your browser asks.",
   denied: "Blocked in your browser settings. Allow notifications for this site there, then come back.",
@@ -49,7 +51,11 @@ const RESULT_TEXT = {
   blocked: "Device notification not sent: not allowed on this device.",
   unsupported: "Device notification not available here.",
   failed: "Device notification failed on this device.",
-  off: "Device notification is switched off."
+  off: "Device notification is switched off.",
+  push_sent: "Push sent: it should pop up on this device in a few seconds, even with the app closed.",
+  push_missing: "Push is not set up on this device. Switch Device notification off and on again.",
+  push_expired: "This device's push address expired. Switch Device notification off and on again.",
+  push_failed: "Push could not be sent right now. Try again in a minute."
 };
 
 // Can this device play the recorded line? Played muted so it doesn't talk over the alert.
@@ -71,15 +77,27 @@ export default function NotificationSettings() {
   const [result, setResult] = useState("");
   const save = (change) => setPrefs(setAlertPrefs(change));
 
+  const [pushOn, setPushOn] = useState(() => !!getPushEndpoint());
+  const [busy, setBusy] = useState(false);
   const setDevice = async (on) => {
     save({ device: on });
-    if (on) setPerm(await askDevicePermission());
+    if (!on) { if (getPushEndpoint()) await disablePush(); setPushOn(false); return; }
+    setBusy(true);
+    try {
+      if (pushSupported()) {
+        const r = await enablePush();
+        setPushOn(r === "on");
+        if (r === "failed") setResult("Couldn't switch on push for this device. Notifications still show while the site is open.");
+      }
+      setPerm(await askDevicePermission());
+    } finally { setBusy(false); }
   };
 
   const test = async (kind) => {
     setResult("");
     window.dispatchEvent(new CustomEvent("bi:alert-test", { detail: kind }));
     const dev = !prefs.device ? "off"
+      : getPushEndpoint() ? "push_" + await testPush(kind)
       : await deviceNotify(`BLACKLIST INTROBOYS: Test ${kind === "war" ? "war" : "HSB"} alert`, "Device notifications are working.", "test-" + kind).catch(() => "failed");
     // Checked with a real (silent) play, so the line says what this device actually did.
     let voiceOk = false;
@@ -108,15 +126,15 @@ export default function NotificationSettings() {
       <Row icon={Vibrate} title="Vibrate" hint={canVibrate() ? "Buzzes the phone with each alert." : "This device can't vibrate from a web page."}>
         <Toggle label="Vibrate" on={prefs.vibrate && canVibrate()} onChange={(vibrate) => save({ vibrate })} />
       </Row>
-      <Row icon={Smartphone} title="Device notification" hint={DEVICE_TEXT[perm]}>
-        <Toggle label="Device notification" on={prefs.device && perm !== "unsupported" && perm !== "denied"} onChange={setDevice} />
+      <Row icon={Smartphone} title="Device notification" hint={busy ? "Setting up this device..." : DEVICE_TEXT[pushOn && prefs.device ? "push" : perm]}>
+        <Toggle label="Device notification" on={prefs.device && perm !== "unsupported" && perm !== "denied"} onChange={busy ? () => {} : setDevice} />
       </Row>
       <div className="mt-1 flex flex-wrap gap-2 border-t border-bronze/30 pt-3">
         <button type="button" data-test-alert="war" onClick={() => test("war")} className="btn-bronze h-9 px-3 text-sm"><Bell className="h-4 w-4" aria-hidden="true" /> Test war alert</button>
         <button type="button" data-test-alert="hsb" onClick={() => test("hsb")} className="btn-bronze h-9 px-3 text-sm"><Bell className="h-4 w-4" aria-hidden="true" /> Test HSB alert</button>
       </div>
       {result && <p role="status" data-test-result className="mt-2 text-sm text-mist">{result}</p>}
-      <p className="mt-2 text-xs text-mist/80">Saved on this device only. Alerts need the site or the app to be open; they can't wake a closed app.</p>
+      <p className="mt-2 text-xs text-mist/80">Saved on this device only.{pushOn && prefs.device ? " War and HSB alerts also arrive when the app is closed." : " Without device notifications, alerts only show while the site or app is open."}</p>
     </Panel>
   );
 }
