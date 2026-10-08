@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Bell, Flame, Swords, X } from "lucide-react";
 import { warStatus, localTime } from "@/lib/war";
 import { hsbStatus } from "@/lib/hsb";
-import { getAlertPrefs, askDevicePermission, deviceNotify, devicePermission } from "@/lib/alertPrefs";
+import { getAlertPrefs, speak, buzz, askDevicePermission, deviceNotify, devicePermission } from "@/lib/alertPrefs";
 
 // Heads-up alerts for guild events, shown on every page of the site:
 //   - Regular Battle (the war): 6 minutes before the entrance opens
@@ -63,7 +63,10 @@ export default function EventAlerts() {
   useEffect(() => {
     const show = (due, prefs, quiet) => {
       setAlert(due);
-      if (prefs.sound) chime();
+      // Sound: the spoken line ("Get ready for War" / "Get ready for HSB"), or the chime
+      // when the voice is switched off or this device has none.
+      if (prefs.sound) { if (prefs.voice) speak(due.kind).then((ok) => { if (!ok) chime(); }); else chime(); }
+      if (prefs.vibrate) buzz();
       if (prefs.device && !quiet) deviceNotify(`BLACKLIST INTROBOYS: ${due.title}`, due.body, due.id);
       clearTimeout(hide.current);
       hide.current = setTimeout(() => setAlert(null), SHOW_MS);

@@ -1,9 +1,9 @@
 import React, { useState } from "react";
-import { Bell, Flame, Swords, Volume2, Smartphone } from "lucide-react";
+import { Bell, Flame, Swords, Volume2, Smartphone, Mic, Vibrate } from "lucide-react";
 import Panel from "@/components/Panel";
 import { cn } from "@/lib/utils";
 import {
-  getAlertPrefs, setAlertPrefs, WAR_MIN_CHOICES, HSB_MIN_CHOICES, devicePermission, askDevicePermission, deviceNotify
+  getAlertPrefs, setAlertPrefs, WAR_MIN_CHOICES, HSB_MIN_CHOICES, devicePermission, askDevicePermission, deviceNotify, canVibrate, canSpeak
 } from "@/lib/alertPrefs";
 
 // Profile > Notifications. Choices are saved on this device only, so the phone app and
@@ -68,7 +68,7 @@ export default function NotificationSettings() {
     window.dispatchEvent(new CustomEvent("bi:alert-test", { detail: kind }));
     const dev = !prefs.device ? "off"
       : await deviceNotify(`BLACKLIST INTROBOYS: Test ${kind === "war" ? "war" : "HSB"} alert`, "Device notifications are working.", "test-" + kind).catch(() => "failed");
-    setResult(`Banner shown. ${prefs.sound ? "Sound played." : "Sound is switched off."} ${RESULT_TEXT[dev] || ""}`);
+    setResult(`Banner shown. ${!prefs.sound ? "Sound is switched off." : prefs.voice && canSpeak() ? "Voice played." : "Chime played."} ${!prefs.vibrate ? "Vibrate is switched off." : canVibrate() ? "Vibration sent." : "Vibration not available here."} ${RESULT_TEXT[dev] || ""}`);
   };
 
   return (
@@ -81,8 +81,16 @@ export default function NotificationSettings() {
         {prefs.hsb && <Minutes label="HSB alert time" value={prefs.hsbMin} choices={HSB_MIN_CHOICES} onChange={(hsbMin) => save({ hsbMin })} />}
         <Toggle label="HSB alert" on={prefs.hsb} onChange={(hsb) => save({ hsb })} />
       </Row>
-      <Row icon={Volume2} title="Sound" hint="A short chime with each alert.">
+      <Row icon={Volume2} title="Sound" hint="Plays a sound with each alert.">
         <Toggle label="Alert sound" on={prefs.sound} onChange={(sound) => save({ sound })} />
+      </Row>
+      {prefs.sound && (
+        <Row icon={Mic} title="Spoken alert" hint={canSpeak() ? "Says \"Get ready for War\" or \"Get ready for HSB\". Off plays a chime." : "This device has no voice, so a chime plays instead."}>
+          <Toggle label="Spoken alert" on={prefs.voice && canSpeak()} onChange={(voice) => save({ voice })} />
+        </Row>
+      )}
+      <Row icon={Vibrate} title="Vibrate" hint={canVibrate() ? "Buzzes the phone with each alert." : "This device can't vibrate from a web page."}>
+        <Toggle label="Vibrate" on={prefs.vibrate && canVibrate()} onChange={(vibrate) => save({ vibrate })} />
       </Row>
       <Row icon={Smartphone} title="Device notification" hint={DEVICE_TEXT[perm]}>
         <Toggle label="Device notification" on={prefs.device && perm !== "unsupported" && perm !== "denied"} onChange={setDevice} />
