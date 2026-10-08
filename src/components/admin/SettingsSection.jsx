@@ -107,10 +107,10 @@ export default function SettingsSection() {
           <Field
             id="app_download_url"
             label="App download link"
-            hint="Direct link to the Blacklist12Sky APK. Members on Android phones are invited to download it. Leave empty to turn the prompt off."
+            hint="Direct link to the Blacklist12Sky APK. Members on Android phones, and members still on the old app, are invited to download it. Leave empty to turn the prompt off."
             value={s.app_download_url || ""}
             onChange={(v) => set("app_download_url", v.trim())}
-            placeholder="https://…/Blacklist12Sky.apk"
+            placeholder="https://blacklistintroboys.com/app/blacklist-introboys.apk"
           />
         </fieldset>
 

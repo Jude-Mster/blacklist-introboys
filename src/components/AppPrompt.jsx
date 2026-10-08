@@ -1,20 +1,28 @@
 import React, { useEffect, useState } from "react";
-import { Download, X, Check, RotateCw, Wifi, FileDown, ShieldCheck, PackageCheck } from "lucide-react";
+import { Download, X, Check, RotateCw, Copy, FileDown, ShieldCheck, PackageCheck, Trash2 } from "lucide-react";
 import { useGuild } from "@/lib/GuildContext";
 
 const KEY = "bi.app.prompt.done";       // set by "Done" (they installed it)
 const VISIT_KEY = "bi.app.prompt.visit"; // set by "Not now": hidden for this visit only
 const DONE_DAYS = 30;
 
-// True on an Android phone's browser. False on desktop, iPhone, and inside the
-// app itself (an Android WebView marks itself with "; wv").
+// True on an Android phone's browser. False on desktop, iPhone, and inside an app.
 function onAndroidBrowser() {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent || "";
   if (!/Android/i.test(ua)) return false;
-  if (/; wv\)/i.test(ua) || /\bwv\b/.test(ua)) return false;
+  if (inOldApp()) return false;
   if (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) return false;
+  if (typeof document !== "undefined" && document.referrer.startsWith("android-app://")) return false;
   return true;
+}
+
+// True inside the OLD Android app (a plain web view, which marks itself with "; wv").
+// The new app runs on Chrome and never matches this.
+function inOldApp() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  return /Android/i.test(ua) && (/; wv\)/i.test(ua) || /\bwv\b/.test(ua));
 }
 
 // "Not now" only hides the invite until the site is opened again: every new visit in the
@@ -29,22 +37,25 @@ function snoozed() {
 }
 
 const STEPS = [
-  { icon: Wifi, title: "Wait for the download to finish", detail: "About 100 MB — use Wi-Fi if you can." },
-  { icon: FileDown, title: "Tap the downloaded file", detail: "In the notification bar, or tap Open in your browser's downloads." },
+  { icon: FileDown, title: "Open the downloaded file", detail: "It's small (about 1 MB). Tap it in the notification bar, or tap Open. If Chrome asks, tap Download anyway." },
   { icon: ShieldCheck, title: "If asked, allow your browser to install apps", detail: "First time only: tap Settings, turn on 'Allow from this source', then go back." },
-  { icon: PackageCheck, title: "Tap Install, then Open", detail: "The app icon appears on your home screen." }
+  { icon: PackageCheck, title: "Tap Install, then Open", detail: "If Play Protect warns about an unknown app, tap More details, then Install anyway. The app icon appears on your home screen." }
 ];
+const OLD_APP_STEP = { icon: Trash2, title: "Delete the old app", detail: "Once the new one works, uninstall the old Blacklist app: hold its icon, then tap Uninstall." };
 
-// Invites members on Android phones to download the guild app. The link comes
-// from Admin hall -> Guild settings -> Android app; with no link nothing shows.
+// Invites members on Android phones to download the guild app, and members still on the
+// old app to switch to the new one. The link comes from Admin hall -> Guild settings ->
+// Android app; with no link nothing shows.
 export default function AppPrompt() {
   const { settings } = useGuild();
   const url = settings && settings.app_download_url;
   const [show, setShow] = useState(false);
   const [guide, setGuide] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const old = inOldApp();
 
   useEffect(() => {
-    setShow(!!url && onAndroidBrowser() && !snoozed());
+    setShow(!!url && (onAndroidBrowser() || inOldApp()) && !snoozed());
   }, [url]);
 
   if (!show) return null;
@@ -71,8 +82,14 @@ export default function AppPrompt() {
 
   const openDownload = () => {
     setGuide(true);
-    window.open(url, "_blank", "noopener,noreferrer");
+    if (old) window.location.href = url; // the old app hands downloads to the phone, if it can
+    else window.open(url, "_blank", "noopener,noreferrer");
   };
+  // The old app may not be able to download: copying the link lets members paste it into Chrome.
+  const copyLink = async () => {
+    try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2500); } catch { setCopied(false); }
+  };
+  const steps = old ? [...STEPS, OLD_APP_STEP] : STEPS;
 
   return (
     <aside
@@ -82,8 +99,8 @@ export default function AppPrompt() {
       <div className="flex items-center gap-3">
         <img src="/icon-192.png" alt="" width={48} height={48} className="h-12 w-12 shrink-0 rounded-xl border border-bronze" onError={(e) => (e.currentTarget.style.display = "none")} />
         <div className="min-w-0 flex-1">
-          <p className="font-heading text-base font-semibold leading-tight text-white">Get the Blacklist12Sky app</p>
-          <p className="text-xs text-mist">Easier access: faster on your phone, one tap from your home screen.</p>
+          <p className="font-heading text-base font-semibold leading-tight text-white">{old ? "New app available" : "Get the Blacklist12Sky app"}</p>
+          <p className="text-xs text-mist">{old ? "Smaller and faster, with war and HSB alerts even when the app is closed. Install it, then delete this old app." : "Faster on your phone, one tap from your home screen, and war and HSB alerts even when it's closed."}</p>
         </div>
         <button onClick={dismiss} aria-label="Not now" className="-mr-1 flex h-11 w-11 shrink-0 items-center justify-center text-mist">
           <X className="h-5 w-5" />
@@ -93,7 +110,7 @@ export default function AppPrompt() {
       {!guide ? (
         <div className="mt-3 flex gap-2">
           <button onClick={openDownload} className="btn-seal h-11 flex-1 text-sm">
-            <Download className="h-4 w-4" /> Download for Android
+            <Download className="h-4 w-4" /> {old ? "Get the new app" : "Download for Android"}
           </button>
           <button onClick={dismiss} className="btn-bronze h-11 px-4 text-sm">Not now</button>
         </div>
@@ -101,7 +118,7 @@ export default function AppPrompt() {
         <div className="mt-3">
           <p className="mb-2 text-sm font-semibold text-white">How to install</p>
           <ol className="space-y-2.5">
-            {STEPS.map((s, i) => (
+            {steps.map((s, i) => (
               <li key={i} className="flex gap-2.5">
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-crimson text-xs font-bold text-white">
                   {i + 1}
@@ -116,6 +133,14 @@ export default function AppPrompt() {
               </li>
             ))}
           </ol>
+          {old && (
+            <div className="mt-3 rounded-md border border-bronze/60 bg-ink p-2">
+              <p className="text-xs text-mist">Nothing downloading? Copy the link, open Chrome, paste it in the address bar.</p>
+              <button onClick={copyLink} className="btn-bronze mt-2 h-9 w-full text-xs">
+                {copied ? <><Check className="h-3.5 w-3.5" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy download link</>}
+              </button>
+            </div>
+          )}
           <div className="mt-3 flex gap-2">
             <button onClick={openDownload} className="btn-bronze h-11 flex-1 text-sm">
               <RotateCw className="h-4 w-4" /> Download again
