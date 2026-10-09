@@ -18,7 +18,7 @@ export default function Landing() {
           <FullLogo className="mx-auto w-full max-w-[22rem] sm:max-w-[30rem]" />
         </h1>
 
-        <p className="mt-6 max-w-md text-base text-mist sm:text-lg">Welcome po mga members ng introboys. Dito po yung event, sugal, event raffle na igaganap para po sa mga members po natin. Exclusive lang po itong website sa mga members ng BLACKLIST INTROBOYS.
+        <p className="mt-6 max-w-md text-base text-mist sm:text-lg">Welcome po mga members ng INTROBOYS. Dito po yung event, sugal, event raffle na igaganap para po sa mga members po natin. Exclusive lang po itong website sa mga members ng BLACKLIST INTROBOYS. MS
 
         </p>
 
