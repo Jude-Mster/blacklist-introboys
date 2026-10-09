@@ -45,6 +45,7 @@ export default function SettingsSection() {
           min_bet: s.min_bet,
           max_bet: s.max_bet,
           daily_bet_cap: s.daily_bet_cap,
+          derby_max_bet: s.derby_max_bet ?? 2000,
           house_edge_pct: s.house_edge_pct,
           award_cap_per_day: s.award_cap_per_day,
           daily_wheel_prizes: Array.isArray(s.daily_wheel_prizes) ? s.daily_wheel_prizes : String(s.daily_wheel_prizes).split(","),
@@ -120,6 +121,7 @@ export default function SettingsSection() {
             <Field id="min_bet" label="Minimum wager" type="number" value={s.min_bet} onChange={(v) => set("min_bet", v)} />
             <Field id="max_bet" label="Maximum wager" type="number" value={s.max_bet} onChange={(v) => set("max_bet", v)} />
             <Field id="daily_bet_cap" label="Daily wager limit" type="number" value={s.daily_bet_cap} onChange={(v) => set("daily_bet_cap", v)} />
+            <Field id="derby_max_bet" label="Derby limit per race" type="number" value={s.derby_max_bet ?? 2000} onChange={(v) => set("derby_max_bet", v)} hint="Most one member can bet on one Blacklist Derby race." />
             <Field id="house_edge_pct" label="House edge %" type="number" value={s.house_edge_pct} onChange={(v) => set("house_edge_pct", v)} hint="0 to 20. At 3, games return 97% over time." />
             <Field id="award_cap_per_day" label="Vice Guild Member award cap / 24h" type="number" value={s.award_cap_per_day} onChange={(v) => set("award_cap_per_day", v)} />
             <Field

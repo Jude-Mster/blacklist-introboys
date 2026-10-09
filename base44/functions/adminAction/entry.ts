@@ -65,6 +65,7 @@ export default async function(req) {
       if ('min_bet' in p) update.min_bet = int(p.min_bet, { min: 1, name: 'Minimum wager' });
       if ('max_bet' in p) update.max_bet = int(p.max_bet, { min: 1, name: 'Maximum wager' });
       if ('daily_bet_cap' in p) update.daily_bet_cap = int(p.daily_bet_cap, { min: 1, name: 'Daily wager limit' });
+      if ('derby_max_bet' in p) update.derby_max_bet = int(p.derby_max_bet, { min: 1, name: 'Derby limit per race' });
       if ('house_edge_pct' in p) update.house_edge_pct = int(p.house_edge_pct, { min: 0, max: 20, name: 'House edge' });
       if ('award_cap_per_day' in p) update.award_cap_per_day = int(p.award_cap_per_day, { min: 0, name: 'Officer award cap' });
       if ('daily_wheel_prizes' in p) {

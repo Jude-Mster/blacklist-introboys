@@ -1,0 +1,48 @@
+{
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "derby_payouts",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "pay": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "derbyAction",
+            "args": {
+              "action": "sweep",
+              "__wf_secret": "0e8969e4c6d6eececae2d761309a066b437efb450f70350a"
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Pay finished Derby bets",
+            "description": "Pays bets on finished races for members who left the page"
+          }
+        }
+      }
+    ]
+  },
+  "description": "Every 5 minutes, pay any Blacklist Derby bets on finished races that were not collected yet, so members who closed the page are always paid. Passes a shared secret so the function can reject anonymous callers.",
+  "name": "Derby Payouts",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "*/5 * * * *",
+      "one_time_date": null,
+      "timezone": "UTC",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  }
+}

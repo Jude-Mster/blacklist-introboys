@@ -26,7 +26,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- Settings + lookups ----------
 
-export const ALL_GAMES = ["coinflip", "dragondice", "lanternslots", "skywheel", "roulette", "blackjack", "lucky9", "poker", "pusoy", "fortune"];
+export const ALL_GAMES = ["coinflip", "dragondice", "lanternslots", "skywheel", "roulette", "blackjack", "lucky9", "poker", "pusoy", "fortune", "derby"];
 
 // Ranks, lowest to highest. "officer" is shown as Vice Guild Member.
 export const RANKS = ["member", "guild_member", "officer", "leader"];
@@ -41,7 +41,8 @@ export const GAME_NAMES = {
   lucky9: "Blacklist Lucky 9",
   poker: "Poker Room",
   pusoy: "Pusoy Dos",
-  fortune: "Blacklist Dragon's Fortune"
+  fortune: "Blacklist Dragon's Fortune",
+  derby: "Blacklist Derby"
 };
 
 // Settings change rarely but are needed by every request, so each running copy of a
@@ -266,7 +267,6 @@ export async function withRecordLock(b, entity: string, id: string, fn: () => Pr
     // A lock that isn't removed blocks everyone else on this record until it expires,
     // so make sure it really goes.
     await L.delete(mine.id).catch(async () => { await sleep(400); await L.delete(mine.id).catch(() => {}); });
-   
   }
 }
 

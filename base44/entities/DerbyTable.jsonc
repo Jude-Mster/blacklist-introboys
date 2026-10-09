@@ -1,0 +1,71 @@
+{
+  "name": "DerbyTable",
+  "type": "object",
+  "description": "The one Blacklist Derby live track: the current race and recent results. Server-only: the result and race timeline are secret until betting closes.",
+  "properties": {
+    "clock": {
+      "type": "string",
+      "description": "d1 = races run on the clock"
+    },
+    "round_no": {
+      "type": "integer",
+      "default": 0
+    },
+    "dist": {
+      "type": "integer",
+      "default": 1600
+    },
+    "play": {
+      "type": "number",
+      "default": 1.4,
+      "description": "How much faster than real time races are played back"
+    },
+    "field": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "The 8 runners: no, id, rating, style, form"
+    },
+    "odds": {
+      "type": "object",
+      "description": "Prices per bet type: win, top2, top3 (8 each) and fc (64)"
+    },
+    "result_order": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      },
+      "description": "SECRET until the race is over: finishing order as field indexes"
+    },
+    "timeline": {
+      "type": "object",
+      "description": "SECRET until betting closes: every horse's position through the race"
+    },
+    "bets_close_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "race_ends_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "next_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "recent": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Finished races, newest first: { r, ids, order }"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

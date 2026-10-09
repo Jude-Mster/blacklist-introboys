@@ -1,0 +1,62 @@
+{
+  "name": "DerbyBet",
+  "type": "object",
+  "description": "One member's bets on one Blacklist Derby race",
+  "properties": {
+    "round_no": {
+      "type": "integer"
+    },
+    "member_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "avatar": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string"
+    },
+    "field_ids": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      },
+      "description": "Which horses ran, by stable id, for the history"
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Each bet: type (win, top2, top3, fc), a, b, amount and the price it was placed at"
+    },
+    "amount": {
+      "type": "integer"
+    },
+    "payout": {
+      "type": "integer",
+      "default": 0
+    },
+    "net": {
+      "type": "integer",
+      "default": 0
+    },
+    "settled": {
+      "type": "boolean",
+      "default": false
+    },
+    "pay_started": {
+      "type": "boolean",
+      "default": false,
+      "description": "A payout for this bet has been started; a retry checks the points log before paying"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 
 const COLLAPSE_KEY = "bi.nav.collapsed";
 // Pages where chat messages fly across the screen.
-const PLAY_PAGES = /^\/(games|poker|pusoy)(\/|$)/;
+const PLAY_PAGES = /^\/(games|poker|pusoy|derby)(\/|$)/;
 const MAX_FLOATERS = 6;
 const LANES = 6;
 

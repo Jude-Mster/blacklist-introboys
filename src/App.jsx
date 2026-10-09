@@ -22,6 +22,10 @@ import Raffle from '@/pages/Raffle';
 import Shop from '@/pages/Shop';
 import Guide from '@/pages/Guide';
 import { Privacy, Terms } from '@/pages/Legal';
+import { lazy, Suspense } from 'react';
+import LanternSpinner from '@/components/LanternSpinner';
+// The Derby carries the 3D course: only downloaded when a member opens it.
+const Derby = lazy(() => import('@/pages/Derby'));
 // Add page imports here
 
 // Old addresses (signup, password reset, the old Discord link page's callback)
@@ -50,6 +54,7 @@ const AuthenticatedApp = () => {
           <Route path="/poker/:tableId" element={<Poker />} />
           <Route path="/pusoy" element={<Pusoy />} />
           <Route path="/pusoy/:tableId" element={<Pusoy />} />
+          <Route path="/derby" element={<Suspense fallback={<LanternSpinner label="Opening the track" className="py-24" />}><Derby /></Suspense>} />
           <Route path="/raffle" element={<Raffle />} />
           <Route path="/shop" element={<Shop />} />
           <Route path="/guide" element={<Guide />} />

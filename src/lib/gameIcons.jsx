@@ -51,5 +51,10 @@ export const GAME_ICONS = {
     <span className="font-heading text-base font-extrabold leading-none text-gold" aria-hidden="true">
       2
     </span>
+  ),
+  derby: (
+    <span className="font-heading text-base font-extrabold leading-none text-ember" lang="zh-Hant" aria-hidden="true">
+      馬
+    </span>
   )
 };

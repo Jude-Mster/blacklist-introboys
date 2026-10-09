@@ -56,7 +56,8 @@
           "lucky9",
           "poker",
           "pusoy",
-          "fortune"
+          "fortune",
+          "derby"
         ]
       },
       "default": [
@@ -69,6 +70,11 @@
         "lucky9",
         "poker"
       ]
+    },
+    "derby_max_bet": {
+      "type": "integer",
+      "default": 2000,
+      "description": "Most a member can bet on one Blacklist Derby race"
     },
     "discord_invite_url": {
       "type": "string",
