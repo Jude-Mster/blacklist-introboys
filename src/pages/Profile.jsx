@@ -4,6 +4,7 @@ import { Navigate, Link } from "react-router-dom";
 import Panel from "@/components/Panel";
 import LanternSpinner from "@/components/LanternSpinner";
 import NotificationSettings from "@/components/NotificationSettings";
+import MyPrizes from "@/components/prizes/MyPrizes";
 import ActivityList from "@/components/ActivityList";
 import { useGuild } from "@/lib/GuildContext";
 import { Points, ROLE_TITLE } from "@/components/SealLogo";
@@ -79,6 +80,8 @@ export default function Profile() {
           </div>
         )}
       </Panel>
+
+      <MyPrizes />
 
       <NotificationSettings />
 

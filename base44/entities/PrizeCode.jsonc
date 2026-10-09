@@ -1,0 +1,94 @@
+{
+  "name": "PrizeCode",
+  "type": "object",
+  "description": "A prize code (for example a Wuxen2 GP code). Only the member it was given to can load the code; everyone else sees the last four characters.",
+  "properties": {
+    "code": {
+      "type": "string",
+      "description": "The code, ENCRYPTED with the PRIZE_CODE_KEY secret. Only decrypted for the member it was given to."
+    },
+    "code_hash": {
+      "type": "string",
+      "description": "Keyed fingerprint of the code, to refuse the same code twice"
+    },
+    "last4": {
+      "type": "string",
+      "description": "Last four characters, shown to the Guild Leader"
+    },
+    "label": {
+      "type": "string",
+      "description": "Prize name, e.g. 500 GP Code"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "stock",
+        "reserved",
+        "assigned"
+      ],
+      "description": "stock: waiting; reserved: set aside for a raffle prize; assigned: given to a member"
+    },
+    "source": {
+      "type": "string",
+      "description": "admin or raffle once given; stock or typed while set aside for a raffle"
+    },
+    "member_id": {
+      "type": "string"
+    },
+    "member_name": {
+      "type": "string"
+    },
+    "discord_id": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string",
+      "description": "What it was given for, shown to the member"
+    },
+    "raffle_id": {
+      "type": "string"
+    },
+    "raffle_title": {
+      "type": "string"
+    },
+    "place": {
+      "type": "integer",
+      "description": "Raffle prize place (1 = 1st)"
+    },
+    "assigned_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "dm_status": {
+      "type": "string",
+      "description": "Discord DM: pending, sent, blocked, no_bot or failed"
+    },
+    "dm_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "push_sent": {
+      "type": "boolean",
+      "default": false
+    },
+    "opened_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the member first saw the code"
+    },
+    "redeemed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the member marked it redeemed"
+    },
+    "added_by": {
+      "type": "string"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

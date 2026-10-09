@@ -240,18 +240,18 @@ function RaffleBanner() {
         <Ticket className={cn("h-5 w-5", open ? "text-white" : "text-gold")} aria-hidden="true" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block font-display text-[22px] uppercase leading-tight text-white">
+        <span className="block font-heading text-[22px] font-bold leading-tight text-white">
           {open ? (raffle.title || "Guild raffle") : "Guild raffle"}
         </span>
-        <span className="mt-1 block min-h-[1.25rem] text-sm text-mist">
+        <span className="mt-1 block min-h-[1.25rem] text-[15px] text-[#c4c4c4]">
           {open ? (
             <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="ember-pulse inline-flex items-center rounded-sm bg-crimson px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-white">Live</span>
               <span>Draw in <span className="tabular-nums text-gold">{formatCountdown(remaining)}</span></span>
               <span aria-hidden="true">·</span>
-              <span>Pot <span className="tabular-nums text-gold">{pot.toLocaleString()}</span></span>
+              <span>{raffle.pot_to_first ? "Pot" : "Points spent"} <span className="tabular-nums text-gold">{pot.toLocaleString()}</span></span>
               <span aria-hidden="true">·</span>
-              <span>You hold <span className="tabular-nums text-gold">{myTickets}</span> tickets</span>
+              <span>You hold <span className="tabular-nums text-gold">{myTickets}</span> {myTickets === 1 ? "ticket" : "tickets"}</span>
             </span>
           ) : (
             "No raffle running right now. Check back soon."

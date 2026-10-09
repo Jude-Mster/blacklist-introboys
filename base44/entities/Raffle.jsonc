@@ -9,10 +9,12 @@
     "status": {
       "type": "string",
       "enum": [
+        "pending",
         "open",
         "drawn",
         "cancelled"
-      ]
+      ],
+      "description": "pending: being set up (codes being set aside), not shown yet; open: selling tickets"
     },
     "ticket_price": {
       "type": "integer"
@@ -31,6 +33,18 @@
         "type": "string"
       },
       "description": "Prize labels in order: first is the top prize"
+    },
+    "prize_kinds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "item",
+          "points",
+          "code"
+        ]
+      },
+      "description": "Kind of each prize, in the same order: item (handed out in game), points (paid automatically), code (prize code sent privately to the winner)"
     },
     "pot_to_first": {
       "type": "boolean",
@@ -53,6 +67,11 @@
     "drawn_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "announced_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the raffle was last posted to the Discord announcements channel"
     },
     "created_by": {
       "type": "string"

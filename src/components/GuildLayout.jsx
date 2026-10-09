@@ -2,6 +2,7 @@ import WarTimer from "@/components/WarTimer";
 import HsbTimer from "@/components/HsbTimer";
 import EventAlerts from "@/components/EventAlerts";
 import AppPrompt from "@/components/AppPrompt";
+import PrizeNotice from "@/components/prizes/PrizeNotice";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { GuildProvider, useGuild } from "@/lib/GuildContext";
@@ -109,6 +110,7 @@ function Shell() {
         <div className="mx-auto w-full max-w-5xl">
           <WarTimer variant="strip" className="mb-2 md:hidden" />
           <HsbTimer variant="strip" className="mb-3 md:hidden" />
+          {account && account.linked && <PrizeNotice />}
           <Outlet />
         </div>
       </main>

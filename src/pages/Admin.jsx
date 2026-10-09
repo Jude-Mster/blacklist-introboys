@@ -12,6 +12,7 @@ import TotalsSection from "@/components/admin/TotalsSection";
 import RosterSection from "@/components/admin/RosterSection";
 import SystemCheck from "@/components/admin/SystemCheck";
 import DiscordSection from "@/components/admin/DiscordSection";
+import PrizeCodesSection from "@/components/admin/PrizeCodesSection";
 
 export default function Admin() {
   const { account, loading } = useGuild();
@@ -45,6 +46,7 @@ export default function Admin() {
         <AwardSection />
         <BanSection />
       </div>
+      {role === "leader" && <PrizeCodesSection />}
       <RosterSection />
       <DiscordSection />
       <TotalsSection />

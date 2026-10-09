@@ -35,12 +35,12 @@ const client = createClient({
 const READ_FUNCTIONS = { getChatMessages: 3000, getGameFeed: 3000, getLeaderboard: 3000 };
 const READ_ACTIONS = { state: 900, list: 900 };
 const BACKOFF_MS = 4000;
-const LOAD_ACTIONS = new Set(["state", "list", "catalog", "adminOverview", "roster", "totals", "search", "discordStatus", "ping"]);
+const LOAD_ACTIONS = new Set(["state", "list", "catalog", "adminOverview", "roster", "totals", "search", "discordStatus", "ping", "mine", "pending", "adminList", "stockSummary"]);
 const LOAD_RETRY_MS = [1200, 2500, 5000];
 // Games that play an animation before the result should be seen set the balance themselves.
 const HOLD_BALANCE = new Set(["playGame"]);
 // Calls that can't change anyone's points.
-const NO_POINTS = new Set(["getMyAccount", "chatSend", "sessionLogout", "discordAuthStart", "discordLogin", "pushAction"]);
+const NO_POINTS = new Set(["getMyAccount", "chatSend", "sessionLogout", "discordAuthStart", "discordLogin", "pushAction", "prizeAction"]);
 const announce = (type, detail) => {
   try { window.dispatchEvent(new CustomEvent(type, { detail })); } catch { /* not in a browser */ }
 };

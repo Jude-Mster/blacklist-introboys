@@ -1,0 +1,48 @@
+{
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "raffle_draws",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "draw": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "raffleAction",
+            "args": {
+              "action": "sweep",
+              "__wf_secret": "95c1addabf7f6562301524d5181e2e6b28ccef8dff38ef48"
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Draw finished raffles",
+            "description": "Draws every raffle whose time is up"
+          }
+        }
+      }
+    ]
+  },
+  "description": "Every 5 minutes, draw any raffle whose time is up, so winners are picked and announced on time even if nobody is on the site. Passes a shared secret so the function can reject anonymous callers.",
+  "name": "Raffle Draws",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "*/5 * * * *",
+      "one_time_date": null,
+      "timezone": "UTC",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  }
+}
