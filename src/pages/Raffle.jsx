@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, Link } from "react-router-dom";
-import { Loader2, Minus, Plus, Ticket, Send, Check, Lock, KeyRound } from "lucide-react";
+import { Loader2, Minus, Plus, Ticket, Send, Check, Lock, KeyRound, Pencil } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import Avatar from "@/components/Avatar";
@@ -8,6 +8,7 @@ import LanternSpinner from "@/components/LanternSpinner";
 import RaffleWheel, { landOnMember, sliceColors } from "@/components/raffle/RaffleWheel";
 import RaffleAdmin from "@/components/raffle/RaffleAdmin";
 import CodeSlots from "@/components/raffle/CodeSlots";
+import RaffleEdit from "@/components/raffle/RaffleEdit";
 import { useGuild, errorText } from "@/lib/GuildContext";
 import { cn } from "@/lib/utils";
 
@@ -164,6 +165,7 @@ function RaffleCard({ raffle: r, member, leader, discordReady, serverNow, onChan
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
   const [ping, setPing] = useState(true);
+  const [editing, setEditing] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const [revealed, setRevealed] = useState(r.status === "drawn");
@@ -388,11 +390,15 @@ function RaffleCard({ raffle: r, member, leader, discordReady, serverNow, onChan
           {error && <p role="alert" className="text-[15px] text-ember">{error}</p>}
           {note && <p role="status" className="text-[15px] text-jade">{note}</p>}
 
-          {leader && Array.isArray(r.code_slots) && r.code_slots.some(Boolean) && (
+          {leader && editing && selling && (
+            <RaffleEdit raffle={r} onClose={() => setEditing(false)} onSaved={async (msg) => { setEditing(false); setError(""); setNote(msg); await onChange(); }} />
+          )}
+
+          {leader && !editing && Array.isArray(r.code_slots) && r.code_slots.some(Boolean) && (
             <CodeSlots raffle={r} drawn={drawn} onChange={onChange} />
           )}
 
-          {leader && !drawn && (
+          {leader && !drawn && !editing && (
             <div className="rounded-xl border border-bronze/50 bg-[#161616] p-4">
               <p className="font-heading text-[15px] tracking-[0.12em] text-[#c4c4c4]">GUILD LEADER</p>
               {confirm ? (
@@ -411,6 +417,9 @@ function RaffleCard({ raffle: r, member, leader, discordReady, serverNow, onChan
                     <button onClick={post} disabled={!!busy || discordReady === false} className="inline-flex h-11 items-center gap-2 rounded-md bg-[#5865f2] px-4 font-heading text-[15px] tracking-[0.04em] text-white hover:bg-[#4752c4] disabled:opacity-50">
                       {busy === "announce" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" aria-hidden="true" />} POST TO DISCORD
                     </button>
+                    {selling && (
+                      <button onClick={() => { setConfirm(""); setNote(""); setEditing(true); }} className="btn-bronze h-11 px-4 text-sm"><Pencil className="h-4 w-4" aria-hidden="true" /> Edit raffle</button>
+                    )}
                     <button onClick={() => setConfirm("drawNow")} className="btn-bronze h-11 px-4 text-sm">Draw now</button>
                     <button onClick={() => setConfirm("cancel")} className="btn-bronze h-11 px-4 text-sm !text-ember">Cancel and refund</button>
                   </div>

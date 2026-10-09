@@ -263,7 +263,7 @@ export default async function(req) {
     }
 
     // ----- Guild Leader controls -----
-    if (!leader && ['create', 'cancel', 'drawNow', 'announce', 'setPrizeCode'].includes(p.action)) throw new UserError('Only the Guild Leader can run raffles.', 403);
+    if (!leader && ['create', 'edit', 'cancel', 'drawNow', 'announce', 'setPrizeCode'].includes(p.action)) throw new UserError('Only the Guild Leader can run raffles.', 403);
 
     if (p.action === 'announce') {
       if (!announceWebhookUrl()) throw new UserError('Discord announcements are not connected yet. Add the DISCORD_ANNOUNCE_WEBHOOK_URL secret first.');
@@ -336,6 +336,112 @@ export default async function(req) {
         if (announced) await b.asServiceRole.entities.Raffle.update(r.id, { announced_at: iso(Date.now()) }).catch(() => {});
       }
       return Response.json({ ok: true, raffle: r, announced });
+    }
+
+    // Edit an open raffle (Guild Leader). Name, draw time, ticket limit and prizes can
+    // change at any time before the draw. The ticket price and where the pot goes are
+    // locked once a ticket is sold, so nobody pays a different price for the same thing.
+    // p.prizes: [{ label, kind, from_place, code }] in the new order. from_place is the
+    // prize's place before the edit (0 for a new prize), so a code already set aside for
+    // it follows it. code: { code } or { from_stock: true } sets aside a new code; null
+    // keeps the one already set aside (if any).
+    if (p.action === 'edit') {
+      const list = (Array.isArray(p.prizes) ? p.prizes : []).filter((x) => x && String(x.label || '').trim()).slice(0, 11);
+      if (!list.length) throw new UserError('Add at least one prize.');
+      if (list.length > 10) throw new UserError('A raffle can have up to 10 prizes.');
+      const labels = list.map((x) => String(x.label).trim().replace(/\s+/g, ' ').slice(0, 80));
+      const kinds = list.map((x) => (KINDS.includes(x.kind) ? x.kind : 'item'));
+      kinds.forEach((k, i) => {
+        if (k === 'points' && !prizePoints(labels[i])) throw new UserError(`Write the ${['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th'][i]} prize as a number of points, like "150 points".`);
+      });
+      const specs = list.map((x, i) => {
+        if (kinds[i] !== 'code' || !x.code) return null;
+        if (x.code.from_stock === true) return { from_stock: true };
+        return String(x.code.code || '').trim() ? { code: String(x.code.code) } : null;
+      });
+      const typed = new Set();
+      for (const sp of specs) {
+        if (!sp || sp.from_stock) continue;
+        const c = checkCode(sp.code).toUpperCase();
+        if (typed.has(c)) throw new UserError('The same code is used for two prizes.');
+        typed.add(c);
+      }
+      const result = await withRecordLock(b, 'Raffle', String(p.raffleId), async () => {
+        const r = await b.asServiceRole.entities.Raffle.get(String(p.raffleId)).catch(() => null);
+        if (!r) throw new UserError('Raffle not found.', 404);
+        if (r.status !== 'open') throw new UserError('Only an open raffle can be edited.');
+        if (Date.parse(r.ends_at) <= Date.now()) throw new UserError('The draw time has passed, so this raffle is being drawn now.');
+        const oldCount = (r.prizes || []).length;
+        const from = list.map((x) => {
+          const f = Math.floor(Number(x.from_place) || 0);
+          return f >= 1 && f <= oldCount ? f : 0;
+        });
+        if (new Set(from.filter(Boolean)).size !== from.filter(Boolean).length) throw new UserError('Each prize can only be kept once. Reload the page and try again.');
+
+        const title = p.title === undefined ? r.title : String(p.title || '').trim().slice(0, 60);
+        if (!title) throw new UserError('Give the raffle a name.');
+        let ends = Date.parse(r.ends_at);
+        if (p.ends_at !== undefined) {
+          ends = Date.parse(String(p.ends_at || ''));
+          if (!Number.isFinite(ends) || ends < Date.now() + 60000) throw new UserError('Pick a draw time at least a minute from now.');
+          if (ends > Date.now() + 60 * 24 * 3600000) throw new UserError('A raffle can run for up to 60 days.');
+        }
+        const max = p.max_tickets_per_member === undefined ? r.max_tickets_per_member || 0 : Math.max(0, Math.floor(Number(p.max_tickets_per_member) || 0));
+        const sold = (r.tickets_sold || 0) > 0 || (await tickets(b, r.id)).length > 0;
+        let price = r.ticket_price;
+        if (p.ticket_price !== undefined && Math.floor(Number(p.ticket_price)) !== r.ticket_price) {
+          if (sold) throw new UserError("Tickets were already sold, so the ticket price can't change.");
+          price = Math.floor(Number(p.ticket_price));
+          if (!(price >= 1)) throw new UserError('Set a ticket price of at least 1 point.');
+        }
+        let potToFirst = r.pot_to_first !== false;
+        if (p.pot_to_first !== undefined && (p.pot_to_first !== false) !== potToFirst) {
+          if (sold) throw new UserError("Tickets were already sold, so where the ticket points go can't change.");
+          potToFirst = p.pot_to_first !== false;
+        }
+
+        return runStockLocked(b, async () => {
+          const old = await reservedFor(b, r.id);
+          const draft = { id: r.id, title, prizes: labels };
+          // 1. Set aside the new codes. If one fails, nothing has changed yet.
+          const fresh = [];
+          try {
+            for (let i = 0; i < list.length; i++) if (specs[i]) fresh.push(await reserveCode(b, draft, i + 1, specs[i], me.id));
+          } catch (e) {
+            await discardReserved(b, fresh);
+            throw e;
+          }
+          // 2. Save the raffle.
+          let updated;
+          try {
+            updated = await b.asServiceRole.entities.Raffle.update(r.id, {
+              title, ends_at: iso(ends), max_tickets_per_member: max, ticket_price: price, pot_to_first: potToFirst, prizes: labels, prize_kinds: kinds
+            });
+          } catch (e) {
+            await discardReserved(b, fresh);
+            throw e;
+          }
+          // 3. Codes set aside before: follow their prize to its new place, or go back to
+          //    the stock if the prize was removed or isn't a code any more. A code replaced
+          //    by a new one: a stock code goes back to stock, a typed one is dropped.
+          let toStock = 0;
+          for (const row of old) {
+            const i = from.indexOf(Number(row.place));
+            if (i < 0 || kinds[i] !== 'code') { await releaseToStock(b, [row]); toStock++; continue; }
+            if (specs[i]) { await discardReserved(b, [row]); continue; }
+            await PrizeCodes(b).update(row.id, { place: i + 1, raffle_title: title });
+          }
+          return { raffle: updated, toStock, changedPrizes: JSON.stringify(labels) !== JSON.stringify(r.prizes || []) || kinds.some((k, i) => k !== kindOf(r, i)), changedTime: ends !== Date.parse(r.ends_at) };
+        });
+      }, 60000);
+      const r = result.raffle;
+      if (result.changedPrizes || result.changedTime) {
+        const bits = [];
+        if (result.changedPrizes) bits.push(`Prizes: ${r.prizes.map((x, i) => `${['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th'][i]} ${x}`).join(', ')}.`);
+        if (result.changedTime) bits.push('The draw time changed, check the raffle page.');
+        await postSystem(b, GUILD_CHANNEL, `Raffle "${r.title}" was updated. ${bits.join(' ')}`).catch(() => {});
+      }
+      return Response.json({ ok: true, raffle: { ...r, lock_token: undefined, lock_until: undefined }, codes_to_stock: result.toStock });
     }
 
     // Add or change the code for a code prize. Before the draw it is set aside for that
