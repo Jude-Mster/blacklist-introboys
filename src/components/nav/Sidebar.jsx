@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useGuild } from "@/lib/GuildContext";
 import { GAME_ICONS } from "@/lib/gameIcons";
-import { HOME, RANKINGS, PROFILE, ADMIN, CHAT, RAFFLE, SHOP, GUIDE, gameLinks, isActive, isAdminRole, tableLinks } from "./navConfig";
+import { HOME, RANKINGS, PROFILE, ADMIN, CHAT, FIGHT, GuildMark, SHOP, GUIDE, gameLinks, isActive, isAdminRole, tableLinks } from "./navConfig";
 import { cn } from "@/lib/utils";
 import { base44 } from "@/api/base44Client";
 
@@ -15,15 +15,13 @@ export default function Sidebar({ collapsed, onToggle, onChat, chatOpen, unread 
   const member = account && account.linked ? account.member : null;
   const wide = !collapsed; // labels show only on lg+ and only when not collapsed
   const games = gameLinks(settings);
-  const [raffleOpen, setRaffleOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
 
+  // A dot on Fight while a tournament is open for sign-up or being fought.
   useEffect(() => {
     let alive = true;
-    base44.functions.invoke("raffleAction", { action: "list" })
-      .then((res) => {
-        if (!alive) return;
-        setRaffleOpen((res.data && res.data.raffles || []).some((r) => r.status === "open"));
-      })
+    base44.functions.invoke("tournamentAction", { action: "status" })
+      .then((res) => { if (alive) setTourOpen(!!(res.data && res.data.tournament)); })
       .catch(() => {});
     return () => { alive = false; };
   }, []);
@@ -38,6 +36,7 @@ export default function Sidebar({ collapsed, onToggle, onChat, chatOpen, unread 
     >
       <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3">
         <Item item={HOME} active={isActive(HOME, location)} wide={wide} />
+        <Item item={FIGHT} glyph={<GuildMark className="h-7 w-7" />} active={isActive(FIGHT, location)} wide={wide} badge={tourOpen} />
 
         <Group label="Play" wide={wide}>
           {games.map((g) => (
@@ -49,7 +48,6 @@ export default function Sidebar({ collapsed, onToggle, onChat, chatOpen, unread 
         </Group>
 
         <Group label="Guild" wide={wide}>
-          <Item item={RAFFLE} active={isActive(RAFFLE, location)} wide={wide} badge={raffleOpen} />
           <Item item={SHOP} active={isActive(SHOP, location)} wide={wide} />
           <Item item={RANKINGS} active={isActive(RANKINGS, location)} wide={wide} />
           <Item item={GUIDE} active={isActive(GUIDE, location)} wide={wide} />

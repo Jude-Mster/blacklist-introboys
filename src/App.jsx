@@ -18,7 +18,6 @@ import Profile from '@/pages/Profile';
 import Admin from '@/pages/Admin';
 import Poker from '@/pages/Poker';
 import Pusoy from '@/pages/Pusoy';
-import Raffle from '@/pages/Raffle';
 import Shop from '@/pages/Shop';
 import Guide from '@/pages/Guide';
 import { Privacy, Terms } from '@/pages/Legal';
@@ -26,6 +25,8 @@ import { lazy, Suspense } from 'react';
 import LanternSpinner from '@/components/LanternSpinner';
 // The Derby carries the 3D course: only downloaded when a member opens it.
 const Derby = lazy(() => import('@/pages/Derby'));
+// The Blacklist Arena carries its 3D fight scene: only downloaded when a member opens it.
+const Arena = lazy(() => import('@/pages/Arena'));
 // Add page imports here
 
 // Old addresses (signup, password reset, the old Discord link page's callback)
@@ -55,7 +56,8 @@ const AuthenticatedApp = () => {
           <Route path="/pusoy" element={<Pusoy />} />
           <Route path="/pusoy/:tableId" element={<Pusoy />} />
           <Route path="/derby" element={<Suspense fallback={<LanternSpinner label="Opening the track" className="py-24" />}><Derby /></Suspense>} />
-          <Route path="/raffle" element={<Raffle />} />
+          <Route path="/arena" element={<Suspense fallback={<LanternSpinner label="Opening the arena" className="py-24" />}><Arena /></Suspense>} />
+          <Route path="/raffle" element={<Navigate to="/arena?tab=tournament" replace />} />
           <Route path="/shop" element={<Shop />} />
           <Route path="/guide" element={<Guide />} />
           <Route path="/leaderboard" element={<Leaderboard />} />

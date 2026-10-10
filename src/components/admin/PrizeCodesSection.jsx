@@ -5,7 +5,7 @@ import Panel from "@/components/Panel";
 import CodeInput from "@/components/prizes/CodeInput";
 import MemberSearch, { SelectedMember } from "./MemberSearch";
 import { errorText } from "@/lib/GuildContext";
-import { DM_TEXT, PLACE, codeHint, normalizeCode } from "@/lib/prizes";
+import { DM_TEXT, PLACE, codeHint } from "@/lib/prizes";
 import { cn } from "@/lib/utils";
 
 // Guild Leader only: give prize codes (GP codes and the like) to members, keep a stock of
@@ -30,7 +30,6 @@ export default function PrizeCodesSection() {
   useEffect(() => { load(); }, [load]);
 
   const summary = (data && data.summary) || [];
-  const waiting = (data && data.waiting) || [];
   const tabs = [["give", "Give a code"], ["stock", `Stock (${summary.reduce((a, x) => a + x.count, 0)})`], ["history", `Given (${data ? (data.given || []).length : 0})`]];
 
   return (
@@ -39,8 +38,6 @@ export default function PrizeCodesSection() {
         <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-[#e8c15a]" aria-hidden="true" />
         Codes are sent privately to the member on the site and by Discord DM, with a phone notification if they turned those on. Once saved, a code is only ever shown to the member it was given to; here you see its last 4 characters.
       </p>
-
-      {waiting.length > 0 && <Waiting rows={waiting} onDone={load} />}
 
       <div className="mt-4 grid grid-cols-3 gap-1.5" role="tablist" aria-label="Prize codes">
         {tabs.map(([id, label]) => (
@@ -242,7 +239,7 @@ function Stock({ rows, summary, reserved, onDone }) {
 
       {reserved.length > 0 && (
         <div>
-          <p className="mb-2 font-heading text-base text-white">Set aside for raffles</p>
+          <p className="mb-2 font-heading text-base text-white">Set aside for tournament prizes</p>
           <ul className="space-y-1 text-[15px] text-[#c4c4c4]">
             {reserved.map((r) => <li key={r.id}>{r.label} · ends in {r.last4}{r.raffle_title ? ` · ${PLACE[(r.place || 1) - 1]} prize of "${r.raffle_title}"` : ""}</li>)}
           </ul>
@@ -284,7 +281,7 @@ function History({ rows, onDone }) {
             <span className="font-heading text-base font-semibold text-white">{r.label} → {r.member_name}</span>
             <span className="text-sm text-[#c4c4c4]">ends in {r.last4} · {when(r.assigned_at)}</span>
           </div>
-          <p className="mt-0.5 text-sm text-[#c4c4c4]">{r.source === "raffle" ? `${PLACE[(r.place || 1) - 1]} prize, raffle "${r.raffle_title}"` : r.reason ? `For: ${r.reason}` : "Given from the admin hall"}</p>
+          <p className="mt-0.5 text-sm text-[#c4c4c4]">{r.source === "raffle" || r.source === "tournament" ? `${PLACE[(r.place || 1) - 1]} prize, ${r.source} "${r.raffle_title}"` : r.reason ? `For: ${r.reason}` : "Given from the admin hall"}</p>
           <div className="mt-2 flex flex-wrap gap-1.5 text-[13px]">
             <Chip ok>On the site</Chip>
             <Chip ok={r.dm_status === "sent"} bad={r.dm_status && r.dm_status !== "sent" && r.dm_status !== "pending"}>{DM_TEXT[r.dm_status] || "Discord DM"}</Chip>
@@ -321,56 +318,5 @@ function History({ rows, onDone }) {
 function Chip({ ok, bad, gold, children }) {
   return (
     <span className={cn("rounded-full px-2.5 py-1", bad ? "bg-[#2a0a0c] text-[#ff8a8a]" : gold ? "bg-[#1f1a0a] text-[#e8c15a]" : ok ? "bg-[#0e2a1e] text-[#6fd3a2]" : "bg-[#222] text-[#c4c4c4]")}>{children}</span>
-  );
-}
-
-// ---------- Raffle winners still waiting for their code ----------
-function Waiting({ rows, onDone }) {
-  const [open, setOpen] = useState("");
-  const [code, setCode] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const key = (w) => `${w.raffle_id}:${w.place}`;
-
-  const send = async (w, fromStock) => {
-    setBusy(true);
-    setError("");
-    try {
-      await base44.functions.invoke("raffleAction", { action: "setPrizeCode", raffleId: w.raffle_id, place: w.place, ...(fromStock ? { from_stock: true } : { code: normalizeCode(code) }) });
-      setOpen("");
-      setCode("");
-      onDone();
-    } catch (e) {
-      setError(errorText(e, "Couldn't send the code."));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="mt-4 rounded-lg border border-[#d4a72c] bg-[#1f1508] p-3">
-      <p className="font-heading text-[15px] tracking-[0.1em] text-[#e8c15a]">WAITING FOR A CODE</p>
-      <ul className="mt-2 space-y-2">
-        {rows.map((w) => (
-          <li key={key(w)} className="text-[15px]">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="min-w-0 flex-1">{w.member_name} won the {PLACE[w.place - 1]} prize ({w.prize}) in "{w.raffle_title}".</span>
-              {open !== key(w) && <button type="button" onClick={() => { setOpen(key(w)); setCode(""); setError(""); }} className="btn-seal h-9 px-3 text-sm">Add code and send</button>}
-            </div>
-            {open === key(w) && (
-              <div className="mt-2 space-y-2">
-                <CodeInput value={code} onChange={setCode} label={`Code for ${w.member_name}`} autoFocus />
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => send(w, false)} disabled={busy || !codeHint(code).ok} className="btn-seal h-10 px-4 text-sm">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send to the winner"}</button>
-                  <button type="button" onClick={() => send(w, true)} disabled={busy} className="btn-bronze h-10 px-4 text-sm">Use one from stock</button>
-                  <button type="button" onClick={() => setOpen("")} className="btn-bronze h-10 px-4 text-sm">Cancel</button>
-                </div>
-              </div>
-            )}
-          </li>
-        ))}
-      </ul>
-      {error && <p role="alert" className="mt-2 text-[15px] text-ember">{error}</p>}
-    </div>
   );
 }

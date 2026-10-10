@@ -56,5 +56,6 @@ export const GAME_ICONS = {
     <span className="font-heading text-base font-extrabold leading-none text-ember" lang="zh-Hant" aria-hidden="true">
       馬
     </span>
-  )
+  ),
+  arena: <img src="/arena/guild-mark.png" alt="" aria-hidden="true" className="h-7 w-7 object-contain" />
 };

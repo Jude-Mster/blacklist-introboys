@@ -156,9 +156,11 @@ export async function sendCodeDm(discordId: string, row) {
     if (!ch.ok) { console.log('prize DM: could not open DM', ch.status); return ch.status === 403 ? 'blocked' : 'failed'; }
     const { id: channelId } = await ch.json();
     const place = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th'][(row.place || 1) - 1] || '';
-    const title = row.source === 'raffle' ? `You won ${place} prize: ${row.label}` : `You received: ${row.label}`;
+    const won = row.source === 'raffle' || row.source === 'tournament';
+    const title = won ? `You won ${place} prize: ${row.label}` : `You received: ${row.label}`;
     const lines = [];
     if (row.source === 'raffle' && row.raffle_title) lines.push(`Raffle: ${row.raffle_title}`);
+    if (row.source === 'tournament' && row.raffle_title) lines.push(`Tournament: ${row.raffle_title}`);
     if (row.reason) lines.push(`For: ${row.reason}`);
     const msg = await call(`https://discord.com/api/v10/channels/${channelId}/messages`, {
       allowed_mentions: { parse: [] },

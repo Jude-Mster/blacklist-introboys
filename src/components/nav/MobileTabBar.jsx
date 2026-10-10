@@ -8,7 +8,7 @@ import RankBadge from "@/components/RankBadge";
 import { Points } from "@/components/SealLogo";
 import { useGuild } from "@/lib/GuildContext";
 import { GAME_ICONS } from "@/lib/gameIcons";
-import { HOME, GAMES_HUB, POKER, RANKINGS, CHAT, RAFFLE, SHOP, GUIDE, PROFILE, ADMIN, gameLinks, isActive, isAdminRole, tableLinks } from "./navConfig";
+import { HOME, GAMES_HUB, FIGHT, RANKINGS, CHAT, SHOP, GUIDE, PROFILE, ADMIN, gameLinks, isActive, isAdminRole, tableLinks } from "./navConfig";
 import { shouldShowAppDownload, inOldApp } from "@/lib/appMode";
 import AppDownloadGuide from "@/components/AppDownloadGuide";
 import { cn } from "@/lib/utils";
@@ -29,13 +29,13 @@ export default function MobileTabBar({ onChat, chatOpen, unread }) {
   // Close the sheet after moving to another page.
   useEffect(() => setMore(false), [location.pathname, location.search]);
 
-  const secondary = [SHOP, RAFFLE, GUIDE, RANKINGS, PROFILE, ...(isAdminRole(member) ? [ADMIN] : [])];
+  const secondary = [SHOP, GUIDE, RANKINGS, PROFILE, ...(isAdminRole(member) ? [ADMIN] : [])];
   const inMore = secondary.some((i) => isActive(i, location));
   const quiet = chatOpen || more;
   const tabs = [
     { ...HOME, active: !quiet && isActive(HOME, location) },
     { ...GAMES_HUB, active: !quiet && location.pathname === "/games" },
-    { ...POKER, active: !quiet && isActive(POKER, location) },
+    { ...FIGHT, active: !quiet && isActive(FIGHT, location) },
     ...(member ? [{ ...CHAT, active: chatOpen && !more, onClick: onChat, badge: unread }] : []),
     { id: "more", short: "More", icon: Menu, active: more || (!chatOpen && inMore), onClick: () => setMore(true) }
   ];
@@ -58,7 +58,9 @@ export default function MobileTabBar({ onChat, chatOpen, unread }) {
               <>
                 <span className={cn("absolute inset-x-5 top-0 h-[3px] rounded-b bg-crimson transition-opacity", t.active ? "opacity-100" : "opacity-0")} aria-hidden="true" />
                 <span className="relative">
-                  <Icon className={cn("h-6 w-6", t.active ? "text-white" : "text-mist")} strokeWidth={t.active ? 2.4 : 1.8} />
+                  {t.id === "arena"
+                    ? <Icon className={cn("h-7 w-7 -my-0.5 transition-opacity", t.active ? "opacity-100 drop-shadow-[0_0_6px_rgba(200,22,29,0.9)]" : "opacity-70")} />
+                    : <Icon className={cn("h-6 w-6", t.active ? "text-white" : "text-mist")} strokeWidth={t.active ? 2.4 : 1.8} />}
                   {t.badge > 0 && (
                     <span className="absolute -right-2.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-crimson px-1 text-[10px] font-bold text-white">
                       {t.badge > 9 ? "9+" : t.badge}

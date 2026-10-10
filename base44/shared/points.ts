@@ -26,7 +26,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- Settings + lookups ----------
 
-export const ALL_GAMES = ["coinflip", "dragondice", "lanternslots", "skywheel", "roulette", "blackjack", "lucky9", "poker", "pusoy", "fortune", "derby"];
+export const ALL_GAMES = ["coinflip", "dragondice", "lanternslots", "skywheel", "roulette", "blackjack", "lucky9", "poker", "pusoy", "fortune", "derby", "arena"];
 
 // Ranks, lowest to highest. "officer" is shown as Vice Guild Member.
 export const RANKS = ["member", "guild_member", "officer", "leader"];
@@ -42,7 +42,8 @@ export const GAME_NAMES = {
   poker: "Poker Room",
   pusoy: "Pusoy Dos",
   fortune: "Blacklist Dragon's Fortune",
-  derby: "Blacklist Derby"
+  derby: "Blacklist Derby",
+  arena: "Blacklist Arena"
 };
 
 // Settings change rarely but are needed by every request, so each running copy of a

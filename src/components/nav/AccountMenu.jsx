@@ -1,10 +1,10 @@
 import React from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { LogOut, ScrollText, Shield, ChevronDown, Ticket } from "lucide-react";
+import { LogOut, ScrollText, Shield, ChevronDown } from "lucide-react";
 import Avatar from "@/components/Avatar";
 import { ROLE_TITLE } from "@/components/SealLogo";
 import { useAuth } from "@/lib/AuthContext";
-import { isAdminRole } from "./navConfig";
+import { isAdminRole, GuildMark } from "./navConfig";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,8 +45,8 @@ export default function AccountMenu({ member }) {
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <Link to="/raffle" className="cursor-pointer">
-                <Ticket className="h-4 w-4" /> Raffle
+              <Link to="/arena" className="cursor-pointer">
+                <GuildMark className="h-4 w-4" /> Fight
               </Link>
             </DropdownMenuItem>
             {isAdminRole(member) && (

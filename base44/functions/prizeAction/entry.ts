@@ -60,15 +60,8 @@ export default async function(req) {
         E.filter({ status: 'assigned' }, { limit: 500 })
       ]);
       const byNew = (k) => (x, y) => String(y[k] || y.created_date || '').localeCompare(String(x[k] || x.created_date || ''));
-      // Raffle winners still waiting for their code (the draw came before the code).
-      const { items: drawnRaffles } = await b.asServiceRole.entities.Raffle.filter({ status: 'drawn' }, { sort: '-drawn_at', limit: 50 });
-      const sent = new Set(given.filter((g) => g.raffle_id).map((g) => `${g.raffle_id}:${g.place}`));
+      // (Raffles are gone: tournament code prizes are set aside before the tournament starts.)
       const waiting = [];
-      for (const r of drawnRaffles) {
-        for (const w of Array.isArray(r.winners) ? r.winners : []) {
-          if (w.kind === 'code' && w.code_status === 'pending' && !sent.has(`${r.id}:${w.place}`)) waiting.push({ raffle_id: r.id, raffle_title: r.title, place: w.place, prize: w.prize, member_name: w.name, drawn_at: r.drawn_at || '' });
-        }
-      }
       return Response.json({
         stock: stock.sort(byNew('created_date')).map(leaderView),
         summary: await stockSummary(b),

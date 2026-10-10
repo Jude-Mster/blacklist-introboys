@@ -10,7 +10,7 @@ import RankBadge from "@/components/RankBadge";
 import Wheel, { angleFor } from "@/components/games/Wheel";
 import { GAMES } from "@/lib/games";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, Ticket } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import ActivityList from "@/components/ActivityList";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -54,7 +54,7 @@ export default function Dashboard() {
 
       <CharacterCard member={m} rank={account.rank} stats={account.stats} />
 
-      <RaffleBanner />
+      <TournamentBanner />
 
       <div className="grid gap-5 md:grid-cols-2">
         <DailyWheel member={m} settings={settings} />
@@ -199,17 +199,18 @@ function formatWait(ms) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-function RaffleBanner() {
-  const [raffle, setRaffle] = useState(null);
+function TournamentBanner() {
+  const [tour, setTour] = useState(null);
+  const [entry, setEntry] = useState(500);
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
     let alive = true;
-    base44.functions.invoke("raffleAction", { action: "list" })
+    base44.functions.invoke("tournamentAction", { action: "status" })
       .then((res) => {
         if (!alive) return;
-        const open = (res.data && res.data.raffles || []).find((r) => r.status === "open");
-        setRaffle(open || null);
+        setTour((res.data && res.data.tournament) || null);
+        if (res.data && res.data.entry) setEntry(res.data.entry);
       })
       .catch(() => {})
       .finally(() => { if (alive) setNow(Date.now()); });
@@ -217,48 +218,47 @@ function RaffleBanner() {
   }, []);
 
   useEffect(() => {
-    if (!raffle) return;
+    if (!tour) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [raffle]);
+  }, [tour]);
 
-  const open = !!raffle;
-  const endsAt = raffle && raffle.ends_at ? Date.parse(raffle.ends_at) : 0;
-  const remaining = endsAt ? Math.max(0, endsAt - now) : 0;
-  const pot = raffle ? Number(raffle.pot || 0) : 0;
-  const myTickets = raffle ? Number(raffle.my_tickets || 0) : 0;
+  const open = !!tour;
+  const running = open && tour.status !== "signup";
+  const startsAt = tour && tour.starts_at ? Date.parse(tour.starts_at) : 0;
+  const remaining = startsAt ? Math.max(0, startsAt - now) : 0;
 
   return (
     <Link
-      to="/raffle"
+      to={open ? "/arena?tab=tournament" : "/arena"}
       className={cn(
         "flex flex-col gap-3 rounded-md border px-4 py-4 transition-colors sm:flex-row sm:items-center",
         open ? "border-crimson bg-gradient-to-r from-crimson/35 to-transparent shadow-[0_0_24px_-4px_rgba(200,22,29,0.5)]" : "border-bronze/50 bg-black/25"
       )}
     >
-      <span className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded", open ? "bg-crimson" : "border border-bronze/50 bg-black/40 text-gold")}>
-        <Ticket className={cn("h-5 w-5", open ? "text-white" : "text-gold")} aria-hidden="true" />
+      <span className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded", open ? "bg-crimson" : "border border-bronze/50 bg-black/40")}>
+        <img src="/arena/guild-mark.png" alt="" aria-hidden="true" className="h-8 w-8 object-contain" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block font-heading text-[22px] font-bold leading-tight text-white">
-          {open ? (raffle.title || "Guild raffle") : "Guild raffle"}
+          {open ? tour.title : "Blacklist Arena"}
         </span>
         <span className="mt-1 block min-h-[1.25rem] text-[15px] text-[#c4c4c4]">
           {open ? (
             <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="ember-pulse inline-flex items-center rounded-sm bg-crimson px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-white">Live</span>
-              <span>Draw in <span className="tabular-nums text-gold">{formatCountdown(remaining)}</span></span>
+              <span className="ember-pulse inline-flex items-center rounded-sm bg-crimson px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-white">{running ? "Live" : "Sign-up"}</span>
+              {running ? <span>Matches are being fought now</span> : startsAt ? <span>Starts in <span className="tabular-nums text-gold">{formatCountdown(remaining)}</span></span> : <span>Starts when the Guild Leader says go</span>}
               <span aria-hidden="true">·</span>
-              <span>{raffle.pot_to_first ? "Pot" : "Points spent"} <span className="tabular-nums text-gold">{pot.toLocaleString()}</span></span>
-              <span aria-hidden="true">·</span>
-              <span>You hold <span className="tabular-nums text-gold">{myTickets}</span> {myTickets === 1 ? "ticket" : "tickets"}</span>
+              <span><span className="tabular-nums text-gold">{tour.entrant_count}</span> {tour.entrant_count === 1 ? "fighter" : "fighters"}</span>
+              {!running && <><span aria-hidden="true">·</span><span>Entry <span className="tabular-nums text-gold">{entry.toLocaleString()}</span> points</span></>}
+              {tour.prizes && tour.prizes[0] && <><span aria-hidden="true">·</span><span>1st: <span className="text-gold">{tour.prizes[0]}</span></span></>}
             </span>
           ) : (
-            "No raffle running right now. Check back soon."
+            "Live fights between members every few minutes. Bet on who wins."
           )}
         </span>
       </span>
-      <span className="btn-seal h-11 w-full px-6 sm:w-auto">{open ? "Buy tickets" : "View raffle"}</span>
+      <span className="btn-seal h-11 w-full px-6 sm:w-auto">{!open ? "Watch the fights" : running ? "Watch and bet" : "Sign up"}</span>
     </Link>
   );
 }

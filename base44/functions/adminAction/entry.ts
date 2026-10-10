@@ -66,6 +66,9 @@ export default async function(req) {
       if ('max_bet' in p) update.max_bet = int(p.max_bet, { min: 1, name: 'Maximum wager' });
       if ('daily_bet_cap' in p) update.daily_bet_cap = int(p.daily_bet_cap, { min: 1, name: 'Daily wager limit' });
       if ('derby_max_bet' in p) update.derby_max_bet = int(p.derby_max_bet, { min: 1, name: 'Derby limit per race' });
+      if ('arena_max_bet' in p) update.arena_max_bet = int(p.arena_max_bet, { min: 1, name: 'Arena limit per fight' });
+      if ('arena_min_bet' in p) update.arena_min_bet = int(p.arena_min_bet, { min: 1, name: 'Arena smallest bet' });
+      if ('arena_bet_seconds' in p) update.arena_bet_seconds = int(p.arena_bet_seconds, { min: 30, max: 300, name: 'Arena betting time' });
       if ('house_edge_pct' in p) update.house_edge_pct = int(p.house_edge_pct, { min: 0, max: 20, name: 'House edge' });
       if ('award_cap_per_day' in p) update.award_cap_per_day = int(p.award_cap_per_day, { min: 0, name: 'Officer award cap' });
       if ('daily_wheel_prizes' in p) {
@@ -81,6 +84,7 @@ export default async function(req) {
       const minB = (update.min_bet ?? s.min_bet) as number;
       const maxB = (update.max_bet ?? s.max_bet) as number;
       if (minB > maxB) throw new UserError("Minimum wager can't be above the maximum.");
+      if (((update.arena_min_bet ?? s.arena_min_bet ?? 1) as number) > ((update.arena_max_bet ?? s.arena_max_bet ?? 5000) as number)) throw new UserError("The Arena's smallest bet can't be above its limit.");
       await b.asServiceRole.entities.Settings.update(s.id, update);
       clearSettingsCache();
       return Response.json({ ok: true });

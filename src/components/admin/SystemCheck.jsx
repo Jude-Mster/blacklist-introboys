@@ -4,7 +4,7 @@ import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import { errorText } from "@/lib/GuildContext";
 
-export const SITE_VERSION = "5.2";
+export const SITE_VERSION = "6.0";
 const CHECKS = [
   { fn: "getMyAccount", label: "Accounts and ranks" },
   { fn: "playGame", label: "Toss, dice, slots and wheel" },
@@ -17,7 +17,8 @@ const CHECKS = [
   { fn: "derbyAction", label: "Blacklist Derby" },
   { fn: "duelAction", label: "Coin duels" },
   { fn: "shopAction", label: "Guild shop" },
-  { fn: "raffleAction", label: "Raffle" },
+  { fn: "arenaAction", label: "Live Arena" },
+  { fn: "tournamentAction", label: "Arena tournaments" },
   { fn: "chatSend", label: "Chat" },
   { fn: "chatBridge", label: "Discord chat bridge" },
   { fn: "adminAction", label: "Admin tools" }

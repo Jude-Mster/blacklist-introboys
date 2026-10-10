@@ -79,14 +79,15 @@ function PrizeCard({ prize: p, onUpdate }) {
     } catch { /* stays as it was */ } finally { setBusy(false); }
   };
 
-  const title = p.source === "raffle" ? `${PLACE[(p.place || 1) - 1]} prize · ${p.label}` : p.label;
-  const sub = p.source === "raffle" ? `Raffle: ${p.raffle_title}` : p.reason ? `For: ${p.reason}` : "From the Guild Leader";
+  const won = p.source === "raffle" || p.source === "tournament";
+  const title = won ? `${PLACE[(p.place || 1) - 1]} prize · ${p.label}` : p.label;
+  const sub = p.source === "raffle" ? `Raffle: ${p.raffle_title}` : p.source === "tournament" ? `Tournament: ${p.raffle_title}` : p.reason ? `For: ${p.reason}` : "From the Guild Leader";
 
   return (
     <li className={cn("overflow-hidden rounded-xl border", redeemed ? "border-[#333] bg-[#141414]" : "border-[#6b5420] bg-[#140f06]")}>
       <div className={cn("px-4 py-3", redeemed ? "bg-[#1a1a1a]" : "bg-[#2a1f0a]")}>
         <p className="flex items-center gap-2 font-heading text-[13px] tracking-[0.16em] text-[#e8c15a]">
-          {redeemed ? "REDEEMED" : p.source === "raffle" ? "YOU WON" : "YOU RECEIVED"}
+          {redeemed ? "REDEEMED" : won ? "YOU WON" : "YOU RECEIVED"}
           {isNew && <span className="rounded bg-crimson px-1.5 py-0.5 text-[11px] tracking-[0.1em] text-white">NEW</span>}
         </p>
         <p className="mt-1 break-words font-heading text-[22px] font-bold leading-tight text-white">{title}</p>
