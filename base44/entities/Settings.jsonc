@@ -57,7 +57,8 @@
           "poker",
           "pusoy",
           "fortune",
-          "derby"
+          "derby",
+          "arena"
         ]
       },
       "default": [
@@ -75,6 +76,21 @@
       "type": "integer",
       "default": 2000,
       "description": "Most a member can bet on one Blacklist Derby race"
+    },
+    "arena_max_bet": {
+      "type": "integer",
+      "default": 5000,
+      "description": "Most a member can bet on one Live Arena fight (and on one tournament match)"
+    },
+    "arena_min_bet": {
+      "type": "integer",
+      "default": 1,
+      "description": "Least a member can put on one bet in the Arena"
+    },
+    "arena_bet_seconds": {
+      "type": "integer",
+      "default": 120,
+      "description": "Betting time before each Live Arena fight (30-300)"
     },
     "discord_invite_url": {
       "type": "string",

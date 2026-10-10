@@ -1,0 +1,99 @@
+{
+  "name": "Tournament",
+  "type": "object",
+  "description": "A Blacklist Arena tournament run by the Guild Leader. Server-only: the match seeds and results are secret until each match is fought.",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "signup",
+        "running",
+        "paying",
+        "done",
+        "cancelled"
+      ],
+      "default": "signup"
+    },
+    "starts_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When it starts by itself. Empty = only when the Guild Leader presses Start now."
+    },
+    "values": {
+      "type": "object",
+      "description": "What each upgrade gives in this tournament: ups and weapon (see arenaEngine DEFAULT_VALUES)"
+    },
+    "prizes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "By place: label, kind (points, code, item), points, from_bank"
+    },
+    "entrant_count": {
+      "type": "integer",
+      "default": 0
+    },
+    "bank_in": {
+      "type": "integer",
+      "default": 0,
+      "description": "Points members paid into the bank for this tournament"
+    },
+    "engine": {
+      "type": "integer"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "field": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Frozen at the start: each fighter's member_id, name, avatar, look and build"
+    },
+    "matches": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "The bracket and its timetable. Each match's seed and result are SECRET until it is fought."
+    },
+    "ends_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the last match ends"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Places and prizes: place, member_id, name, prize, kind, points, paid, code_status"
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cancel_reason": {
+      "type": "string"
+    },
+    "announced_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "created_by": {
+      "type": "string"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

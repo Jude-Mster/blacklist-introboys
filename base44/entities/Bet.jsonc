@@ -18,7 +18,8 @@
         "roulette",
         "blackjack",
         "lucky9",
-        "derby"
+        "derby",
+        "arena"
       ]
     },
     "wager": {

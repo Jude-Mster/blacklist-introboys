@@ -1,0 +1,64 @@
+{
+  "name": "ArenaTable",
+  "type": "object",
+  "description": "The one Blacklist Arena live fight: the current fight and recent results. Server-only: the seed, the result and the fight's end time are secret until betting closes.",
+  "properties": {
+    "clock": {
+      "type": "string",
+      "description": "a1 = fights run on the clock"
+    },
+    "engine": {
+      "type": "integer",
+      "description": "ENGINE_VERSION the fight was run with"
+    },
+    "round_no": {
+      "type": "integer",
+      "default": 0
+    },
+    "fighters": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "The 2 fighters: member_id, name, avatar, look, build"
+    },
+    "odds": {
+      "type": "object",
+      "description": "Prices: a, b, draw and the side bets"
+    },
+    "seed": {
+      "type": "integer",
+      "description": "SECRET until betting closes: the fight's dice"
+    },
+    "outcome": {
+      "type": "object",
+      "description": "SECRET until the fight is over: winner (-1 = draw), how, length, critko, oneHitBy, pots, crits"
+    },
+    "bets_close_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "fight_ends_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "SECRET until betting closes (it would give away a Draw)"
+    },
+    "next_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "recent": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Finished fights, newest first: r, f (names, avatars, looks), winner, how, length, o (outcome), odds; the newest also keep seed and builds for replays"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

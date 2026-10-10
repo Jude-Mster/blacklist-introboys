@@ -27,7 +27,8 @@
         "poker",
         "duel",
         "raffle",
-        "shop"
+        "shop",
+        "tournament"
       ]
     },
     "reason": {

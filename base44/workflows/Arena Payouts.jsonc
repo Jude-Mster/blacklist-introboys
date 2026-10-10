@@ -1,0 +1,48 @@
+{
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "arena_payouts",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "pay": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "arenaAction",
+            "args": {
+              "action": "sweep",
+              "__wf_secret": "b5accf91588c6e85eac6c78d13fd4d3acec3b0ed15fbc065"
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Pay finished Arena bets",
+            "description": "Pays bets on finished Live Arena fights for members who left the page"
+          }
+        }
+      }
+    ]
+  },
+  "description": "Every 5 minutes, pay any Blacklist Arena bets on finished Live Arena fights that were not collected yet, so members who closed the page are always paid. Passes a shared secret so the function can reject anonymous callers.",
+  "name": "Arena Payouts",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "*/5 * * * *",
+      "one_time_date": null,
+      "timezone": "UTC",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  }
+}

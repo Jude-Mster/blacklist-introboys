@@ -1,0 +1,32 @@
+{
+  "name": "ArenaBank",
+  "type": "object",
+  "description": "The Arena bank: every point paid for tournament entries and upgrades, held for later. Prizes can be paid from it.",
+  "properties": {
+    "balance": {
+      "type": "integer",
+      "default": 0
+    },
+    "total_in": {
+      "type": "integer",
+      "default": 0
+    },
+    "total_out": {
+      "type": "integer",
+      "default": 0
+    },
+    "log": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "The latest movements, newest first: at, amount, reason"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

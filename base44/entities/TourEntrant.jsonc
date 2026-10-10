@@ -1,0 +1,75 @@
+{
+  "name": "TourEntrant",
+  "type": "object",
+  "description": "A member's fighter in a Blacklist Arena tournament: the character they were given and everything they bought for it. Removed when the tournament is over.",
+  "properties": {
+    "tour_id": {
+      "type": "string"
+    },
+    "member_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "avatar": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string"
+    },
+    "look": {
+      "type": "string",
+      "description": "The character (one of arenaEngine LOOK_KEYS)"
+    },
+    "rerolled": {
+      "type": "boolean",
+      "default": false,
+      "description": "The one free character re-roll has been used"
+    },
+    "entries": {
+      "type": "integer",
+      "default": 0
+    },
+    "ups": {
+      "type": "object",
+      "description": "Upgrade rolls per stat"
+    },
+    "weapon": {
+      "type": "integer",
+      "default": 0
+    },
+    "weapon_tries": {
+      "type": "integer",
+      "default": 0
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "pet": {
+      "type": "integer",
+      "default": 0
+    },
+    "mount": {
+      "type": "object",
+      "description": "lv and pair, or empty"
+    },
+    "mount_resets": {
+      "type": "integer",
+      "default": 0
+    },
+    "spent": {
+      "type": "integer",
+      "default": 0
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

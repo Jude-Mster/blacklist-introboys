@@ -1,0 +1,55 @@
+/* Blacklist Arena: the stage, the skill tooltip and the roll windows (from the approved preview). */
+@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap");
+
+.arena-root {
+  --ar-ink: #0a0b10;
+  --ar-lacquer: #13141b;
+  --ar-lacquer2: #1a1b24;
+  --ar-rule: #2b2a33;
+  --ar-rule-gold: #5a4724;
+  --ar-paper: #ece6dc;
+  --ar-mist: #9b948a;
+  --ar-gold: #d6ad52;
+  --ar-gold-hi: #f1d38c;
+  --ar-label: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --ar-display: "Cinzel", Georgia, serif;
+}
+.arena-label { font-family: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif; }
+.arena-display { font-family: "Cinzel", Georgia, serif; }
+
+.arena-stage { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: #000; }
+.arena-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.arena-stage::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(0, 0, 0, 0.55) 100%); }
+@media (max-width: 560px) { .arena-stage { aspect-ratio: 3 / 4; } }
+
+.arena-tip { position: fixed; z-index: 80; max-width: 300px; padding: 10px 12px; background: rgba(12, 13, 18, 0.97); border: 1px solid #5a4724; border-radius: 4px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55); font-size: 13px; line-height: 1.45; color: #9b948a; pointer-events: none; }
+.arena-tip[hidden] { display: none; }
+.arena-tip .th { display: grid; grid-template-columns: 36px 1fr; gap: 0 10px; align-items: center; margin-bottom: 6px; }
+.arena-tip .th img { width: 36px; height: 36px; border: 1px solid #d6ad52; border-radius: 2px; grid-row: span 2; }
+.arena-tip .th b { font: 700 16px "Barlow Condensed", sans-serif; letter-spacing: 0.03em; }
+.arena-tip .th small { font: 600 11px "Barlow Condensed", sans-serif; letter-spacing: 0.12em; text-transform: uppercase; }
+.arena-tip ul { margin: 0; padding-left: 16px; display: grid; gap: 2px; list-style: disc; }
+.arena-tip li b { color: #ece6dc; font-weight: 600; }
+
+.arena-log { font-size: 13px; line-height: 1.6; color: #9b948a; }
+.arena-log b { color: #ece6dc; font-weight: 600; }
+.arena-log .crit { color: #f1d38c; }
+.arena-log .buff { color: #9fc8ff; }
+.arena-log .heal { color: #6fd39b; }
+.arena-log .skill { color: #ff8a9a; }
+.arena-log .t { color: #6e6760; }
+
+.rskill { display: grid; grid-template-columns: 44px 1fr; gap: 2px 10px; align-items: center; padding: 10px; border: 1px solid #2b2a33; border-radius: 3px; background: #1a1b24; transition: border-color .12s, box-shadow .12s, opacity .2s; text-align: left; }
+.rskill img { width: 44px; height: 44px; border: 1px solid #d6ad52; border-radius: 2px; grid-row: span 2; }
+.rskill b { font: 700 15px "Barlow Condensed", sans-serif; letter-spacing: 0.03em; }
+.rskill small { font-size: 12.5px; color: #9b948a; }
+.rskill .tag { grid-column: 1 / -1; font: 700 11px "Barlow Condensed", sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #9b948a; }
+.rskill.owned { opacity: 0.45; }
+.rskill.lit { border-color: #f1d38c; box-shadow: 0 0 0 1px #f1d38c, 0 0 18px rgba(241, 211, 140, 0.45); }
+.rskill.won { border-color: #f1d38c; box-shadow: 0 0 0 2px #f1d38c, 0 0 26px rgba(241, 211, 140, 0.7); opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .rskill { transition: none; } }
+
+.arena-pips { display: inline-flex; gap: 2px; }
+.arena-pips span { width: 7px; height: 9px; border-radius: 1px; background: #2b2a33; }
+.arena-pips span.on { background: #d6ad52; }
+.arena-pips span.new { background: #f1d38c; box-shadow: 0 0 6px #f1d38c; }

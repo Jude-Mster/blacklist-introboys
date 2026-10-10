@@ -1,0 +1,82 @@
+{
+  "name": "ArenaBet",
+  "type": "object",
+  "description": "One member's bets on one Blacklist Arena fight: a Live Arena round, or a tournament match",
+  "properties": {
+    "scope": {
+      "type": "string",
+      "enum": [
+        "live",
+        "tour"
+      ]
+    },
+    "round_no": {
+      "type": "integer",
+      "description": "Live Arena: the round"
+    },
+    "tour_id": {
+      "type": "string",
+      "description": "Tournament: the tournament"
+    },
+    "match_no": {
+      "type": "integer",
+      "description": "Tournament: the match number"
+    },
+    "label": {
+      "type": "string",
+      "description": "How the fight is named in the points log, e.g. Blacklist Arena fight 12"
+    },
+    "names": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The two fighters' names, for the history"
+    },
+    "member_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "avatar": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string"
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Each bet: k (a, b, draw or a side bet), amount, the price it was placed at and the over/under line"
+    },
+    "amount": {
+      "type": "integer"
+    },
+    "payout": {
+      "type": "integer",
+      "default": 0
+    },
+    "net": {
+      "type": "integer",
+      "default": 0
+    },
+    "settled": {
+      "type": "boolean",
+      "default": false
+    },
+    "pay_started": {
+      "type": "boolean",
+      "default": false,
+      "description": "A payout for this bet has been started; a retry checks the points log before paying"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

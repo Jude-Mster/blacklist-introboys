@@ -1,0 +1,48 @@
+{
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "tournament_clock",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "pay": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "tournamentAction",
+            "args": {
+              "action": "sweep",
+              "__wf_secret": "102b949348f55485eb70915811df64e9899d03770a523a43"
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Start, finish and pay tournaments",
+            "description": "Starts a tournament at its scheduled time, pays the prizes after the last match, and pays match bets"
+          }
+        }
+      }
+    ]
+  },
+  "description": "Every 5 minutes, start a Blacklist Arena tournament whose start time has come, finish one whose last match is over (prizes paid, fighters cleared), and pay match bets of members who left the page. Passes a shared secret so the function can reject anonymous callers.",
+  "name": "Tournament Clock",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "*/5 * * * *",
+      "one_time_date": null,
+      "timezone": "UTC",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  }
+}
