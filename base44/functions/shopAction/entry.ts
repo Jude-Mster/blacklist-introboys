@@ -143,7 +143,7 @@ export default async function(req) {
     if (action === 'buy') {
       if (!r.enabled) throw new UserError('The shop is closed right now.');
       if (me.banned) throw new UserError('You are banned from the shop.', 403);
-      const qty = Math.floor(Number(p.qty));
+      const qty = Number(p.qty);   // a whole number only (1.5 is refused, not rounded down)
       if (!Number.isInteger(qty) || qty < 1 || qty > 100000) throw new UserError('Enter how many you want.');
       const character = text(p.character, 40);
       if (!character) throw new UserError('Enter your in-game character name so the leader knows who to deliver to.');

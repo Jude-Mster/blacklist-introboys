@@ -70,3 +70,67 @@
 @keyframes arena-sway { from { transform: translateX(calc(var(--sw, 10px) * -1)); } to { transform: translateX(var(--sw, 10px)); } }
 @media (max-width: 560px) { .arena-emofx .emo .bub span { font-size: 30px; } }
 @media (prefers-reduced-motion: reduce) { .arena-emofx .emo .bub, .arena-chip.live::before { animation: none; } }
+
+/* The Character Lab's upgrade rails: see-through glass buttons down both sides of the stage, no frames,
+   blending into the lab. Left: entries, skill, re-roll (under the player frame). Right: weapon, condor,
+   mount (under the stats panel on a computer, under the tag on a phone). The scene sets the tops. */
+.lab-rail { position: absolute; z-index: 3; display: flex; flex-direction: column; gap: 6px; width: var(--lab-rail-w, 156px); pointer-events: auto; max-height: calc(100% - 8px); overflow-y: auto; scrollbar-width: none; }
+.lab-rail::-webkit-scrollbar { display: none; }
+.lab-rail.left { max-height: calc(100% - var(--lab-left-top, 112px) - 6px); }
+.lab-rail.right { max-height: calc(100% - var(--lab-right-top, 230px) - 6px); }
+.lab-rail.left { left: 10px; top: var(--lab-left-top, 112px); }
+.lab-rail.right { right: 12px; top: var(--lab-right-top, 230px); }
+.lab-tile { position: relative; display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 0 9px; min-height: 44px; padding: 5px 10px 5px 6px; border: 0; border-radius: 8px; text-align: left; color: #f3ead7;
+  background: linear-gradient(90deg, rgba(8, 16, 28, 0.62), rgba(8, 16, 28, 0.18)); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  box-shadow: inset 2px 0 0 rgba(70, 216, 255, 0.55); transition: box-shadow 0.15s, background 0.15s, transform 0.1s, opacity 0.2s; cursor: pointer; }
+.lab-tile::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent 45%); }
+.lab-tile:hover:not(:disabled), .lab-tile:focus-visible { background: linear-gradient(90deg, rgba(14, 40, 60, 0.75), rgba(8, 16, 28, 0.25)); box-shadow: inset 2px 0 0 #46d8ff, 0 0 18px rgba(70, 216, 255, 0.28); outline: none; }
+.lab-tile:active:not(:disabled) { transform: scale(0.97); }
+.lab-tile:disabled { opacity: 0.42; cursor: default; }
+.lab-tile.gold { box-shadow: inset 2px 0 0 rgba(214, 173, 82, 0.8); }
+.lab-tile.gold:hover:not(:disabled) { box-shadow: inset 2px 0 0 #f1d38c, 0 0 18px rgba(241, 211, 140, 0.25); }
+.lab-tile .ic { position: relative; width: 34px; height: 34px; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.35); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08); }
+.lab-tile .ic img { width: 100%; height: 100%; object-fit: cover; }
+.lab-tile .ic b { font: 700 15px "Barlow Condensed", sans-serif; color: #f1d38c; }
+.lab-tile .tx { min-width: 0; display: flex; flex-direction: column; line-height: 1.15; }
+.lab-tile .nm { font: 700 13px "Barlow Condensed", sans-serif; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 3px #000; }
+.lab-tile .pr { font: 600 12px "Barlow Condensed", sans-serif; letter-spacing: 0.03em; color: #e9c46a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 3px #000; }
+.lab-tile .pips { display: flex; gap: 2px; margin-top: 2px; }
+.lab-tile .pips i { flex: 1; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.14); }
+.lab-tile .pips i.on { background: var(--pip, #d6ad52); box-shadow: 0 0 4px var(--pip, #d6ad52); }
+.lab-tile .spin { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.55); }
+.lab-flash { position: absolute; z-index: 4; left: 50%; bottom: 12px; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 6px 14px; border-radius: 999px; text-align: center; font: 600 13px "Barlow Condensed", sans-serif; letter-spacing: 0.04em; color: #f1d38c;
+  background: rgba(6, 10, 16, 0.6); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); box-shadow: 0 0 0 1px rgba(241, 211, 140, 0.25), 0 6px 20px rgba(0, 0, 0, 0.5); pointer-events: none; }
+.lab-flash.err { color: #ff8a7a; box-shadow: 0 0 0 1px rgba(255, 110, 90, 0.35), 0 6px 20px rgba(0, 0, 0, 0.5); }
+/* The rails size themselves by the stage, not the screen (the stage can be narrow on a tablet next to the
+   side panels). A Character Lab stage narrower than 480px stands upright like on a phone. */
+.arena-root { container-type: inline-size; }
+@container (max-width: 860px) {
+  .lab-rail { width: 144px; gap: 5px; }
+  .lab-rail.right { width: var(--lab-rail-w, 144px); }   /* lines up with the stats panel when there is one */
+  .lab-tile { grid-template-columns: 26px 1fr; gap: 0 7px; min-height: 38px; padding: 4px 8px 4px 5px; }
+  .lab-tile .ic { width: 26px; height: 26px; border-radius: 5px; }
+  .lab-tile .ic b { font-size: 13px; }
+  .lab-tile .nm { font-size: 11.5px; letter-spacing: 0.03em; }
+  .lab-tile .pr { font-size: 11px; }
+}
+@container (max-width: 480px) {
+  .arena-stage.lab { aspect-ratio: 3 / 4; }
+  /* phones: narrow glass tiles, icon on top, so the fighter keeps the middle */
+  .lab-rail, .lab-rail.right { width: 82px; gap: 5px; }
+  .lab-rail.left { left: 5px; }
+  .lab-rail.right { right: 5px; }
+  .lab-tile { grid-template-columns: 1fr; justify-items: center; gap: 2px; min-height: 0; padding: 5px 3px 4px; border-radius: 8px; text-align: center;
+    background: linear-gradient(180deg, rgba(8, 16, 28, 0.42), rgba(8, 16, 28, 0.1)); box-shadow: inset 0 2px 0 rgba(70, 216, 255, 0.5); }
+  .lab-tile.gold { box-shadow: inset 0 2px 0 rgba(214, 173, 82, 0.8); }
+  .lab-tile:hover:not(:disabled), .lab-tile:focus-visible { box-shadow: inset 0 2px 0 #46d8ff, 0 0 14px rgba(70, 216, 255, 0.28); }
+  .lab-tile .ic { width: 28px; height: 28px; border-radius: 6px; }
+  .lab-tile .ic b { font-size: 13px; }
+  .lab-tile .tx { width: 100%; align-items: center; }
+  .lab-tile .nm { max-width: 100%; font-size: 10.5px; letter-spacing: 0.03em; }
+  .lab-tile .pr { max-width: 100%; font-size: 10.5px; }
+  .lab-tile .pips { width: 100%; padding: 0 3px; }
+  /* on a phone the bottom of the stage can sit under the menu bar: show the result near the top, between the rails */
+  .lab-flash { font-size: 12px; bottom: auto; top: 96px; max-width: calc(100% - 184px); border-radius: 10px; padding: 5px 9px; }
+}
+@media (prefers-reduced-motion: reduce) { .lab-tile { transition: none; } }

@@ -2,7 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { secrets } from 'base44:runtime';
 import nacl from 'npm:tweetnacl@1.0.3';
 import { announcePoints } from '../../shared/discordPost.ts';
-import { getSettings, getMemberByDiscordId, changePoints, withMemberLock, awardedLast24h } from '../../shared/points.ts';
+import { getSettings, getMemberByDiscordId, changePoints, withMemberLock, withRecordLock, awardedLast24h, UserError } from '../../shared/points.ts';
 import { resilient } from '../../shared/points.ts';
 
 function hexToBytes(hex) {
@@ -104,19 +104,19 @@ export default async function(req) {
         });
       }
 
-      if (!isLeader && amount > 0) {
-        if (!callerMember) return ephemeral('Link your Discord on the guild site before awarding points.');
-        const used = await awardedLast24h(b, callerMember.id);
-        if (used + amount > settings.award_cap_per_day) {
-          return ephemeral(`Award cap reached. You can give ${Math.max(0, settings.award_cap_per_day - used)} more in the next 24 hours.`);
-        }
-      }
-
+      if (!isLeader && amount > 0 && !callerMember) return ephemeral('Link your Discord on the guild site before awarding points.');
+      const give = () => withMemberLock(b, target.id, () => changePoints(b, target.id, amount, 'award', reason, callerMember ? callerMember.id : null));
       let balance;
       try {
-        ({ balance } = await withMemberLock(b, target.id, () =>
-          changePoints(b, target.id, amount, 'award', reason, callerMember ? callerMember.id : null)
-        ));
+        if (!isLeader && amount > 0) {
+          // The cap check and the award run together under the officer's award lock (the same lock the site
+          // uses), so awards sent at the same moment can't all slip under the cap.
+          ({ balance } = await withRecordLock(b, 'AwardCap', callerMember.id, async () => {
+            const used = await awardedLast24h(b, callerMember.id);
+            if (used + amount > settings.award_cap_per_day) throw new UserError(`Award cap reached. You can give ${Math.max(0, settings.award_cap_per_day - used)} more in the next 24 hours.`);
+            return await give();
+          }));
+        } else ({ balance } = await give());
       } catch (e) {
         return ephemeral(e.message);
       }

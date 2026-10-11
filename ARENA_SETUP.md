@@ -1,4 +1,4 @@
-# Blacklist Arena: setup after publishing (version 6.5)
+# Blacklist Arena: setup after publishing (version 6.8)
 
 ## 1. Push and publish
 Push everything, then publish from the Base44 dashboard so the new pieces deploy:
@@ -14,7 +14,7 @@ Admin hall → Guild settings:
 - **Live Arena betting time: 30.** New installs default to 30. If the settings page was saved while the old default (120) was showing, it is stored as 120: change it to 30 and Save.
 - Arena limit per fight 5,000, smallest bet 1.
 
-## 3. Fights and odds (engine version 3)
+## 3. Fights and odds (engine version 5)
 - Nothing is decided ahead of time. A Live Arena fight and every tournament match is fought only when its betting closes (fresh secret seed at that moment); the next tournament match opens when the one before it is over.
 - Prices come from 2,000 practice fights between the two exact fighters (every stat, upgrade, weapon, skill, pet and mount), priced from the cautious end of each rate, with a house edge on every bet. Over 600 random matchups bettors got back about 80% of what they staked on every kind of bet.
 - Caps: fighter 6x, side bet 5x, Draw 10x. A heavy favourite whose price would be under 1.01x isn't offered.
@@ -39,3 +39,30 @@ Fight → Tournament tab, Guild Leader only: name, start time (or the "Start in 
 - Skyfall now plays every frame of the recording (30 a second, was 15). Where the game blurs the body mid-spin, the nearest sharp pose shows with the game's blur laid over it, so the swing no longer freezes on one pose. The 3D blade, its aura and the swing trail are unchanged.
 - The Iron Condor flies on its own over fighters who own one: it hovers between the head and the name plate, bobs, beats its wings and trails a little behind the leaps. The recording's own condor is taken out of every frame.
 - The game's own sounds, cut from the recordings: the buff charge, Skyfall's sweep and blast, and the jump in. (The made-up sounds only play if a sound file fails to load.)
+
+## 7. What changed in 6.6 (backend functions and one entity field: redeploy tournamentAction and arenaAction)
+- Crimson LightningCharger is shown as a buff skill: crimson icon in the buff row and skill bar, its name pops up when cast, and it has its own charge sound (crackling lightning that builds and snaps). It isn't counted in the "buff skills cast" side bets.
+- The name plates no longer show "[Premium]". The winner text at the end of a fight has no box behind it. The word "Tease" is gone from the emoji row. The arena page is wider (76rem).
+- MP no longer refills every second; it only goes down when a buff or the charge is cast.
+- Speed is one stat (was "Attack speed"). It sets the turn order and the pace of every move (buff casts, charge, Skyfall, recovery: down to 55% of the time). Spirits Within adds its +15% Speed the moment it is cast, and the player frame shows the boosted Speed in its colour.
+- The Draw is always offered in the Live Arena, at most 10×. Draws are very rare, so it is a long shot; the house can't lose on it.
+- Tournaments: the Guild Leader sets the prices (entry, skill, weapon try, pet growth, mount level, mount reset) when opening or editing a tournament. Saved on Tournament as `costs`; repeats keep them. A purchase made at a price that just changed is refused with the new price.
+- ENGINE_VERSION 4: the Live Arena replaces any open round from engine 3 by itself.
+
+## 8. What changed in 6.7 (redeploy tournamentAction and arenaAction; Tournament gains bank_deferred)
+- Character Lab: once a member has a tournament fighter, the stage shows only that character on a test platform (grid floor, turning rune circle, scanner ring, light beams). It loops through its own buffs, Crimson LightningCharger and two Skyfalls, with its live stats on the right. Before buying, the stage still shows the ring.
+- "Your fighter": the weapon, Iron Condor and mount each have their icon, a level bar, what the next level gives and their buttons (new icon: public/arena/icons/weapon.jpg).
+- Stronger upgrades (ENGINE_VERSION 5): weapon +15% ATK and +5% Crit rate per level; mount +3% per level; Iron Condor twice as strong (HP +550, ATK +337.5, DEF +550 per 25%; +4,400 / +2,700 / +4,400 at 200%); new upgrade values per roll (below). A tournament opened before this keeps the upgrade values it was saved with (the Guild Leader can change them under "What each upgrade gives").
+- Faster purchases: buying and re-rolling only lock the buyer, not the whole tournament, and no longer write the tournament row or the bank on every purchase. Points paid are held on each fighter and go into the Arena bank in one move when the tournament starts (refunds then never touch the bank). The page shows the new fighter straight from the purchase instead of reloading everything. If the tournament starts mid-purchase, that purchase is undone and refunded.
+- Upgrade values (defaults, per roll): HP +7,000, ATK +950, DEF +900, Crit rate +1.5%, Crit defense +3%, Accuracy +5%, Evasion +8%, HP potions +2, Potion heal +3%, Speed +10%. Spirits Within gives +20% Speed.
+- Weapon forge: pressing Try upgrade plays a forge in the Character Lab. Motes of the next aura colour spiral in and the aura round the fighter shrinks into the blade, which glows brighter in that colour. On success a flash and a ring of light, and the new aura stays; on failure the glow stutters, breaks into sparks and a grey puff, and the old aura comes back. The result text shows after the animation.
+- Shop and bet buttons no longer get rebuilt on every screen refresh (a tap could be lost mid-rebuild, which made buying feel laggy).
+
+## 9. What changed in 6.8 (site, plus the QA fixes in the backend: see QA_REPORT.md)
+- The Character Lab has its upgrade buttons on the stage itself, so members build their fighter while watching it (no scrolling down):
+  - left side, under the player frame: 1 entry, 5 entries, Add skill, Re-roll;
+  - right side: Weapon (with the forge), Iron Condor, Mount and Mount reset. On a computer they sit under the stats panel.
+  - The buttons are see-through glass with no frames (a thin light on one edge, a glow on hover), with level bars for the weapon, pet and mount. On phones they are narrow tiles with the icon on top so the fighter keeps the middle.
+  - The result of each purchase shows on the stage for a few seconds (at the top on phones, at the bottom on computers).
+- The full shop with every detail is still in "Your fighter" under the stage.
+- QA audit fixes (see QA_REPORT.md): an officer's daily award cap can no longer be passed by sending several awards at once (site and Discord /award); amounts like 1.5 and "0 entries" are refused instead of rounded; deleting an unknown chat message says "not found". Automated tests in tests/ (`npm run test:formulas`, `npm run test:backend`).

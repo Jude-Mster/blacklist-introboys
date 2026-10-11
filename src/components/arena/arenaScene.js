@@ -1503,7 +1503,7 @@ export function createArenaScene(opts) {
   // the Character Lab's camera: closer, looking at the fighter on the platform, drifting slowly round it
   function labCam(w, h, clock, forging) {
     const narrow = w / h < 1, orbit = forging ? 0 : Math.sin(clock * 0.22) * 0.38, back = (narrow ? 9.5 : 6.4) * (forging ? 0.72 : 1);
-    return [new THREE.Vector3(Math.sin(orbit) * back, narrow ? 3.6 : 3.1, Math.cos(orbit) * back), new THREE.Vector3(0, narrow ? 2.0 : 2.2, 0), narrow ? 64 : 52];
+    return [new THREE.Vector3(Math.sin(orbit) * back, narrow ? 3.4 : 3.1, Math.cos(orbit) * back), new THREE.Vector3(0, narrow ? 1.9 : 2.2, 0), narrow ? 66 : 52];   // the upgrade rails sit at the sides
   }
   function project(v, w, h) { const p = v.clone().project(camera); return [(p.x + 1) / 2 * w, (1 - p.y) / 2 * h, p.z]; }
 
@@ -1515,7 +1515,7 @@ export function createArenaScene(opts) {
     hctx.strokeStyle = "rgba(201,163,90,.7)"; hctx.lineWidth = 1; hctx.strokeRect(x + .5, y + .5, w - 1, h - 1);
     if (text) { hctx.fillStyle = "#fff"; hctx.font = `500 ${Math.max(9, h - 4)}px Barlow, sans-serif`; hctx.textAlign = "center"; hctx.textBaseline = "middle"; hctx.fillText(text, x + w / 2, y + h / 2 + 0.5); }
   }
-  function playerFrame(side, w, h, fr, i, scale) {
+  function playerFrame(side, w, h, fr, i, scale, noBottom) {
     const f = i ? cur.b : cur.a, s = statsOf(f, cur.values);
     const S = scale, mirror = side === "right";
     const fw = 230 * S, x0 = mirror ? w - fw - 8 : 8, y0 = 8;
@@ -1560,6 +1560,7 @@ export function createArenaScene(opts) {
       bar(bx2, py + 5 * S, bw2, 14 * S, frac, c1, c2, text, mirror ? "right" : "left");
       py -= 28 * S;
     };
+    if (noBottom) return;   // the Character Lab has its own upgrade buttons along the bottom
     if (f.pet) row("pet", f.pet / PET.levels, "#d9b25a", "#7a5a20", `Condor ${petGrowth(f.pet)}%`);
     if (f.mount) row("mount", f.mount.lv / MOUNT.levels, "#3f8fd8", "#173f74", `Mount ${mountShort(f.mount)}`);
     const nSl = 3 + cur.fight.skills[i].length, sw = sz * nSl + gap * (nSl - 1);
@@ -1917,28 +1918,44 @@ export function createArenaScene(opts) {
     hctx.strokeText(l2, top[0] + 8, y2); hctx.fillStyle = "#9cc9ff"; hctx.fillText(l2, top[0] + 8, y2);
     const l2w = hctx.measureText(l2).width; hctx.save(); hctx.shadowColor = "rgba(195,21,31,.9)"; hctx.shadowBlur = 6; drawImg("logo", top[0] + 8 - l2w / 2 - 19, y2 - 8, 15, 16); hctx.restore();
     hctx.strokeText(f.name, top[0], y3); hctx.fillStyle = "#fff"; hctx.fillText(f.name, top[0], y3);
-    playerFrame("left", w, h, fr, 0, S);
+    playerFrame("left", w, h, fr, 0, S, true);
     // the tag and what the fighter is trying right now
     const tc = clockT, ev = lastEv(0, ["buff", "cast", "spin", "swing"], tc);
     const doing = !ev || tc - ev.t > 1.0 ? "Idle · getting ready" : ev.type === "buff" ? `Testing ${SKILLS[ev.skill].name}` : ev.type === "cast" ? `Testing ${CHARGE.name}` : "Testing Skyfall";
-    const tx = narrow ? w / 2 : w - 12, al = narrow ? "center" : "right", ty = narrow ? h - 34 * S - 54 : 16;
+    const tx = w - 12, al = "right", ty = narrow ? 12 : 16;
     hctx.textAlign = al; hctx.textBaseline = "top";
     hctx.font = `800 ${Math.round((narrow ? 15 : 20) * S)}px 'Barlow Condensed', sans-serif`; hctx.lineWidth = 4; hctx.strokeStyle = "rgba(0,0,0,.85)";
     hctx.strokeText("CHARACTER LAB", tx, ty); hctx.fillStyle = "#46d8ff"; hctx.fillText("CHARACTER LAB", tx, ty);
     hctx.font = `600 ${Math.round((narrow ? 11 : 13) * S)}px 'Barlow Condensed', sans-serif`;
     hctx.strokeText(doing, tx, ty + (narrow ? 18 : 24) * S); hctx.fillStyle = "#e9c46a"; hctx.fillText(doing, tx, ty + (narrow ? 18 : 24) * S);
     // the numbers it fights with (computers only: on a phone the panel under the stage has them)
-    if (!narrow) {
+    // where the page's upgrade rails go (CSS variables on the stage): the left one under the player frame,
+    // the right one under the stats panel (computers) or under the tag (phones)
+    // (the stats panel needs a stage of 760px or more; smaller ones keep the room for the upgrade buttons,
+    // and "Your fighter" under the stage has every number)
+    const roomy = w >= 760;
+    let rightTop = ty + 46 * S, railW = roomy ? 150 * S : 0;
+    if (roomy) {
       const rows = [["HP", fmt(st.hp)], ["ATK", fmt(st.atk)], ["DEF", fmt(st.def)], ["Crit rate", `${st.crit}%`], ["Crit def", `${st.critdef}%`], ["Accuracy", `${st.acc}%`], ["Evasion", `${st.eva}%`], ["Speed", `${Math.round(fr.spd ? fr.spd[0] : st.spd)}%`]];
-      const pw = 150 * S, rh = 17 * S, px = w - pw - 12, py = ty + 48 * S;
-      hctx.fillStyle = "rgba(6,12,20,.72)"; hctx.fillRect(px, py, pw, rows.length * rh + 10 * S);
-      hctx.strokeStyle = "rgba(70,216,255,.55)"; hctx.lineWidth = 1; hctx.strokeRect(px + .5, py + .5, pw - 1, rows.length * rh + 10 * S - 1);
-      hctx.font = `500 ${Math.round(12 * S)}px Barlow, sans-serif`; hctx.textBaseline = "middle";
+      const pw = 150 * S, rh = 15 * S, px = w - pw - 12, py = ty + 46 * S, ph = rows.length * rh + 8 * S;
+      // glass: a dark see-through panel with no frame, a thin cyan light down its left edge
+      const gg = hctx.createLinearGradient(px, 0, px + pw, 0); gg.addColorStop(0, "rgba(8,16,28,.55)"); gg.addColorStop(1, "rgba(8,16,28,.2)");
+      hctx.fillStyle = gg; hctx.fillRect(px, py, pw, ph);
+      hctx.fillStyle = "rgba(70,216,255,.7)"; hctx.fillRect(px, py + 4, 2, ph - 8);
+      hctx.font = `500 ${Math.round(11 * S)}px Barlow, sans-serif`; hctx.textBaseline = "middle";
       rows.forEach(([k, v], j) => {
-        const yy = py + 5 * S + rh * (j + 0.5);
+        const yy = py + 4 * S + rh * (j + 0.5);
         hctx.textAlign = "left"; hctx.fillStyle = "#9fb3c8"; hctx.fillText(k, px + 8 * S, yy);
         hctx.textAlign = "right"; hctx.fillStyle = k === "Speed" && fr.spd && fr.spd[0] > st.spd ? hexStr(SKILLS.spirits.color) : "#f3ead7"; hctx.fillText(v, px + pw - 8 * S, yy);
       });
+      rightTop = py + ph + 8;
+    }
+    const rails = `${Math.round(8 + 100 * S)}|${Math.round(rightTop)}|${Math.round(railW)}`;
+    if (stageEl.dataset.rails !== rails) {
+      stageEl.dataset.rails = rails;
+      stageEl.style.setProperty("--lab-left-top", Math.round(8 + 100 * S) + "px");
+      stageEl.style.setProperty("--lab-right-top", Math.round(rightTop) + "px");
+      if (railW) stageEl.style.setProperty("--lab-rail-w", Math.round(railW) + "px"); else stageEl.style.removeProperty("--lab-rail-w");
     }
     if (cur.banner) { hctx.textAlign = "center"; hctx.textBaseline = "middle"; hctx.lineWidth = 4; hctx.strokeStyle = "rgba(0,0,0,.75)"; hctx.font = `600 ${Math.min(18, w * 0.035)}px 'Barlow Condensed', sans-serif`; hctx.fillStyle = "#f1d38c"; hctx.strokeText(cur.banner, w / 2, h * 0.86); hctx.fillText(cur.banner, w / 2, h * 0.86); }
   }

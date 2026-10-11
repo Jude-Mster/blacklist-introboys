@@ -29,7 +29,7 @@ export default async function(req) {
 
     if (p.action === 'delete') {
       if (!['officer', 'leader'].includes(me.role)) throw new UserError('Only the Guild Leader and Vice Guild Members can remove messages.', 403);
-      const msg = await b.asServiceRole.entities.ChatMessage.get(String(p.id));
+      const msg = await b.asServiceRole.entities.ChatMessage.get(String(p.id)).catch(() => null);   // an unknown id is "not found", not a server error
       if (!msg) throw new UserError('Message not found.', 404);
       await b.asServiceRole.entities.ChatMessage.update(msg.id, { deleted: true, text: '' });
       return Response.json({ ok: true });

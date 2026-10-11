@@ -1,0 +1,1 @@
+{ "imports": { "npm:@base44/sdk@0.8.52": "./fake/sdk.ts", "base44:runtime": "./fake/runtime.ts" } }

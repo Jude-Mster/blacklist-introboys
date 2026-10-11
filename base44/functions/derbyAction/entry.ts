@@ -206,7 +206,7 @@ async function payOthers(b, t, settings, skipMember: string, max: number) {
 }
 
 const lineKey = (l) => `${l.type}:${l.a}:${l.type === 'fc' ? l.b : ''}`;
-const cleanLine = (x) => ({ type: String(x && x.type), a: Math.floor(Number(x && x.a)), b: x && x.type === 'fc' ? Math.floor(Number(x.b)) : -1, amount: Math.floor(Number(x && x.amount)) });
+const cleanLine = (x) => ({ type: String(x && x.type), a: Math.floor(Number(x && x.a)), b: x && x.type === 'fc' ? Math.floor(Number(x.b)) : -1, amount: Number(x && x.amount) });   // whole points only (validLine refuses 1.5)
 
 export default async function(req) {
   try {

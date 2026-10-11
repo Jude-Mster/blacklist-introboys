@@ -1,0 +1,154 @@
+// Arena formulas, recomputed independently of the engine. Run: node tests/formulas.test.mjs
+// Phase 3: the Arena's numbers, recomputed independently of the engine's own code.
+// Only simulate()'s output (events, frames) and the build are taken from the engine; every formula
+// below is written again from the stated rules and compared with what the engine did.
+import * as E from "../base44/shared/arenaEngine.ts";
+const R = { rows: [], fail: 0 };
+const check = (name, formula, inputs, expected, actual, pass) => { R.rows.push({ name, formula, inputs, expected, actual, pass }); if (!pass) R.fail++; };
+
+// ---- the rules as stated (not imported) ----
+const BASE = { hp: 40000, mp: 13153, atk: 15000, def: 6000, crit: 15, critdef: 0, acc: 80, eva: 10, pots: 5, potheal: 80, spd: 100 };
+const PER = { hp: 7000, atk: 950, def: 900, crit: 1.5, critdef: 3, acc: 5, eva: 8, pots: 2, potheal: 3, spd: 10 };
+const W = { atk: 0.15, crit: 5 };
+const PET_FULL = { hp: 4400, atk: 2700, def: 4400 }, PET_LV = 8;
+const MOUNT_PER = 3, PAIRS = [["atk", "def"], ["atk", "hp"], ["def", "hp"], ["crit", "eva"], ["def", "eva"], ["critdef", "def"]];
+function myStats(f) {
+  const s = { ...BASE };
+  for (const k in PER) s[k] += ((f.ups || {})[k] || 0) * PER[k];
+  if (f.pet) for (const k of ["hp", "atk", "def"]) s[k] += Math.round(PET_FULL[k] * f.pet / PET_LV);
+  if (f.mount) for (const k of PAIRS[f.mount.pair]) s[k] = ["hp", "atk", "def"].includes(k) ? Math.round(s[k] * (1 + f.mount.lv * MOUNT_PER / 100)) : s[k] + f.mount.lv * MOUNT_PER;
+  const wl = Math.min(5, f.weapon || 0);
+  if (wl) { s.atk = Math.round(s.atk * (1 + W.atk * wl)); s.crit += W.crit * wl; }
+  return s;
+}
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+let fights = 0, hits = 0, misses = 0, crits = 0, expHit = 0, expCrit = 0, dmgBad = 0, dmgN = 0, hpBad = 0, koBad = 0, multBad = 0, potBad = 0, mpBad = 0, barBad = 0, statBad = 0, overkill = 0, afterKo = 0;
+let worstDmg = null;
+const r = E.mulberry32(20261011);
+for (let i = 0; i < 1500; i++) {
+  const a = E.randomBuild(r), b = E.randomBuild(r);
+  const f = E.simulate(a, b, (r() * 2 ** 32) >>> 0, { draws: true });
+  fights++;
+  const S = [myStats(a), myStats(b)];
+  for (const j of [0, 1]) for (const k of Object.keys(BASE)) if (Math.abs(S[j][k] - f.stats[j][k]) > 1e-9) { statBad++; if (statBad < 4) console.log("stat", k, S[j][k], f.stats[j][k]); }
+  const fr = (t) => f.frames[Math.round(t / E.DT)] || f.frames[f.frames.length - 1];
+  const buf = [{ spirits: 0, blood: 0, blow: 0 }, { spirits: 0, blood: 0, blow: 0 }];
+  let hp = [S[0].hp, S[1].hp], ko = false;
+  for (const e of f.events) {
+    if (ko && e.type !== "ko") afterKo++;
+    if (e.type === "hit" || e.type === "miss") {
+      const me = S[e.who], foe = S[1 - e.who];
+      const before = fr(e.t - E.DT);
+      const eva = foe.eva + (e.type === "miss" ? (e.dodge ? 25 : 0) : 0);
+      expHit += clamp(me.acc - foe.eva - (before.sk[1 - e.who].garuda > 0 ? 25 : 0), 25, 97) / 100;
+      if (e.type === "miss") { misses++; continue; }
+      hits++;
+      const atk = me.atk * (1 + (e.spirits ? 0.15 : 0) + (e.blood ? 0.25 : 0));
+      const critP = clamp(me.crit + (e.blow ? 20 : 0) - foe.critdef - (e.nirvana ? 20 : 0), 1, 60) / 100;
+      expCrit += critP; if (e.crit) crits++;
+      if (e.crit !== (e.mult >= 3) || (e.crit && (e.mult < 3 || e.mult > 7 || !Number.isInteger(e.mult))) || (!e.crit && e.mult !== 1)) multBad++;
+      // damage: max(ATK x 0.2, ATK - DEF x 0.5) x 0.46 x charge x crit, rounded; a shield halves it
+      const base = Math.max(atk * 0.2, atk - foe.def * 0.5) * 0.46 * e.power * e.mult;
+      const full = Math.max(1, Math.round(base));
+      const want = e.shielded ? Math.max(1, Math.round(e.shielded * 0.5)) : full;
+      const ref = e.shielded ? e.shielded : e.dmg;
+      dmgN++;
+      // the event shows the charge rounded to 2 decimals, so allow for that (+/- 0.005 of the charge) and the rounding to whole points
+      const perPower = base / e.power, tol = perPower * 0.005 + 1;
+      if (Math.abs(ref - full) > tol || (e.shielded && e.dmg !== want)) { dmgBad++; if (!worstDmg || Math.abs(ref - full) > worstDmg.d) worstDmg = { d: Math.abs(ref - full), ref, full, e }; }
+      // HP: the target loses exactly the damage, never below 0
+      const tgt = 1 - e.who, hpAfter = fr(e.t).hp[tgt];
+      const expAfter = Math.max(0, hp[tgt] - e.dmg);
+      if (hpAfter !== expAfter && !f.events.some((x) => x.type === "potion" && Math.abs(x.t - e.t) < 1e-9)) hpBad++;
+      hp[tgt] = expAfter;
+      if (hp[tgt] === 0 && !f.events.some((x) => x.type === "ko" && x.who === tgt)) koBad++;
+      if (hp[tgt] < 0) overkill++;
+      if (e.reflect) hp[e.who] = Math.max(0, hp[e.who] - e.reflect);
+      if (hp[tgt] === 0 || (e.reflect && hp[e.who] === 0)) ko = true;
+    }
+    if (e.type === "potion") {
+      const s = S[e.who], heal = Math.min(s.hp - hp[e.who], Math.round(s.hp * s.potheal / 100));
+      if (heal !== e.heal) potBad++;
+      hp[e.who] += heal;
+    }
+    if (e.type === "ko" && hp[e.who] !== 0) koBad++;
+  }
+  // bars: HP and MP in every frame between 0 and max; MP never goes up
+  for (let k = 0; k < f.frames.length; k++) {
+    const x = f.frames[k];
+    for (const j of [0, 1]) {
+      if (x.hp[j] < 0 || x.hp[j] > f.maxhp[j] || x.mp[j] < 0 || x.mp[j] > f.maxmp[j]) barBad++;
+      if (k && x.mp[j] > f.frames[k - 1].mp[j] + 1e-9) mpBad++;
+    }
+  }
+}
+check("Fighter stats", "base + rolls x per-roll + pet (full x lv/8) + mount (lv x 3%) + weapon (+15% ATK, +5 crit a level)", "1,500 fights, 3,000 builds", "0 differences", `${statBad} differences`, statBad === 0);
+check("Damage", "round(max(ATK x 0.2, ATK - DEF x 0.5) x 0.46 x charge x crit), ATK +15% Spirits, +25% Blood Lust", `${dmgN} hits`, "every hit within rounding", `${dmgBad} off${worstDmg ? ` (worst ${worstDmg.ref} vs ${worstDmg.full})` : ""}`, dmgBad === 0);
+check("Shield", "a shielded hit = round(full x 0.5), at least 1", "all shielded hits", "exact", dmgBad === 0 ? "exact" : "see damage", dmgBad === 0);
+check("Crit multiplier", "x3 to x7 whole numbers, only on a crit, applied once", `${hits} hits`, "0 wrong", `${multBad} wrong`, multBad === 0);
+check("HP after a hit", "HP - damage, never below 0", `${hits} hits`, "0 wrong", `${hpBad} wrong, ${overkill} below 0`, hpBad === 0 && overkill === 0);
+check("KO", "KO exactly when HP reaches 0; nothing happens after it", `${fights} fights`, "0 wrong", `${koBad} wrong, ${afterKo} events after a KO`, koBad === 0 && afterKo === 0);
+check("Potion heal", "min(max HP - HP, round(max HP x heal%))", "all potions", "exact", `${potBad} wrong`, potBad === 0);
+check("HP / MP bars", "0 <= value <= max in every frame (bar = value / max)", `${fights} fights`, "0 out of range", `${barBad} out of range`, barBad === 0);
+check("MP", "only goes down (skills and buffs); never refills", `${fights} fights`, "0 rises", `${mpBad} rises`, mpBad === 0);
+const hitRate = hits / (hits + misses), critRate = crits / hits, eh = expHit / (hits + misses), ec = expCrit / hits;
+const seH = Math.sqrt(eh * (1 - eh) / (hits + misses)), seC = Math.sqrt(ec * (1 - ec) / hits);
+check("Hit chance", "clamp(ACC - EVA (+25 Garuda), 25, 97)%", `${hits + misses} swings`, `${(eh * 100).toFixed(2)}%`, `${(hitRate * 100).toFixed(2)}%`, Math.abs(hitRate - eh) < 4 * seH);
+check("Crit chance", "clamp(CRIT (+20 Blow) - CRIT DEF (+20 Nirvana), 1, 60)%", `${hits} hits`, `${(ec * 100).toFixed(2)}%`, `${(critRate * 100).toFixed(2)}%`, Math.abs(critRate - ec) < 4 * seC);
+
+// ---- speed and pace ----
+{
+  let bad = 0, n = 0;
+  for (let i = 0; i < 300; i++) {
+    const a = E.randomBuild(r), b = E.randomBuild(r), f = E.simulate(a, b, i + 1, { draws: true });
+    for (const e of f.events) if (e.type === "cast" || e.type === "spin" || e.type === "buff") {
+      n++;
+      const s = myStats(e.who ? b : a), fr = f.frames[Math.round(e.t / E.DT)];
+      const want = Math.max(0.55, Math.min(1, 100 / fr.spd[e.who]));
+      if (Math.abs(want - e.k) > 1e-9 && Math.abs(Math.max(0.55, Math.min(1, 100 / (s.spd * 1.2))) - e.k) > 1e-9) bad++;
+    }
+  }
+  check("Speed pace", "each move takes 100 / Speed of its time, at least 0.55; Spirits Within adds 20%", `${n} moves`, "0 wrong", `${bad} wrong`, bad === 0);
+}
+
+// ---- odds ----
+{
+  const safeP = (p, N) => Math.min(1, p + 2 * Math.sqrt(Math.max(p * (1 - p), 1 / N) / N));
+  const floor2 = (x) => Math.floor(x * 100) / 100, offer = (raw, cap) => (raw >= 1.01 ? Math.min(cap, floor2(raw)) : 0);
+  let bad = 0, n = 0, overRound = [];
+  for (let i = 0; i < 120; i++) {
+    const a = E.randomBuild(r), b = E.randomBuild(r), seed = (r() * 2 ** 32) >>> 0;
+    const o = E.priceMatch(a, b, seed, { draws: true });
+    // re-count the practice fights myself
+    let wa = 0, wb = 0, dr = 0; const N = 2000;
+    for (let k = 0; k < N; k++) { const q = E.quickFight(a, b, ((seed >>> 0) * 7919 + k * 104729) >>> 0, { draws: true }); if (q.winner === 0) wa++; else if (q.winner === 1) wb++; else dr++; }
+    const pa = wa / N, pb = wb / N, pd = dr / N, favA = pa >= pb;
+    const fp = (p, edge) => (p <= 0 ? 0 : offer(((1 - edge) - 0.5 * pd) / safeP(p, N), 6));
+    const want = { a: fp(pa, favA ? 0.10 : 0.15), b: fp(pb, favA ? 0.15 : 0.10), draw: offer(0.85 / safeP(pd, N), 10) };
+    n++;
+    if (want.a !== o.a || want.b !== o.b || want.draw !== o.draw) bad++;
+    // the house's margin on the two fighters: implied probability of the offered prices
+    if (o.a > 1 && o.b > 1) overRound.push(1 / o.a + 1 / o.b);
+    for (const s of o.side) if (s.price && (s.price > 5 || s.p < 0.10 || s.p > 0.90)) bad++;
+  }
+  const avgOR = overRound.reduce((x, y) => x + y, 0) / overRound.length;
+  check("Fighter and Draw prices", "floor2(min(cap, (1 - edge - 0.5 x P(draw)) / cautious P)); edge 10% favourite / 15% other; Draw (0.85 / cautious P), max 10; nothing under 1.01", `${n} matchups re-counted`, "identical", `${bad} different`, bad === 0);
+  check("Implied probability of both fighters", "1/price A + 1/price B > 1 means the house has a margin", `${overRound.length} matchups with both offered`, "> 1.00", `${avgOR.toFixed(3)} on average (min ${Math.min(...overRound).toFixed(3)})`, Math.min(...overRound) > 1);
+}
+
+// ---- payouts ----
+{
+  let bad = 0, n = 0;
+  const outs = [{ winner: 0, draw: false, critko: true, pots: 3, crits: 2, buffs: 1, oneHitBy: [false, false] }, { winner: -1, draw: true, critko: false, pots: 0, crits: 0, buffs: 4, oneHitBy: [false, false] }, { winner: 1, draw: false, critko: false, pots: 5, crits: 5, buffs: 0, oneHitBy: [false, false] }];
+  for (const o of outs) for (const k of ["a", "b", "draw", "over", "under", "critover", "critunder", "buffover", "buffunder", "nocritko"]) for (const amt of [1, 7, 100, 333, 5000]) for (const price of [1.01, 1.37, 2.5, 5.99, 10]) {
+    const line = 2.5, l = { k, amount: amt, price, line };
+    const hit = k === "a" ? o.winner === 0 : k === "b" ? o.winner === 1 : k === "draw" ? o.draw : k === "over" ? o.pots > line : k === "under" ? o.pots < line : k === "critover" ? o.crits > line : k === "critunder" ? o.crits < line : k === "buffover" ? o.buffs > line : k === "buffunder" ? o.buffs < line : !o.critko;
+    const want = (k === "a" || k === "b") && o.draw ? Math.floor(amt * 0.5) : hit ? Math.floor(amt * price) : 0;
+    n++; if (E.lineReturn(l, o, {}) !== want) bad++;
+  }
+  check("Payouts", "win = floor(stake x price); fighter bets on a Draw get floor(stake / 2); a loss pays 0", `${n} cases`, "identical", `${bad} different`, bad === 0);
+}
+for (const x of R.rows) console.log(`${x.pass ? "ok  " : "FAIL"} ${x.name}: expected ${x.expected}, got ${x.actual}  [${x.formula}; ${x.inputs}]`);
+console.log(R.fail ? `${R.fail} failures` : "ALL PASSED");
+process.exit(R.fail ? 1 : 0);

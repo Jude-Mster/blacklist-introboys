@@ -537,7 +537,7 @@ async function buy(b, t, me, item: string, count: number, shown?: number) {
     let cost = 0, what = '';
     const rolled: any = { item };
     if (item === 'entry') {
-      const n = Math.floor(count);
+      const n = count;   // 0, 1.5 or anything that isn't 1 to 50 is refused (0 used to buy 1 entry)
       if (!Number.isInteger(n) || n < 1 || n > 50) throw new UserError('Buy 1 to 50 entries at a time.');
       cost = n * COSTS.entry; what = `${n} ${n === 1 ? 'entry' : 'entries'}`;
       rolled.ups = [];
@@ -703,7 +703,7 @@ export default async function(req) {
       const t = p.tour_id ? await E(b).Tournament.get(String(p.tour_id)).catch(() => null) : await activeTour(b);
       if (!t || t.status !== 'signup') throw new UserError('There is no tournament open for sign-up.');
       if (me.banned) throw new UserError('You are banned from the games.', 403);
-      const res = p.action === 'buy' ? await buy(b, t, me, String(p.item || ''), Number(p.count || 1), p.price == null ? undefined : Number(p.price)) : await reroll(b, t, me);
+      const res = p.action === 'buy' ? await buy(b, t, me, String(p.item || ''), p.count == null ? 1 : Number(p.count), p.price == null ? undefined : Number(p.price)) : await reroll(b, t, me);
       return Response.json({ ok: true, ...res, me: res.me ? { ...publicEntrant(res.me), rerolled: !!res.me.rerolled, weapon_tries: res.me.weapon_tries || 0, mount_resets: res.me.mount_resets || 0 } : null });
     }
 

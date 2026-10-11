@@ -63,6 +63,57 @@ function B2({ busy, id, onClick, disabled, quiet, children }) {
   );
 }
 
+// The Character Lab's upgrade rails: every upgrade as a see-through button down the sides of the stage, so a
+// member builds their fighter while watching it, with no scrolling down to the shop. Left: entries, skill,
+// re-roll. Right: weapon, Iron Condor, mount. The full shop with every detail stays in "Your fighter" below.
+function LabTile({ busy, id, onClick, disabled, icon, text, name, price, note, glow, gold, pips, pipColor }) {
+  const on = busy === id;
+  return (
+    <button type="button" onClick={onClick} disabled={!!busy || disabled} title={note} aria-label={note || name} className={cn("lab-tile", gold && "gold")}>
+      <span className="ic" style={glow ? { boxShadow: `0 0 0 1px ${glow}, 0 0 12px ${glow}` } : undefined}>
+        {typeof icon === "string" ? <img src={icon} alt="" aria-hidden="true" /> : icon || <b>{text}</b>}
+        {on && <span className="spin"><Loader2 className="h-4 w-4 animate-spin text-gold" /></span>}
+      </span>
+      <span className="tx">
+        <span className="nm">{on && id === "weapon1" ? "Forging…" : name}</span>
+        <span className="pr">{price}</span>
+        {pips && <span className="pips" style={pipColor ? { "--pip": pipColor } : undefined}>{Array.from({ length: pips[1] }, (_, k) => <i key={k} className={k < pips[0] ? "on" : ""} />)}</span>}
+      </span>
+    </button>
+  );
+}
+function LabRails({ me, costs, values, busy, buy, flash, used }) {
+  const mt = me.mount, W = me.weapon ? WEAPON.looks[me.weapon - 1] : null, maxW = me.weapon >= WEAPON.max, nextW = !maxW ? WEAPON.looks[me.weapon] : null;
+  const skillIcon = me.skills.length ? `/arena/icons/${me.skills[me.skills.length - 1]}.jpg` : "/arena/icons/spirits.jpg";
+  const chance = Math.round(values.weapon.chance * 100);
+  return (
+    <>
+      <div className="lab-rail left" role="group" aria-label="Entries and skills">
+        <LabTile busy={busy} id="entry1" gold onClick={() => buy("entry", 1)} text="+1" name="1 entry" price={`${fmt(costs.entry)} pts`} pips={[used, TOTAL_CAP]} note={`Buy 1 entry (${fmt(costs.entry)} pts): rolls one upgrade and raises your halo. ${used}/${TOTAL_CAP} upgrades.`} />
+        <LabTile busy={busy} id="entry5" gold onClick={() => buy("entry", 5)} text="+5" name="5 entries" price={`${fmt(costs.entry * 5)} pts`} note={`Buy 5 entries (${fmt(costs.entry * 5)} pts): five upgrade rolls at once`} />
+        <LabTile busy={busy} id="skill1" onClick={() => buy("skill")} disabled={me.skills.length >= MAX_SKILLS} icon={skillIcon} name={`Skill ${me.skills.length}/${MAX_SKILLS}`}
+          price={me.skills.length >= MAX_SKILLS ? "Full" : `${fmt(costs.skill)} pts`} note="Add a random buff skill you don't have yet" />
+        <LabTile busy={busy} id="reroll1" onClick={() => buy("reroll")} disabled={me.rerolled} icon={<Shuffle className="h-4 w-4 text-[#9fdcff]" />} name="Re-roll"
+          price={me.rerolled ? "Used" : "Free"} note="Re-roll your character (free, once)" />
+      </div>
+      <div className="lab-rail right" role="group" aria-label="Weapon, pet and mount">
+        <LabTile busy={busy} id="weapon1" onClick={() => buy("weapon")} disabled={maxW} icon="/arena/icons/weapon.jpg" glow={W ? hex(W.color) : ""}
+          name={`Weapon +${me.weapon}`} price={maxW ? "Max" : `${fmt(costs.weaponTry)} · ${chance}%`} pips={[me.weapon, WEAPON.max]} pipColor={W ? hex(W.color) : undefined}
+          note={maxW ? `Weapon +${WEAPON.max}` : `Try a weapon upgrade (${fmt(costs.weaponTry)} pts, ${chance}% success): +${me.weapon + 1}, ${nextW.name} aura. Each level +${Math.round(values.weapon.atk * 100)}% ATK and +${values.weapon.crit}% Crit rate.`} />
+        <LabTile busy={busy} id="pet1" onClick={() => buy("pet")} disabled={me.pet >= PET.levels} icon="/arena/icons/pet.jpg"
+          name={me.pet >= PET.levels ? "Condor max" : `Condor ${petGrowth(me.pet)}%`} price={me.pet >= PET.levels ? "Max" : `${fmt(costs.pet)} pts`} pips={[me.pet, PET.levels]} pipColor="#c9a2ff"
+          note={me.pet >= PET.levels ? "Iron Condor at 200%" : `Grow the Iron Condor to ${petGrowth(me.pet + 1)}% (${fmt(costs.pet)} pts): HP +${fmt(petBonus(me.pet + 1, "hp") - petBonus(me.pet, "hp"))}, ATK +${fmt(petBonus(me.pet + 1, "atk") - petBonus(me.pet, "atk"))}, DEF +${fmt(petBonus(me.pet + 1, "def") - petBonus(me.pet, "def"))}`} />
+        <LabTile busy={busy} id="mount1" onClick={() => buy("mount")} disabled={mt && mt.lv >= MOUNT.levels} icon="/arena/icons/mount.jpg"
+          name={mt ? `Mount Lv${mt.lv}` : "Mount"} price={mt && mt.lv >= MOUNT.levels ? "Max" : `${fmt(costs.mountLevel)} pts`} pips={[mt ? mt.lv : 0, MOUNT.levels]} pipColor="#7fc3ff"
+          note={mt ? `${mountText(mt)}. Next level: +${MOUNT.per}% more to both (${fmt(costs.mountLevel)} pts)` : `Buy a mount (${fmt(costs.mountLevel)} pts): draws two stats at random`} />
+        {mt && <LabTile busy={busy} id="mountReset1" onClick={() => buy("mountReset")} icon={<Shuffle className="h-4 w-4 text-[#7fc3ff]" />} name="Reset"
+          price={`${fmt(costs.mountReset)} pts`} note={`Draws a new pair of mount stats and keeps the level (${fmt(costs.mountReset)} pts)`} />}
+      </div>
+      {flash && <p role="status" className={cn("lab-flash", flash.error && "err")}>{flash.text}</p>}
+    </>
+  );
+}
+
 // which price each shop item uses (sent with the purchase, so a price the Guild Leader just changed is never charged unseen)
 const COST_KEY = { entry: "entry", weapon: "weaponTry", skill: "skill", pet: "pet", mount: "mountLevel", mountReset: "mountReset" };
 
@@ -215,6 +266,10 @@ function SignUp({ data, t, sn, balance, member, setBalance, onChanged, onBought,
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [rolled, setRolled] = useState("");
+  // the last result also shows for a few seconds on the stage
+  const [flash, setFlash] = useState(null);
+  useEffect(() => { if (rolled) setFlash({ text: rolled, at: Date.now() }); }, [rolled]);
+  useEffect(() => { if (!flash) return undefined; const id = setTimeout(() => setFlash(null), 6000); return () => clearTimeout(id); }, [flash]);
   const [fresh, setFresh] = useState(null);
   const [roll, setRoll] = useState(null);  // { mode, won, old, owned }
 
@@ -267,7 +322,7 @@ function SignUp({ data, t, sn, balance, member, setBalance, onChanged, onBought,
       else if (item === "mount") { if (r.drew) setRoll({ mode: "mount", won: r.mount.pair, old: null }); setRolled(r.drew ? `Your mount drew ${MOUNT.pairs[r.mount.pair].map((id) => STAT_NAME[id]).join(" and ")}: ${mountText(r.mount)}.` : `Mount level ${r.mount.lv}: ${mountText(r.mount)}.`); }
       else if (item === "mountReset") { setRoll({ mode: "mount", won: r.mount.pair, old: r.old }); setRolled(`Mount reset: now ${mountText(r.mount)}.`); }
       onBought(d.me);
-    } catch (e) { if (forging) forge({ phase: "end", success: false }); setError(errorText(e, "That didn't go through. Try again.")); onChanged(); }
+    } catch (e) { if (forging) forge({ phase: "end", success: false }); const m = errorText(e, "That didn't go through. Try again."); setError(m); setFlash({ text: m, error: true, at: Date.now() }); onChanged(); }
     finally { setBusy(""); }
   };
 
@@ -278,7 +333,8 @@ function SignUp({ data, t, sn, balance, member, setBalance, onChanged, onBought,
     <>
       <div className="min-w-0 space-y-4">
         <Header t={t} sn={sn} crowd={crowd} />
-        <ArenaStage spec={spec} clock={stageClock} showLog={false} crowd={myFighter ? null : crowd} chip={{ text: myFighter ? "Your fighter" : "Sign-up open" }} />
+        <ArenaStage spec={spec} clock={stageClock} showLog={false} crowd={myFighter ? null : crowd} chip={myFighter ? null : { text: "Sign-up open" }}
+          overlay={me ? <LabRails me={me} costs={costs} values={values} busy={busy} buy={buy} flash={flash} used={used} /> : null} />
 
         <Panel title="Your fighter">
           {!me ? (
@@ -420,7 +476,7 @@ function Running({ data, t, sn, serverNow, balance, member, setBalance, changedA
   const crowd = useArenaCrowd(`tour:${t.id}`);
   // a finished match watched again from its seed
   const [replay, setReplay] = useState(null);
-  const replaySpec = useMemo(() => (replay ? replaySpecOf(t, field, ms.find((m) => m.no === replay.no), values, replay.started) : null), [replay]);
+  const replaySpec = useMemo(() => (replay ? replaySpecOf(t, field, ms.find((m) => m.no === replay.no), values, replay.started) : null), [replay]);  
   const board = data.board && cur && data.board.match_no === cur.no ? data.board : null;
   const status = cur ? (!cur.open_at || sn < Date.parse(cur.open_at) ? "waiting" : sn < Date.parse(cur.close_at) ? "betting" : cur.outcome ? "done" : "fighting") : "";
   const open = status === "betting" && Date.parse(cur.close_at) - sn > 500;
@@ -576,10 +632,10 @@ function Bracket({ t, field, sn, curNo, memberId, watching, onWatch }) {
 
 // ---------- the last tournament's result ----------
 function LastTournament({ t, member, sn }) {
-  const field = useMemo(() => (t.field || []).map((x) => asFighter(x)), [t.id]);
+  const field = useMemo(() => (t.field || []).map((x) => asFighter(x)), [t.id]);  
   const values = normValues(t.values);
   const [replay, setReplay] = useState(null);
-  const replaySpec = useMemo(() => (replay ? replaySpecOf(t, field, (t.matches || []).find((m) => m.no === replay.no), values, replay.started) : null), [replay]);
+  const replaySpec = useMemo(() => (replay ? replaySpecOf(t, field, (t.matches || []).find((m) => m.no === replay.no), values, replay.started) : null), [replay]);  
   if (t.status === "cancelled") {
     return <Panel title={`"${t.title}" was cancelled`}><p className="text-sm">{t.cancel_reason}</p></Panel>;
   }

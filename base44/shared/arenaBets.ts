@@ -31,7 +31,7 @@ export function priceLines(raw, odds, minBet: number) {
   if (!Array.isArray(raw) || !raw.length) throw new UserError('Pick a bet and an amount first.');
   if (raw.length > MAX_LINES) throw new UserError('Too many bets at once.');
   return raw.map((x) => {
-    const k = String(x && x.k || ''), amount = Math.floor(Number(x && x.amount));
+    const k = String(x && x.k || ''), amount = Number(x && x.amount);   // whole points only: 1.5 is refused, not rounded down
     if (!lineKeyOk(k, odds)) throw new UserError("That bet isn't offered on this fight.");
     if (!Number.isInteger(amount) || amount < minBet) throw new UserError(`Each bet must be at least ${minBet.toLocaleString()} points.`);
     const price = priceFor(k, odds);

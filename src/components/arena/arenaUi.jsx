@@ -31,7 +31,8 @@ export const asFighter = (x, extra = {}) => ({ ...(x.build || x), name: x.name, 
 // controls: extra buttons for the bar under the stage (replay speed, skip).
 // One camera only, the game's own view (the preview's camera buttons were taken out on purpose).
 export const EMOJIS = [["😂", "LOL"], ["🤡", "Clown"], ["💀", "Dead"], ["🔥", "Fire"], ["😤", "Angry"], ["🐔", "Chicken"], ["🧂", "Salty"], ["🍼", "Baby"], ["😭", "Crying"], ["🫵", "You"], ["💩", "Trash"], ["👑", "King"]];
-export function ArenaStage({ spec, clock, className, showLog = true, logTitle = "Fight log", chip, crowd, controls }) {
+// overlay: things laid over the stage (the Character Lab's upgrade rails down both sides)
+export function ArenaStage({ spec, clock, className, showLog = true, logTitle = "Fight log", chip, crowd, controls, overlay }) {
   const stageRef = useRef(null), glRef = useRef(null), hudRef = useRef(null), tipRef = useRef(null), fxRef = useRef(null);
   const sceneRef = useRef(null);
   const clockRef = useRef(clock);
@@ -97,7 +98,7 @@ export function ArenaStage({ spec, clock, className, showLog = true, logTitle = 
       if (!r.mine) setTimeout(() => throwEmoji(r.emoji, r.name, false), Math.random() * 900);
     }
     if (shown.current.size > 400) shown.current = new Set([...shown.current].slice(-200));
-  }, [crowd && crowd.reactions, throwEmoji]);
+  }, [crowd && crowd.reactions, throwEmoji]);  
   const lastTaunt = useRef(0);
   const taunt = async (e) => {
     if (!crowd || !crowd.send || Date.now() - lastTaunt.current < 1300) return;
@@ -110,7 +111,7 @@ export function ArenaStage({ spec, clock, className, showLog = true, logTitle = 
 
   return (
     <div className={cn("arena-root overflow-hidden rounded-md border border-[#5a4724] bg-black shadow-[0_20px_60px_rgba(0,0,0,0.55)]", className)}>
-      <div ref={stageRef} className="arena-stage">
+      <div ref={stageRef} className={cn("arena-stage", overlay && "lab")}>
         <canvas ref={glRef} aria-label="The arena in 3D" />
         <canvas ref={hudRef} aria-hidden="true" />
         {(chip || (crowd && crowd.watching > 0)) && (
@@ -120,6 +121,7 @@ export function ArenaStage({ spec, clock, className, showLog = true, logTitle = 
           </div>
         )}
         <div ref={fxRef} className="arena-emofx" aria-hidden="true" />
+        {overlay && ready && !failed && <div className="pointer-events-none absolute inset-0 z-[3]">{overlay}</div>}
         {(!ready || failed) && (
           <div className="absolute inset-0 z-10 flex items-center justify-center text-sm uppercase tracking-[0.14em] text-[#9b948a] arena-label">
             {failed ? "This device can't show the arena in 3D." : <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading the fighters</span>}

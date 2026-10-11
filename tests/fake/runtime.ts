@@ -1,0 +1,1 @@
+export const secrets = { get: (k: string) => ((globalThis as any).__secrets || {})[k] || '' };

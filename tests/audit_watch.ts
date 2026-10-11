@@ -1,0 +1,15 @@
+import { member, settings, call, advance, ok, done } from './h.ts';
+const arena = (await import('../base44/functions/arenaAction/entry.ts')).default;
+await settings({ games_enabled: ['arena'] });
+const A = await member('A'), B = await member('B'), C = await member('C');
+const w = async (m) => (await call(arena, m, { action: 'pulse', scope: 'live' })).watching;
+await Promise.all([1, 2, 3, 4].map(() => call(arena, A, { action: 'pulse', scope: 'live', here: true })));
+await call(arena, B, { action: 'pulse', scope: 'live', here: true });
+ok((await w(C)) === 2, `watching: A (4 tabs/pulses at once) + B = 2 (got ${await w(C)})`);
+await call(arena, C, { action: 'pulse', scope: 'live', here: true });
+ok((await w(C)) === 3, 'watching: C joins = 3');
+advance(45e3); await call(arena, A, { action: 'pulse', scope: 'live', here: true });
+advance(20e3);
+ok((await w(C)) === 1, `watching: B and C stopped sending for over a minute, A still here = 1 (got ${await w(C)})`);
+ok((await call(arena, A, { action: 'pulse', scope: 'tour:x', here: true })).watching >= 1 && (await w(C)) === 1, 'watching: the tournament count is separate from the live one');
+done();
