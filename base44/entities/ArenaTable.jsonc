@@ -28,7 +28,12 @@
     },
     "seed": {
       "type": "integer",
-      "description": "SECRET until betting closes: the fight's dice"
+      "description": "Picked when betting closes (0 before): the fight's dice"
+    },
+    "fought": {
+      "type": "boolean",
+      "default": false,
+      "description": "The fight is fought (seed and result picked) only when betting closes"
     },
     "outcome": {
       "type": "object",

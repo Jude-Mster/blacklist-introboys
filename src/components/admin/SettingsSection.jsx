@@ -48,7 +48,7 @@ export default function SettingsSection() {
           derby_max_bet: s.derby_max_bet ?? 2000,
           arena_max_bet: s.arena_max_bet ?? 5000,
           arena_min_bet: s.arena_min_bet ?? 1,
-          arena_bet_seconds: s.arena_bet_seconds ?? 120,
+          arena_bet_seconds: s.arena_bet_seconds ?? 30,
           house_edge_pct: s.house_edge_pct,
           award_cap_per_day: s.award_cap_per_day,
           daily_wheel_prizes: Array.isArray(s.daily_wheel_prizes) ? s.daily_wheel_prizes : String(s.daily_wheel_prizes).split(","),
@@ -127,7 +127,7 @@ export default function SettingsSection() {
             <Field id="derby_max_bet" label="Derby limit per race" type="number" value={s.derby_max_bet ?? 2000} onChange={(v) => set("derby_max_bet", v)} hint="Most one member can bet on one Blacklist Derby race." />
             <Field id="arena_max_bet" label="Arena limit per fight" type="number" value={s.arena_max_bet ?? 5000} onChange={(v) => set("arena_max_bet", v)} hint="Most one member can bet on one Live Arena fight or one tournament match." />
             <Field id="arena_min_bet" label="Arena smallest bet" type="number" value={s.arena_min_bet ?? 1} onChange={(v) => set("arena_min_bet", v)} hint="Least a member can put on one Arena bet." />
-            <Field id="arena_bet_seconds" label="Live Arena betting time (seconds)" type="number" value={s.arena_bet_seconds ?? 120} onChange={(v) => set("arena_bet_seconds", v)} hint="30 to 300. About 120 gives a new fight roughly every 3 minutes." />
+            <Field id="arena_bet_seconds" label="Live Arena betting time (seconds)" type="number" value={s.arena_bet_seconds ?? 30} onChange={(v) => set("arena_bet_seconds", v)} hint="10 to 300. With 30, a new fight starts about every 1½ minutes (30 s of bets, the fight, 15 s of result)." />
             <Field id="house_edge_pct" label="House edge %" type="number" value={s.house_edge_pct} onChange={(v) => set("house_edge_pct", v)} hint="0 to 20. At 3, games return 97% over time." />
             <Field id="award_cap_per_day" label="Vice Guild Member award cap / 24h" type="number" value={s.award_cap_per_day} onChange={(v) => set("award_cap_per_day", v)} />
             <Field

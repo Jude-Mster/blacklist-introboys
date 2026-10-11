@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Volume2, VolumeX, Video, X, Users } from "lucide-react";
+import { Loader2, Volume2, VolumeX, X, Users, Eye, RotateCcw, FastForward, SkipForward } from "lucide-react";
+import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import Avatar from "@/components/Avatar";
 import { Points } from "@/components/SealLogo";
 import { cn } from "@/lib/utils";
 import {
-  SKILLS, WEAPON, PET, MOUNT, STAT_NAME, UPGRADES, PER_STAT, TOTAL_CAP, petGrowth, petBonus, statsOf, mountText, lineLabel, lineReturn, DRAW_REFUND, LIMIT
+  SKILLS, WEAPON, PET, MOUNT, STAT_NAME, UPGRADES, PER_STAT, TOTAL_CAP, petGrowth, petBonus, statsOf, mountText, lineLabel, lineReturn, DRAW_REFUND, LIMIT, CONFLICT
 } from "@/lib/arenaEngine";
 import { createArenaScene, LOOKS, lookTitle, lookColor } from "./arenaScene";
 import "./arena.css";
@@ -26,15 +27,18 @@ export const asFighter = (x, extra = {}) => ({ ...(x.build || x), name: x.name, 
 
 // ---------- the stage ----------
 // spec: { key, a, b, fight, values }; clock() -> { betting, betLeft, t, idle, banner } (see arenaScene.js).
-export function ArenaStage({ spec, clock, className, showLog = true, logTitle = "Fight log" }) {
-  const stageRef = useRef(null), glRef = useRef(null), hudRef = useRef(null), tipRef = useRef(null);
+// chip: { text, live } shown at the top of the stage. crowd: from useArenaCrowd (watching count and emojis).
+// controls: extra buttons for the bar under the stage (replay speed, skip).
+// One camera only, the game's own view (the preview's camera buttons were taken out on purpose).
+export const EMOJIS = [["😂", "LOL"], ["🤡", "Clown"], ["💀", "Dead"], ["🔥", "Fire"], ["😤", "Angry"], ["🐔", "Chicken"], ["🧂", "Salty"], ["🍼", "Baby"], ["😭", "Crying"], ["🫵", "You"], ["💩", "Trash"], ["👑", "King"]];
+export function ArenaStage({ spec, clock, className, showLog = true, logTitle = "Fight log", chip, crowd, controls }) {
+  const stageRef = useRef(null), glRef = useRef(null), hudRef = useRef(null), tipRef = useRef(null), fxRef = useRef(null);
   const sceneRef = useRef(null);
   const clockRef = useRef(clock);
   clockRef.current = clock;
   const [failed, setFailed] = useState(false);
   const [ready, setReady] = useState(false);
   const [sound, setSound] = useState(() => { try { return localStorage.getItem(SOUND_KEY) !== "off"; } catch { return true; } });
-  const [cam, setCam] = useState("high");
   const logRef = useRef({ key: null, lines: [] });
   const [log, setLog] = useState([]);
 
@@ -59,7 +63,6 @@ export function ArenaStage({ spec, clock, className, showLog = true, logTitle = 
   }, []);
 
   useEffect(() => { if (sceneRef.current) sceneRef.current.setSound(sound); try { localStorage.setItem(SOUND_KEY, sound ? "on" : "off"); } catch { /* private mode */ } }, [sound, ready]);
-  useEffect(() => { if (sceneRef.current) sceneRef.current.setCamera(cam); }, [cam, ready]);
   useEffect(() => {
     const sc = sceneRef.current;
     if (!sc || !ready || !spec || !spec.fight) return;
@@ -67,11 +70,56 @@ export function ArenaStage({ spec, clock, className, showLog = true, logTitle = 
     sc.show({ ...spec, clock: () => clockRef.current() });
   }, [spec, ready]);
 
+  // emojis rise from the bottom of the stage with the sender's name under them
+  const throwEmoji = useCallback((e, from, mine) => {
+    const box = fxRef.current, st = stageRef.current;
+    if (!box || !st) return;
+    const w = st.clientWidth, h = st.clientHeight;
+    const el = document.createElement("div");
+    el.className = "emo" + (mine ? " mine" : "");
+    el.style.left = Math.round(w * (0.06 + Math.random() * 0.88)) + "px";
+    el.style.setProperty("--rise", Math.round(h + 90) + "px");
+    el.style.setProperty("--sw", (6 + Math.random() * 10).toFixed(0) + "px");
+    el.style.setProperty("--dur", (3.6 + Math.random() * 1.4).toFixed(2) + "s");
+    const bub = document.createElement("div"); bub.className = "bub";
+    const sp = document.createElement("span"); sp.textContent = e; bub.append(sp);
+    const nm = document.createElement("b"); nm.textContent = from;
+    el.append(bub, nm); box.appendChild(el);
+    el.addEventListener("animationend", (ev) => { if (ev.target === el) el.remove(); });
+    while (box.children.length > 40) box.firstElementChild.remove();
+  }, []);
+  const shown = useRef(new Set());
+  useEffect(() => {
+    if (!crowd) return;
+    for (const r of crowd.reactions || []) {
+      if (shown.current.has(r.id)) continue;
+      shown.current.add(r.id);
+      if (!r.mine) setTimeout(() => throwEmoji(r.emoji, r.name, false), Math.random() * 900);
+    }
+    if (shown.current.size > 400) shown.current = new Set([...shown.current].slice(-200));
+  }, [crowd && crowd.reactions, throwEmoji]);
+  const lastTaunt = useRef(0);
+  const taunt = async (e) => {
+    if (!crowd || !crowd.send || Date.now() - lastTaunt.current < 1300) return;
+    lastTaunt.current = Date.now();
+    throwEmoji(e, "You", true);
+    const id = await crowd.send(e);
+    if (id) shown.current.add(id);
+  };
+  const btn = "flex h-8 items-center gap-1.5 rounded border border-[#2b2a33] px-2.5 text-xs uppercase tracking-wider text-[#ece6dc] arena-label hover:border-[#5a4724]";
+
   return (
     <div className={cn("arena-root overflow-hidden rounded-md border border-[#5a4724] bg-black shadow-[0_20px_60px_rgba(0,0,0,0.55)]", className)}>
       <div ref={stageRef} className="arena-stage">
-        <canvas ref={glRef} />
-        <canvas ref={hudRef} />
+        <canvas ref={glRef} aria-label="The arena in 3D" />
+        <canvas ref={hudRef} aria-hidden="true" />
+        {(chip || (crowd && crowd.watching > 0)) && (
+          <div className="pointer-events-none absolute left-1/2 top-11 z-[2] flex -translate-x-1/2 gap-2">
+            {chip && <span className={cn("arena-chip", chip.live && "live")}>{chip.text}</span>}
+            {crowd && crowd.watching > 0 && <span className="arena-chip"><Eye className="h-3.5 w-3.5" aria-hidden="true" /> {fmt(crowd.watching)} watching</span>}
+          </div>
+        )}
+        <div ref={fxRef} className="arena-emofx" aria-hidden="true" />
         {(!ready || failed) && (
           <div className="absolute inset-0 z-10 flex items-center justify-center text-sm uppercase tracking-[0.14em] text-[#9b948a] arena-label">
             {failed ? "This device can't show the arena in 3D." : <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading the fighters</span>}
@@ -79,15 +127,23 @@ export function ArenaStage({ spec, clock, className, showLog = true, logTitle = 
         )}
       </div>
       <div className="flex flex-wrap items-center justify-end gap-1.5 border-t border-[#5a4724] bg-gradient-to-b from-[#16171f] to-[#0d0e13] px-2.5 py-1.5">
-        <button type="button" onClick={() => setSound((s) => !s)} aria-pressed={sound} className="flex h-8 items-center gap-1.5 rounded border border-[#2b2a33] px-2.5 text-xs uppercase tracking-wider text-[#ece6dc] arena-label hover:border-[#5a4724]">
+        {controls}
+        <button type="button" onClick={() => setSound((s) => !s)} aria-pressed={sound} className={btn}>
           {sound ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />} {sound ? "Sound on" : "Sound off"}
         </button>
-        <button type="button" onClick={() => setCam((c) => (c === "high" ? "low" : c === "low" ? "top" : "high"))} className="flex h-8 items-center gap-1.5 rounded border border-[#2b2a33] px-2.5 text-xs uppercase tracking-wider text-[#ece6dc] arena-label hover:border-[#5a4724]">
-          <Video className="h-3.5 w-3.5" /> Camera: {cam === "high" ? "game" : cam === "low" ? "low" : "top"}
-        </button>
       </div>
+      {crowd && crowd.send && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-[#2b2a33] bg-[#0d0e13] px-2.5 py-2">
+          <span className="arena-label text-xs font-bold uppercase tracking-[0.18em] text-crimson">Tease</span>
+          <div className="flex flex-wrap gap-1" role="group" aria-label="Throw an emoji">
+            {EMOJIS.map(([e, nm]) => (
+              <button key={e} type="button" title={nm} aria-label={nm} onClick={() => taunt(e)} className="rounded border border-[#2b2a33] bg-[#1a1b24] px-1.5 py-1 text-xl leading-none active:scale-90">{e}</button>
+            ))}
+          </div>
+        </div>
+      )}
       {showLog && (
-        <details className="border-t border-[#2b2a33] bg-[#0d0e13] px-3 py-2">
+        <details open className="border-t border-[#2b2a33] bg-[#0d0e13] px-3 py-2">
           <summary className="cursor-pointer text-xs uppercase tracking-[0.16em] text-[#d6ad52] arena-label">{logTitle}</summary>
           <ul className="arena-log mt-1 max-h-48 overflow-auto">
             {log.length ? log.map((l, i) => <li key={log.length - i}><span className="t">{l.t.toFixed(1)}s</span> · <span dangerouslySetInnerHTML={{ __html: l.html }} /></li>) : <li>Nothing yet.</li>}
@@ -97,6 +153,58 @@ export function ArenaStage({ spec, clock, className, showLog = true, logTitle = 
       <div ref={tipRef} className="arena-tip" role="tooltip" hidden />
     </div>
   );
+}
+
+// The crowd for one screen ("live", or "tour:<id>"): how many are watching and the emojis they throw.
+// Asks every 5 seconds while the tab is open; counts this member as watching every 20 seconds.
+export function useArenaCrowd(scope, enabled = true) {
+  const [state, setState] = useState({ watching: 0, reactions: [] });
+  const lastHere = useRef(0);
+  useEffect(() => {
+    if (!enabled || !scope) return undefined;
+    let alive = true;
+    const ask = async () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      const here = Date.now() - lastHere.current > 20000;
+      try {
+        const res = await base44.functions.invoke("arenaAction", { action: "pulse", scope, ...(here ? { here: true } : {}) });
+        if (here) lastHere.current = Date.now();
+        if (alive && res.data) setState({ watching: res.data.watching || 0, reactions: res.data.reactions || [] });
+      } catch { /* the crowd is a nicety: try again next time */ }
+    };
+    ask();
+    const t = setInterval(ask, 5000);
+    return () => { alive = false; clearInterval(t); };
+  }, [scope, enabled]);
+  const send = useCallback(async (emoji) => {
+    try { const res = await base44.functions.invoke("arenaAction", { action: "react", scope, emoji }); return res.data && res.data.id; } catch { return null; }
+  }, [scope]);
+  return useMemo(() => ({ ...state, send }), [state, send]);
+}
+
+// A replay on the page's own clock, with 2× speed, skip to the result and play again.
+export function useReplayClock(length, intro = 3) {
+  const [run, setRun] = useState({ started: Date.now(), speed: 1, base: 0 });
+  const clock = useCallback(() => ({ t: run.base + ((Date.now() - run.started) / 1000) * run.speed - intro }), [run, intro]);
+  const now = () => run.base + ((Date.now() - run.started) / 1000) * run.speed;
+  const setSpeed = (speed) => setRun({ started: Date.now(), speed, base: now() });
+  const skip = () => setRun({ started: Date.now(), speed: run.speed, base: intro + (length || 0) + 0.2 });
+  const restart = () => setRun({ started: Date.now(), speed: run.speed, base: 0 });
+  const btn = "flex h-8 items-center gap-1.5 rounded border border-[#2b2a33] px-2.5 text-xs uppercase tracking-wider text-[#ece6dc] arena-label hover:border-[#5a4724]";
+  const controls = (
+    <>
+      <button type="button" onClick={restart} className={btn}><RotateCcw className="h-3.5 w-3.5" /> Replay</button>
+      <button type="button" onClick={() => setSpeed(run.speed === 1 ? 2 : 1)} aria-pressed={run.speed === 2} className={cn(btn, run.speed === 2 && "border-[#d6ad52] text-[#f1d38c]")}><FastForward className="h-3.5 w-3.5" /> 2× speed</button>
+      <button type="button" onClick={skip} className={btn}><SkipForward className="h-3.5 w-3.5" /> Skip to result</button>
+    </>
+  );
+  return { clock, controls, restart };
+}
+
+// A past fight watched again on this page's own clock (2× speed, skip, replay). Give it key={spec.key}.
+export function ReplayStage({ spec, crowd }) {
+  const { clock, controls } = useReplayClock(spec.fight.length);
+  return <ArenaStage spec={spec} clock={clock} chip={{ text: "Replay" }} crowd={crowd} controls={controls} logTitle="Fight log (replay)" />;
 }
 
 // ---------- skills ----------
@@ -151,11 +259,15 @@ export function FighterCard({ f, values, side, highlight, children, className })
 
 // ---------- the bet slip: pick any number of bets, one amount for each ----------
 // odds: the fight's prices. names: [A, B]. draws: the Draw is offered (Live Arena only).
-export function BetSlip({ fightKey, odds, names, draws, open, closedText, limit, minBet, placed, balance, onPlace, busy, error, notice }) {
+export function BetSlip({ fightKey, odds, names, draws, open, closedText, limit, minBet, placed, balance, onPlace, busy, error, notice, mineLines = [] }) {
   const [picks, setPicks] = useState([]);
   const [amount, setAmount] = useState("");
   useEffect(() => { setPicks([]); }, [fightKey]);
-  const toggle = (k) => { if (!open) return; setPicks((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k])); };
+  // Both sides of the same question can't be backed on one fight: picking one swaps out the other, and one
+  // already placed locks the other out.
+  const placedKeys = new Set((mineLines || []).map((l) => l.k));
+  const locked = (k) => CONFLICT[k] && placedKeys.has(CONFLICT[k]);
+  const toggle = (k) => { if (!open || locked(k)) return; setPicks((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p.filter((x) => x !== CONFLICT[k]), k])); };
   const amt = Math.floor(Number(amount) || 0);
   const priceOf = (k) => (k === "a" ? odds.a : k === "b" ? odds.b : k === "draw" ? odds.draw : ((odds.side || []).find((x) => x.id === k) || {}).price || 0);
   const total = amt * picks.length;
@@ -164,12 +276,13 @@ export function BetSlip({ fightKey, odds, names, draws, open, closedText, limit,
   const can = open && picks.length && amt >= minBet && !problem && !busy;
   const place = async () => { if (!can) return; const ok = await onPlace(picks.map((k) => ({ k, amount: amt }))); if (ok) { setPicks([]); } };
   const Btn = ({ k, label, sub }) => {
-    const p = priceOf(k), on = picks.includes(k);
+    const p = priceOf(k), on = picks.includes(k), lock = locked(k);
+    const why = lock ? "You already bet on the other side" : !(p > 1) ? (k === "draw" ? `Not offered: no realistic chance of a draw in ${LIMIT} s` : "Not offered on this fight") : sub;
     return (
-      <button type="button" disabled={!open || !(p > 1)} onClick={() => toggle(k)} aria-pressed={on}
+      <button type="button" disabled={!open || !(p > 1) || lock} onClick={() => toggle(k)} aria-pressed={on} title={lock || !(p > 1) ? why : undefined}
         className={cn("flex min-w-0 items-center justify-between gap-2 rounded border px-2.5 py-2 text-left text-[13px] transition-colors disabled:cursor-default",
-          on ? "border-gold bg-gold/20" : "border-bronze/45 bg-black/30 enabled:hover:border-gold", !(p > 1) && "opacity-40")}>
-        <span className="min-w-0"><span className="block truncate">{label}</span>{sub && <span className="block truncate text-[11px] text-mist">{sub}</span>}</span>
+          on ? "border-gold bg-gold/20" : "border-bronze/45 bg-black/30 enabled:hover:border-gold", (!(p > 1) || lock) && "opacity-40")}>
+        <span className="min-w-0"><span className="block truncate">{label}</span>{why && <span className="block truncate text-[11px] text-mist">{why}</span>}</span>
         <b className="shrink-0 font-heading tabular-nums text-gold">{fmtPrice(p)}</b>
       </button>
     );
@@ -181,9 +294,10 @@ export function BetSlip({ fightKey, odds, names, draws, open, closedText, limit,
         {draws && <Btn k="draw" label="Draw" sub={`no KO in ${LIMIT} s`} />}
         <Btn k="b" label={names[1]} sub="to win" />
       </div>
-      <p className="mt-2 text-xs uppercase tracking-wider text-mist">Side bets</p>
+      <p className="mt-2 text-xs uppercase tracking-wider text-mist">Side bets <span className="normal-case tracking-normal">· pick as many as you like, but only one side of each</span></p>
       <div className="mt-1 grid grid-cols-1 gap-1.5">
-        {(odds.side || []).map((s) => <Btn key={s.id} k={s.id} label={s.name} />)}
+        {(odds.side || []).filter((x) => x.price > 1).map((x) => <Btn key={x.id} k={x.id} label={x.name} />)}
+        {(odds.side || []).some((x) => !(x.price > 1)) && <p className="text-[11px] text-mist">Side bets that almost never or almost always happen in this matchup aren't offered.</p>}
       </div>
       <label className="mt-3 block text-xs text-mist" htmlFor={`amt-${fightKey}`}>Amount on each bet</label>
       <input id={`amt-${fightKey}`} type="number" inputMode="numeric" min={minBet} step={1} value={amount} disabled={!open}
@@ -366,4 +480,4 @@ export function useServerClock() {
   const serverNow = useCallback(() => Date.now() + offset.current, []);
   return { now: now + offset.current, sync, serverNow };
 }
-export const useStable = (v) => useMemo(() => v, [JSON.stringify(v)]);  
+export const useStable = (v) => useMemo(() => v, [JSON.stringify(v)]);

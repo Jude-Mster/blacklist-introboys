@@ -33,7 +33,7 @@ const client = createClient({
 //   - after a "rate limit" answer, refreshes pause for a few seconds.
 // Anything a member does (bet, play a card, send a message) is never held back.
 const READ_FUNCTIONS = { getChatMessages: 3000, getGameFeed: 3000, getLeaderboard: 3000 };
-const READ_ACTIONS = { state: 900, list: 900, race: 900 };
+const READ_ACTIONS = { state: 900, list: 900, race: 900, pulse: 1500 };
 const BACKOFF_MS = 4000;
 const LOAD_ACTIONS = new Set(["state", "list", "catalog", "adminOverview", "roster", "totals", "search", "discordStatus", "ping", "mine", "pending", "adminList", "stockSummary"]);
 const LOAD_RETRY_MS = [1200, 2500, 5000];

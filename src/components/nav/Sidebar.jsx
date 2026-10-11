@@ -36,13 +36,14 @@ export default function Sidebar({ collapsed, onToggle, onChat, chatOpen, unread 
     >
       <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3">
         <Item item={HOME} active={isActive(HOME, location)} wide={wide} />
-        <Item item={FIGHT} glyph={<GuildMark className="h-7 w-7" />} active={isActive(FIGHT, location)} wide={wide} badge={tourOpen} />
 
         <Group label="Play" wide={wide}>
+          {/* Fight (the Blacklist Arena) takes Poker's place; Poker is still on the Games page */}
+          <Item item={FIGHT} glyph={<GuildMark className="h-7 w-7" />} active={isActive(FIGHT, location)} wide={wide} badge={tourOpen} />
           {games.map((g) => (
             <Item key={g.id} item={g} glyph={GAME_ICONS[g.id]} active={isActive(g, location)} wide={wide} />
           ))}
-          {tableLinks(settings).map((t) => (
+          {tableLinks(settings).filter((t) => t.id !== "poker").map((t) => (
             <Item key={t.id} item={t} glyph={GAME_ICONS[t.id]} active={isActive(t, location)} wide={wide} />
           ))}
         </Group>

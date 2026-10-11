@@ -89,8 +89,8 @@
     },
     "arena_bet_seconds": {
       "type": "integer",
-      "default": 120,
-      "description": "Betting time before each Live Arena fight (30-300)"
+      "default": 30,
+      "description": "Betting time before each Live Arena fight (10-300 seconds)"
     },
     "discord_invite_url": {
       "type": "string",

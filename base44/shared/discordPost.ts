@@ -162,3 +162,37 @@ export function announceTournamentCancelled(title: string, reason: string) {
     }]
   });
 }
+
+// "Tournament starting soon" post (about 10 minutes before), with everyone pinged.
+export function announceTournamentSoon(t, minutes: number, entryCost: number) {
+  const at = Math.floor(Date.parse(t.starts_at) / 1000);
+  return postAnnouncement({
+    content: '@everyone',
+    allowed_mentions: { parse: ['everyone'] },
+    embeds: [{
+      color: RED,
+      title: `Starting in ${minutes} minute${minutes === 1 ? '' : 's'}: ${clip(t.title, 180)}`,
+      url: fightUrl,
+      description: `${n(t.entrant_count || 0)} fighters signed up. Last chance to sign up (${n(entryCost)} points) or upgrade your fighter.\nStarts <t:${at}:t> (<t:${at}:R>). [Open the arena](${fightUrl})`,
+      footer: { text: 'BLACKLIST INTROBOYS · Arena tournament' },
+      timestamp: new Date().toISOString()
+    }]
+  });
+}
+
+// "Tournament started" post: who is fighting and when the first match opens for bets.
+export function announceTournamentStarted(title: string, field, matchCount: number, firstMs: number) {
+  const at = Math.floor(firstMs / 1000);
+  return postAnnouncement({
+    allowed_mentions: { parse: [] },
+    embeds: [{
+      color: GOLD,
+      title: `Tournament started: ${clip(title, 200)}`,
+      url: fightUrl,
+      description: `${n(field.length)} fighters, ${n(matchCount)} matches, every one fought live. The first match opens for bets <t:${at}:R>.\n[Watch and bet](${fightUrl})`,
+      fields: [{ name: 'Fighters', value: field.map((f) => clip(f.name, 40)).join(', ').slice(0, 1000) || '—' }],
+      footer: { text: 'BLACKLIST INTROBOYS · Arena tournament' },
+      timestamp: new Date().toISOString()
+    }]
+  });
+}

@@ -4,7 +4,7 @@ import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import { errorText } from "@/lib/GuildContext";
 
-export const SITE_VERSION = "6.0";
+export const SITE_VERSION = "6.2";
 const CHECKS = [
   { fn: "getMyAccount", label: "Accounts and ranks" },
   { fn: "playGame", label: "Toss, dice, slots and wheel" },

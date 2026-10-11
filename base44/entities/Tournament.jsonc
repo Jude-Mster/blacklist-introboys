@@ -86,6 +86,25 @@
       "type": "string",
       "format": "date-time"
     },
+    "repeat": {
+      "type": "string",
+      "enum": [
+        "none",
+        "daily",
+        "weekly"
+      ],
+      "default": "none",
+      "description": "Opens the next one by itself when this one ends: a day or a week after this one's start"
+    },
+    "reminded_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the starts-in-10-minutes post went out"
+    },
+    "next_id": {
+      "type": "string",
+      "description": "The tournament this one's repeat opened"
+    },
     "created_by": {
       "type": "string"
     }

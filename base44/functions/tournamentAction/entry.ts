@@ -10,7 +10,7 @@ import {
 import { placeBets, removeBets, payMine, payOthers, betBoard, arenaLimit, arenaMin, type Resolve } from '../../shared/arenaBets.ts';
 import { postSystem, GUILD_CHANNEL } from '../../shared/chat.ts';
 import {
-  announceWebhookUrl, announceTournamentOpen, announceTournamentResults, announceTournamentCancelled
+  announceWebhookUrl, announceTournamentOpen, announceTournamentResults, announceTournamentCancelled, announceTournamentStarted, announceTournamentSoon
 } from '../../shared/discordPost.ts';
 import { checkCode, assertNewCode, codeFields, runStockLocked, takeFromStock, assignAndDeliver } from '../../shared/prizeCodes.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
@@ -24,20 +24,23 @@ import { BACKEND_VERSION } from '../../shared/version.ts';
 // member signs up (nothing can be played) or the Guild Leader cancels with refunds.
 //
 // The start (at the scheduled time, or when the Guild Leader presses Start now): the fighters are
-// frozen and drawn into a bracket, and every match is fought there and then on the server with its own
-// secret seed, one after another, with its prices worked out from 1,000 practice fights. Nothing about a
-// match's result leaves the server before it is played: each match opens for 10 seconds of betting,
-// then its seed goes out and every screen plays the same fight from it. A match that reaches the
+// frozen and drawn into a bracket. Then the matches are played live, one after another: each match opens
+// for 10 seconds of betting (prices from 2,000 practice fights), and only when its betting closes is it
+// fought, with a fresh secret seed; the seed goes out and every screen plays the same fight from it. The
+// next match opens when that fight is over. Nothing about any match is decided before its betting closes. A match that reaches the
 // 180-second limit goes to the fighter with the larger share of HP left (tournaments have no draws).
 // After the last match the prizes are paid, and every fighter and character is removed.
 const BET_SECONDS = 10;
 const INTRO_SECONDS = 3;
 const RESULT_SECONDS = 10;
-const LEAD_IN_SECONDS = 20;    // from Start to the first match opening
+const LEAD_IN_SECONDS = 10;    // from the start to the first match opening for bets
 const MAX_ENTRANTS = 128;
 const MAX_PRIZES = 4;
 const MAX_PRIZE_POINTS = 10000000;
 const TOUR_LOCK_MS = 120000;
+const REMIND_MS = 10 * 60000;   // the "starts in 10 minutes" post
+const REPEATS = { none: 0, daily: 24 * 3600000, weekly: 7 * 24 * 3600000 };
+const cleanRepeat = (v) => (Object.prototype.hasOwnProperty.call(REPEATS, v) ? v : 'none');
 // Shared secret only the "Tournament Clock" schedule knows.
 const WORKFLOW_SECRET = '102b949348f55485eb70915811df64e9899d03770a523a43';
 
@@ -123,6 +126,7 @@ function cleanPrizes(raw) {
     return { label, kind, points: 0, from_bank: false };
   });
 }
+const markStock = (prizes, specs) => prizes.map((x, i) => (x.kind === 'code' ? { ...x, from_stock: !!(specs[i] && specs[i].from_stock) } : x));
 const codeSpec = (x) => {
   if (!x || !x.code) return null;
   if (x.code.from_stock === true) return { from_stock: true };
@@ -187,25 +191,55 @@ function drawBracket(n: number) {
 }
 const refOf = (x) => (x.s !== undefined ? { s: x.s } : { w: x.w });
 
-// Fight every match in order and set the timetable. Returns the matches with their secrets.
-function fightAll(field, plan, values, startMs: number) {
-  const ms = plan.matches.map((m) => ({ ...m }));
-  const who = (ref) => (ref.s !== undefined ? ref.s : ref.w !== undefined ? ms[ref.w - 1].winner : ms[ref.l - 1].loser);
-  let open = startMs + LEAD_IN_SECONDS * 1000;
-  for (const m of ms) {
-    const a = who(m.refs[0]), b = who(m.refs[1]);
-    const fa = { ...field[a].build, name: field[a].name }, fb = { ...field[b].build, name: field[b].name };
-    const seed = secretSeed();
-    const fight = simulate(fa, fb, seed, { draws: false, frames: false, values, limit: LIMIT });
-    const o = outcomeOf(fight);
-    m.a = a; m.b = b; m.seed = seed; m.outcome = o;
-    m.winner = o.winner === 0 ? a : b; m.loser = o.winner === 0 ? b : a;
-    m.odds = priceMatch(fa, fb, secretSeed(), { draws: false, values, limit: LIMIT });
-    const close = open + BET_SECONDS * 1000, end = close + Math.ceil((INTRO_SECONDS + fight.length) * 1000);
-    m.open_at = iso(open); m.close_at = iso(close); m.end_at = iso(end);
-    open = end + RESULT_SECONDS * 1000;
+// The matches are played one after another, live. Nothing about a match is decided before its betting
+// closes: a match is "opened" (its two fighters, prices and betting window) when the one before it is fought,
+// and it is "fought" (its seed, result and length picked) the moment its own betting closes.
+const whoOf = (ms, ref) => (ref.s !== undefined ? ref.s : ref.w !== undefined ? ms[ref.w - 1].winner : ms[ref.l - 1].loser);
+const isFought = (m) => !!(m && m.fought && m.outcome && Number.isInteger(m.seed) && m.end_at);
+function openMatch(t, ms, i, openMs: number) {
+  const m = ms[i], field = t.field, values = normValues(t.values);
+  const a = whoOf(ms, m.refs[0]), b = whoOf(ms, m.refs[1]);
+  const fa = { ...field[a].build, name: field[a].name }, fb = { ...field[b].build, name: field[b].name };
+  ms[i] = { ...m, a, b, odds: priceMatch(fa, fb, secretSeed(), { draws: false, values, limit: LIMIT }), open_at: iso(openMs), close_at: iso(openMs + BET_SECONDS * 1000) };
+}
+function fightMatch(t, ms, i) {
+  const m = ms[i], field = t.field, values = normValues(t.values);
+  const fa = { ...field[m.a].build, name: field[m.a].name }, fb = { ...field[m.b].build, name: field[m.b].name };
+  const seed = secretSeed();
+  const fight = simulate(fa, fb, seed, { draws: false, frames: false, values, limit: LIMIT });
+  const o = outcomeOf(fight);
+  // the fight starts on every screen at the moment betting closed
+  const end = tms(m.close_at) + Math.ceil((INTRO_SECONDS + fight.length) * 1000);
+  ms[i] = { ...m, fought: true, seed, outcome: o, winner: o.winner === 0 ? m.a : m.b, loser: o.winner === 0 ? m.b : m.a, end_at: iso(end) };
+}
+// Is there work to do (open the next match, fight one whose betting has closed, finish)? Cheap, no writes.
+function needsWork(t, now: number) {
+  if (t.status !== 'running' || !Array.isArray(t.matches)) return false;
+  const i = t.matches.findIndex((m) => !isFought(m));
+  if (i < 0) return !t.ends_at || now >= tms(t.ends_at);
+  const m = t.matches[i];
+  return !m.open_at || now >= tms(m.close_at);
+}
+// Move a running tournament along. Returns the fields to save, or null. Call inside the tournament lock.
+function advance(t, now: number) {
+  const ms = (t.matches || []).map((m) => ({ ...m }));
+  let changed = false;
+  for (let guard = 0; guard < ms.length * 2 + 2; guard++) {
+    const i = ms.findIndex((m) => !isFought(m));
+    if (i < 0) {
+      const last = ms[ms.length - 1];
+      const ends = iso(tms(last.end_at) + RESULT_SECONDS * 1000);
+      if (t.ends_at !== ends) { t = { ...t, ends_at: ends }; changed = true; }
+      break;
+    }
+    if (!ms[i].open_at) {
+      const opens = i === 0 ? tms(t.started_at) + LEAD_IN_SECONDS * 1000 : tms(ms[i - 1].end_at) + RESULT_SECONDS * 1000;
+      openMatch(t, ms, i, opens); changed = true;
+    }
+    if (now >= tms(ms[i].close_at)) { fightMatch(t, ms, i); changed = true; continue; }
+    break;
   }
-  return { matches: ms, ends: open };
+  return changed ? { matches: ms, ends_at: t.ends_at || '' } : null;
 }
 // Who finished where, from the fought bracket.
 function placesOf(ms) {
@@ -224,18 +258,21 @@ function placesOf(ms) {
 // ---------- what members may see ----------
 const tms = (s) => Date.parse(s) || 0;
 function matchStatus(m, now: number) {
-  return now < tms(m.open_at) ? 'waiting' : now < tms(m.close_at) ? 'betting' : now < tms(m.end_at) ? 'fighting' : 'done';
+  if (!m.open_at || now < tms(m.open_at)) return 'waiting';
+  if (now < tms(m.close_at)) return 'betting';
+  return !isFought(m) || now < tms(m.end_at) ? 'fighting' : 'done';
 }
 function publicTour(t, now: number, leader: boolean) {
   const base = {
     id: t.id, title: t.title, status: t.status, starts_at: t.starts_at || null, started_at: t.started_at || null, ends_at: t.ends_at || null,
     values: normValues(t.values), prizes: (t.prizes || []).map((p) => ({ label: p.label, kind: p.kind, points: p.points || 0, from_bank: !!p.from_bank })),
     entrant_count: t.entrant_count || 0, bank_in: t.bank_in || 0, results: t.results || [], cancel_reason: t.cancel_reason || '',
-    finished_at: t.finished_at || null, announced_at: leader ? t.announced_at || null : undefined, engine: t.engine || ENGINE_VERSION
+    finished_at: t.finished_at || null, announced_at: leader ? t.announced_at || null : undefined, engine: t.engine || ENGINE_VERSION,
+    repeat: cleanRepeat(t.repeat)
   };
   if (!Array.isArray(t.matches) || !t.matches.length) return { ...base, field: [], matches: [] };
   const ms = t.matches;
-  const ended = (no: number) => now >= tms(ms[no - 1].end_at);
+  const ended = (no: number) => isFought(ms[no - 1]) && now >= tms(ms[no - 1].end_at);
   const known = (ref) => ref.s !== undefined || ended(ref.w || ref.l);
   const matches = ms.map((m) => {
     const st = matchStatus(m, now);
@@ -243,10 +280,10 @@ function publicTour(t, now: number, leader: boolean) {
     return {
       no: m.no, round: m.round, stage: m.stage, bronze: !!m.bronze, status: st,
       refs: m.refs, a: ka ? m.a : null, b: kb ? m.b : null,
-      odds: ka && kb ? m.odds : null,
-      open_at: m.open_at, close_at: m.close_at,
-      seed: st === 'fighting' || st === 'done' ? m.seed : null,
-      end_at: st === 'fighting' || st === 'done' ? m.end_at : null,
+      odds: ka && kb && m.open_at ? m.odds : null,
+      open_at: m.open_at || null, close_at: m.close_at || null,
+      seed: isFought(m) && (st === 'fighting' || st === 'done') ? m.seed : null,
+      end_at: isFought(m) && (st === 'fighting' || st === 'done') ? m.end_at : null,
       outcome: st === 'done' ? m.outcome : null,
       winner: st === 'done' ? m.winner : null
     };
@@ -254,7 +291,7 @@ function publicTour(t, now: number, leader: boolean) {
   return { ...base, field: t.field || [], matches };
 }
 const publicEntrant = (x) => ({
-  member_id: x.member_id, name: x.name, avatar: x.avatar, look: x.look, entries: x.entries || 0,
+  member_id: x.member_id, name: x.name, avatar: x.avatar, role: x.role || 'member', look: x.look, entries: x.entries || 0,
   ups: x.ups || {}, weapon: x.weapon || 0, skills: x.skills || [], pet: x.pet || 0, mount: x.mount && x.mount.lv ? x.mount : null, spent: x.spent || 0
 });
 
@@ -280,13 +317,48 @@ async function refundAll(b, t, entrants, why: string) {
   if (total) await bankMove(b, -total, `Refunds: ${t.title}`).catch((e) => console.error('bank refund note failed', e));
   return total;
 }
-async function cancelTour(b, t, reason: string, refund: boolean, refundWhy: string) {
+async function cancelTour(b, t, reason: string, refund: boolean, refundWhy: string, repeatNext = true) {
   const entrants = await entrantsOf(b, t.id);
   await E(b).Tournament.update(t.id, { status: 'cancelled', cancel_reason: reason, finished_at: iso(Date.now()) });
   if (refund) await refundAll(b, t, entrants, refundWhy);
   await discardReserved(b, await reservedFor(b, t.id));
   await clearEntrants(b, t.id);
   await postEverywhere(b, `Tournament "${t.title}" cancelled. ${reason}`, () => announceTournamentCancelled(t.title, reason));
+  if (repeatNext) await scheduleNext(b, t);
+}
+
+// A repeating tournament opens its next one when it ends: the same name, prizes and upgrade values, one day
+// or one week after this one's start time. Code prizes taken from stock take a new code from stock; a typed
+// code can't be used twice, so that place waits for the Guild Leader to add one.
+async function scheduleNext(b, t) {
+  const step = REPEATS[cleanRepeat(t.repeat)];
+  if (!step) return null;
+  try {
+    const fresh = await E(b).Tournament.get(t.id).catch(() => t);
+    if (fresh.next_id) return null;
+    if (await activeTour(b)) return null;
+    let next = (tms(t.starts_at) || tms(t.started_at) || Date.now()) + step;
+    while (next < Date.now() + 60000) next += step;
+    const prizes = (t.prizes || []).map((x) => ({ ...x }));
+    const n = await E(b).Tournament.create({
+      title: t.title, status: 'signup', starts_at: iso(next), values: normValues(t.values), prizes, repeat: t.repeat,
+      entrant_count: 0, bank_in: 0, created_by: t.created_by || '', engine: ENGINE_VERSION
+    });
+    await E(b).Tournament.update(t.id, { next_id: n.id }).catch(() => {});
+    await runStockLocked(b, async () => {
+      for (let i = 0; i < prizes.length; i++) {
+        if (prizes[i].kind !== 'code' || !prizes[i].from_stock) continue;
+        try { await reserveCode(b, n, i + 1, { from_stock: true }, t.created_by || ''); } catch (e) { console.error('repeat: no stock code', n.id, i + 1, String(e && e.message || e)); }
+      }
+    }).catch((e) => console.error('repeat: stock lock failed', e));
+    const when = new Date(next).toISOString().replace('T', ' ').slice(0, 16);
+    await postSystem(b, GUILD_CHANNEL, `The next "${t.title}" is open for sign-up. It starts ${when} UTC. Entry ${fmt(COSTS.entry)} points.`);
+    try { await announceTournamentOpen(n, COSTS.entry, false); } catch (e) { console.error('repeat announce failed', e); }
+    return n;
+  } catch (e) {
+    console.error('repeat: next tournament failed', t.id, String(e && e.message || e));
+    return null;
+  }
 }
 
 // Start: freeze the fighters, draw the bracket and fight every match. Call inside the tournament lock.
@@ -298,17 +370,22 @@ async function startTour(b, t) {
     return cancelTour(b, t, `Only 1 fighter signed up (${x.name}), so there is no one to fight. ${x.name}'s ${fmt(x.spent || 0)} points were refunded.`, true, 'only one fighter');
   }
   const list = entrants.slice(0, MAX_ENTRANTS);
-  const field = list.map((x) => ({ member_id: x.member_id, name: x.name, avatar: x.avatar || '', look: x.look, build: buildOf(x) }));
+  const field = list.map((x) => ({ member_id: x.member_id, name: x.name, avatar: x.avatar || '', role: x.role || 'member', look: x.look, build: buildOf(x) }));
   const values = normValues(t.values);
   const plan = drawBracket(field.length);
   const now = Date.now();
-  const { matches, ends } = fightAll(field, plan, values, now);
+  // Only the bracket is drawn here. The first match opens for bets a few seconds from now; every match is
+  // fought when its own betting closes.
+  const begun = { ...t, status: 'running', started_at: iso(now), field, values, matches: plan.matches, ends_at: '' };
+  const first = advance(begun, now);
+  const matches = first ? first.matches : plan.matches;
   await E(b).Tournament.update(t.id, {
-    status: 'running', engine: ENGINE_VERSION, started_at: iso(now), field, matches, ends_at: iso(ends), entrant_count: field.length
+    status: 'running', engine: ENGINE_VERSION, started_at: iso(now), field, matches, ends_at: '', entrant_count: field.length
   });
   if (t.bank_in) await bankMove(b, 0, `${t.title}: ${fmt(t.bank_in)} points paid in by ${field.length} fighters`).catch(() => {});
-  const first = new Date(now + LEAD_IN_SECONDS * 1000);
-  await postSystem(b, GUILD_CHANNEL, `Tournament "${t.title}" has started: ${field.length} fighters, ${matches.length} matches. The first match opens for bets at ${first.toISOString().slice(11, 16)} UTC.`);
+  const firstOpen = new Date(now + LEAD_IN_SECONDS * 1000);
+  await postEverywhere(b, `Tournament "${t.title}" has started: ${field.length} fighters, ${matches.length} matches. The first match opens for bets at ${firstOpen.toISOString().slice(11, 16)} UTC.`,
+    () => announceTournamentStarted(t.title, field, matches.length, firstOpen.getTime()));
 }
 
 // After the last match: pay the prizes, then remove every fighter. Safe to call again after a crash.
@@ -358,6 +435,7 @@ async function finishTour(b, t) {
   await clearEntrants(b, cur.id);
   const withIds = results.map((r) => ({ ...r, discord_id: members[r.member_id] ? members[r.member_id].discord_id : '' }));
   await postEverywhere(b, `Tournament "${cur.title}" is over! ${results.map((r) => `${PLACE[r.place - 1]}: ${r.name}${r.prize ? ` (${r.prize})` : ''}`).join(', ')}`, () => announceTournamentResults(cur.title, withIds));
+  await scheduleNext(b, cur);
   return cur;
 }
 
@@ -365,14 +443,27 @@ async function finishTour(b, t) {
 async function tick(b, t) {
   if (!t) return t;
   const now = Date.now();
-  const due = (t.status === 'signup' && t.starts_at && now >= tms(t.starts_at))
-    || (t.status === 'running' && now >= tms(t.ends_at)) || t.status === 'paying';
+  const remind = t.status === 'signup' && t.starts_at && !t.reminded_at && now >= tms(t.starts_at) - REMIND_MS && now < tms(t.starts_at);
+  const due = remind || (t.status === 'signup' && t.starts_at && now >= tms(t.starts_at))
+    || needsWork(t, now) || t.status === 'paying';
   if (!due) return t;
   try {
     return await lockTour(b, t.id, async () => {
       const cur = await E(b).Tournament.get(t.id);
+      const left = tms(cur.starts_at) - Date.now();
+      if (cur.status === 'signup' && cur.starts_at && !cur.reminded_at && left > 0 && left <= REMIND_MS) {
+        // "Starts in 10 minutes": once, in guild chat and on Discord
+        await E(b).Tournament.update(cur.id, { reminded_at: iso(Date.now()) });
+        const mins = Math.max(1, Math.round(left / 60000));
+        await postEverywhere(b, `Tournament "${cur.title}" starts in ${mins} minute${mins === 1 ? '' : 's'}! ${fmt(cur.entrant_count || 0)} fighters signed up. Last chance to sign up or upgrade.`,
+          () => announceTournamentSoon(cur, mins, COSTS.entry));
+      }
       if (cur.status === 'signup' && cur.starts_at && Date.now() >= tms(cur.starts_at)) await startTour(b, cur);
-      else if ((cur.status === 'running' && Date.now() >= tms(cur.ends_at)) || cur.status === 'paying') await finishTour(b, cur);
+      else if (cur.status === 'running') {
+        const upd = advance(cur, Date.now());
+        const next = upd ? await E(b).Tournament.update(cur.id, upd) : cur;
+        if (next.ends_at && Date.now() >= tms(next.ends_at)) await finishTour(b, next);
+      } else if (cur.status === 'paying') await finishTour(b, cur);
       return await E(b).Tournament.get(t.id);
     });
   } catch (e) {
@@ -391,7 +482,7 @@ function tourResolver(b): Resolve {
     if (t.status === 'cancelled' && !(t.matches || []).length) return { over: true, o: null };
     const m = (t.matches || []).find((x) => x.no === row.match_no);
     if (!m) return { over: true, o: null };
-    if (Date.now() < tms(m.end_at)) return { over: false };
+    if (!isFought(m) || Date.now() < tms(m.end_at)) return { over: false };
     return { over: true, o: m.outcome };
   };
 }
@@ -535,7 +626,8 @@ export default async function(req) {
 
     if (p.action === 'state') {
       let t = await tick(b, await activeTour(b));
-      if (t && !['signup', 'running', 'paying'].includes(t.status)) t = null;
+      // it just ended: a repeating one may have opened the next
+      if (t && !['signup', 'running', 'paying'].includes(t.status)) t = await activeTour(b);
       const now = Date.now();
       const out: any = { server_now: iso(now), costs: COSTS, limit: arenaLimit(settings), min_bet: arenaMin(settings), bet_seconds: BET_SECONDS, intro: INTRO_SECONDS, result_seconds: RESULT_SECONDS, engine: ENGINE_VERSION };
       out.tournament = t ? publicTour(t, now, leader) : null;
@@ -548,7 +640,7 @@ export default async function(req) {
       }
       // The match on now (or the last one shown) and everyone's bets on it.
       if (t && Array.isArray(t.matches) && t.matches.length) {
-        const live = t.matches.find((m) => now >= tms(m.open_at) && now < tms(m.end_at) + RESULT_SECONDS * 1000) || null;
+        const live = t.matches.find((m) => m.open_at && now >= tms(m.open_at) && (!isFought(m) || now < tms(m.end_at) + RESULT_SECONDS * 1000)) || null;
         if (live) {
           const st = matchStatus(live, now);
           out.board = { match_no: live.no, ...(await betBoard(b, { scope: 'tour', tour_id: t.id, match_no: live.no }, me.id, st === 'done' ? live.outcome : null)) };
@@ -584,7 +676,7 @@ export default async function(req) {
       if (!t || t.status !== 'running' || !Array.isArray(t.matches)) throw new UserError('No tournament match is open for bets.');
       const m = t.matches.find((x) => x.no === Number(p.match));
       if (!m) throw new UserError('That match is not in this tournament.');
-      if (arrived < tms(m.open_at)) throw new UserError('Betting on that match has not opened yet.');
+      if (!m.open_at || arrived < tms(m.open_at)) throw new UserError('Betting on that match has not opened yet.');
       const key = { scope: 'tour' as const, tour_id: t.id, match_no: m.no };
       const names = [t.field[m.a].name, t.field[m.b].name];
       const label = `Tournament "${t.title}" match ${m.no}`;
@@ -612,9 +704,11 @@ export default async function(req) {
       if (p.starts_at && (!Number.isFinite(starts) || starts < Date.now() + 60000)) throw new UserError('Pick a start time at least a minute from now, or leave it empty and use Start now.');
       if (starts && starts > Date.now() + 60 * 24 * 3600000) throw new UserError('A tournament can be scheduled up to 60 days ahead.');
       const raw = Array.isArray(p.prizes) ? p.prizes : [];
-      const prizes = cleanPrizes(raw);
       const specs = raw.filter((x) => x && (String(x.label || '').trim() || Number(x.points) > 0)).map(codeSpec);
+      const prizes = markStock(cleanPrizes(raw), specs);
       prizes.forEach((x, i) => { if (x.kind === 'code' && !specs[i]) throw new UserError(`Add the code for the ${PLACE[i]} prize, or take one from stock.`); });
+      const repeat = cleanRepeat(p.repeat);
+      if (repeat !== 'none' && !starts) throw new UserError('A repeating tournament needs a start time.');
       const typed = new Set();
       for (let i = 0; i < prizes.length; i++) {
         const sp = specs[i];
@@ -625,7 +719,7 @@ export default async function(req) {
         await assertNewCode(b, sp.code);
       }
       const t = await E(b).Tournament.create({
-        title, status: 'signup', starts_at: starts ? iso(starts) : '', values: normValues(p.values), prizes,
+        title, status: 'signup', starts_at: starts ? iso(starts) : '', values: normValues(p.values), prizes, repeat,
         entrant_count: 0, bank_in: 0, created_by: me.id, engine: ENGINE_VERSION
       });
       try {
@@ -657,10 +751,12 @@ export default async function(req) {
           update.starts_at = starts ? iso(starts) : '';
         }
         if ('values' in p) update.values = normValues(p.values);
+        if ('repeat' in p) update.repeat = cleanRepeat(p.repeat);
+        if ((update.repeat ?? cleanRepeat(cur.repeat)) !== 'none' && !('starts_at' in update ? update.starts_at : cur.starts_at)) throw new UserError('A repeating tournament needs a start time.');
         if ('prizes' in p) {
           const raw = Array.isArray(p.prizes) ? p.prizes : [];
-          const prizes = cleanPrizes(raw);
           const specs = raw.filter((x) => x && (String(x.label || '').trim() || Number(x.points) > 0)).map(codeSpec);
+          const prizes = markStock(cleanPrizes(raw), specs).map((x, i) => (x.kind === 'code' && !specs[i] && (cur.prizes || [])[i] ? { ...x, from_stock: !!cur.prizes[i].from_stock } : x));
           const held = await reservedFor(b, cur.id);
           // A code prize keeps the code already set aside for its place when it has the same name and no
           // new code was given; anything else set aside goes back.
@@ -701,7 +797,7 @@ export default async function(req) {
         const cur = await E(b).Tournament.get(t.id);
         if (cur.status !== 'signup') throw new UserError('Only a tournament that has not started can be cancelled.');
         const refund = p.refund !== false;
-        await cancelTour(b, cur, refund ? 'The Guild Leader cancelled it. Everything paid was refunded.' : 'The Guild Leader cancelled it.', refund, 'cancelled');
+        await cancelTour(b, cur, refund ? 'The Guild Leader cancelled it. Everything paid was refunded.' : 'The Guild Leader cancelled it.', refund, 'cancelled', p.keep_repeating === true);
         return { ok: true };
       }));
     }

@@ -10,7 +10,7 @@
 // Plain JavaScript on purpose: the backend functions (Deno) and the page (Vite) both import this
 // one file, so the rules can never drift apart. Change ENGINE_VERSION whenever a rule changes.
 
-export const ENGINE_VERSION = 1;
+export const ENGINE_VERSION = 3;   // 2: tighter prices, no near-certain or long-shot side bets
 
 // ---------- dice ----------
 export const mulberry32 = (a) => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
@@ -260,7 +260,8 @@ export function outcomeOf(fight) {
     critko: !!(ko && ko.crit),
     oneHitBy: [0, 1].map((i) => ev.some((e) => e.type === "hit" && e.oneHit && e.who === i)),
     pots: ev.filter((e) => e.type === "potion").length,
-    crits: ev.filter((e) => e.type === "hit" && e.crit).length
+    crits: ev.filter((e) => e.type === "hit" && e.crit).length,
+    buffs: ev.filter((e) => e.type === "buff").length
   };
 }
 
@@ -272,85 +273,104 @@ export function quickFight(fa, fb, seed, opts = {}) {
   const r = mulberry32(seed >>> 0);
   const F = [mkSide(fa, 0, 1, opts.values), mkSide(fb, 0, -1, opts.values)];
   const toss = r() < 0.5 ? 0 : 1, nx = [100 / F[0].s.spd, 100 / F[1].s.spd], oneHitBy = [false, false];
-  let t = 0.6, turn = nextActor(nx, 1 - toss), pots = 0, crits = 0;
+  let t = 0.6, turn = nextActor(nx, 1 - toss), pots = 0, crits = 0, buffs = 0;
   while (t < limit) {
     const me = F[turn], foe = F[1 - turn];
     t += TURN_T;
-    t += castBuffs(me, r).length * BUFF_CAST;
+    const cast = castBuffs(me, r).length;
+    buffs += cast; t += cast * BUFF_CAST;
     const s = strike(me, foe, r);
     if (!s.miss) {
       if (s.crit) crits++;
       if (s.oneHit) oneHitBy[turn] = true;
-      if (s.dead) return { winner: turn, how: "ko", crit: s.crit, oneHitBy, pots, crits, t };
-      if (s.reflectKo) return { winner: 1 - turn, how: "ko", crit: false, reflect: true, oneHitBy, pots, crits, t };
+      if (s.dead) return { winner: turn, how: "ko", crit: s.crit, oneHitBy, pots, crits, buffs, t };
+      if (s.reflectKo) return { winner: 1 - turn, how: "ko", crit: false, reflect: true, oneHitBy, pots, crits, buffs, t };
       if (s.drink) { drinkPot(foe); pots++; t += POTION; }
       if (s.drinkMe) { drinkPot(me); pots++; t += POTION; }
     }
     nx[turn] += 100 / me.stepSpd; turn = nextActor(nx, turn);
   }
-  if (opts.draws) return { winner: -1, how: "draw", crit: false, oneHitBy, pots, crits, t };
+  if (opts.draws) return { winner: -1, how: "draw", crit: false, oneHitBy, pots, crits, buffs, t };
   const pa = F[0].hp / F[0].s.hp, pb = F[1].hp / F[1].s.hp;
-  return { winner: pa >= pb ? 0 : 1, how: "time", crit: false, oneHitBy, pots, crits, t };
+  return { winner: pa >= pb ? 0 : 1, how: "time", crit: false, oneHitBy, pots, crits, buffs, t };
 }
 
 // ---------- prices ----------
-// From 1,000 practice fights. The fighter more likely to win carries the favourite's house edge, the other
-// one the outsider's; prices are capped at 10x. Side bets carry their own edge and are capped at 6x.
-// The Draw (Live Arena only) is rare, so it pays much more, capped at drawCap. On a Draw, bets on either
-// fighter get half back, so their prices allow for that.
-export const DEFAULT_EDGES = { fav: 0.10, dog: 0.15, side: 0.15, draw: 0.15, maxPrice: 10, maxSide: 6, drawCap: 50 };
+// Every price comes from 2,000 practice fights between these two exact fighters: every stat, upgrade, weapon
+// level, skill, pet and mount they have. To keep the house safe:
+//   * each line is priced from the top of its likely range (its rate plus two standard errors), never
+//     from a lucky low count, so the practice fights can't make a price too generous;
+//   * every line carries a house edge: 10% on the favourite, 15% on the outsider, the side bets and the Draw;
+//   * caps: a fighter pays at most 6x, a side bet at most 5x, the Draw at most 10x;
+//   * a side bet is only offered when it comes up between 10% and 90% of the time in this matchup (no lottery
+//     tickets, no near-certainties), and the Draw only when it comes up in at least 1 fight in 100;
+//   * nobody can hold both fighters or both sides of an over/under on one fight.
+// On a Draw (Live Arena only) bets on either fighter get half back, and their prices allow for that.
+export const DEFAULT_EDGES = { fav: 0.10, dog: 0.15, side: 0.15, draw: 0.15, maxPrice: 6, maxSide: 5, drawCap: 10, minDraw: 0.01, minP: 0.10, maxP: 0.90 };
 export const DRAW_REFUND = 0.5;
+export const PRACTICE_FIGHTS = 2000;
 const floor2 = (x) => Math.floor(x * 100) / 100;
-const priceOf = (q, edge, cap) => Math.min(cap, Math.max(1.05, floor2((1 - edge) / Math.max(0.01, q))));
+const offer = (raw, cap) => (raw >= 1.01 ? Math.min(cap, floor2(raw)) : 0);
+// the cautious rate: what was seen plus two standard errors (and at least one fight's worth)
+const safeP = (p, N) => Math.min(1, p + 2 * Math.sqrt(Math.max(p * (1 - p), 1 / N) / N));
+// an over/under line at the middle of what the practice fights saw
+function overUnder(counts, N) {
+  counts.sort((x, y) => x - y);
+  const line = counts[N >> 1] + 0.5, over = counts.filter((x) => x > line).length / N;
+  return { line, over, under: 1 - over };
+}
 export function priceMatch(fa, fb, seed, opts = {}) {
-  const E = { ...DEFAULT_EDGES, ...(opts.edges || {}) }, N = opts.n || 1000, draws = !!opts.draws;
+  const E = { ...DEFAULT_EDGES, ...(opts.edges || {}) }, N = opts.n || PRACTICE_FIGHTS, draws = !!opts.draws;
   let wa = 0, wb = 0, dr = 0, critKo = 0;
-  const potsN = [], critsN = [], oneBy = [0, 0];
+  const potsN = [], critsN = [], buffsN = [];
   for (let k = 0; k < N; k++) {
     const q = quickFight(fa, fb, ((seed >>> 0) * 7919 + k * 104729) >>> 0, { draws, values: opts.values, limit: opts.limit });
     if (q.winner === 0) wa++; else if (q.winner === 1) wb++; else dr++;
     if (q.how === "ko" && q.crit) critKo++;
-    if (q.oneHitBy[0]) oneBy[0]++;
-    if (q.oneHitBy[1]) oneBy[1]++;
-    potsN.push(q.pots); critsN.push(q.crits);
+    potsN.push(q.pots); critsN.push(q.crits); buffsN.push(q.buffs);
   }
   const pa = wa / N, pb = wb / N, pd = dr / N;
-  // A fighter bet returns price × stake on a win and half the stake on a Draw; price it so that the
-  // expected return is (1 − edge) of the stake.
+  const sideP = (q) => (q < E.minP || q > E.maxP ? 0 : offer((1 - E.side) / safeP(q, N), E.maxSide));
+  // A fighter bet returns price x stake on a win and half the stake on a Draw; price it so that the
+  // expected return is at most (1 - edge) of the stake.
   const fighterPrice = (p, edge) => {
-    const back = draws ? DRAW_REFUND * Math.max(pd, 0.002) : 0;
-    return Math.min(E.maxPrice, Math.max(1.05, floor2(((1 - edge) - back) / Math.max(0.01, p))));
+    const back = draws ? DRAW_REFUND * pd : 0;
+    return p <= 0 ? 0 : offer(((1 - edge) - back) / safeP(p, N), E.maxPrice);
   };
   const favA = pa >= pb;
-  potsN.sort((x, y) => x - y); critsN.sort((x, y) => x - y);
-  const line = potsN[N >> 1] + 0.5, over = potsN.filter((x) => x > line).length / N;
-  const cline = critsN[N >> 1] + 0.5, cover = critsN.filter((x) => x > cline).length / N;
-  const nameA = fa.name || "Fighter A", nameB = fb.name || "Fighter B";
+  const po = overUnder(potsN, N), co = overUnder(critsN, N), bo = overUnder(buffsN, N);
   const side = [
-    { id: "onehitA", name: `One-hit KO by ${nameA}`, p: oneBy[0] / N },
-    { id: "onehitB", name: `One-hit KO by ${nameB}`, p: oneBy[1] / N },
     { id: "nocritko", name: "Ends without a critical", p: 1 - critKo / N },
-    { id: "over", name: `Over ${line} potions drunk`, p: over, line },
-    { id: "under", name: `Under ${line} potions drunk`, p: 1 - over, line },
-    { id: "critover", name: `Over ${cline} critical hits`, p: cover, line: cline },
-    { id: "critunder", name: `Under ${cline} critical hits`, p: 1 - cover, line: cline }
-  ].map((s) => ({ ...s, price: priceOf(s.p, E.side, E.maxSide) }));
+    { id: "over", name: `Over ${po.line} potions drunk`, p: po.over, line: po.line },
+    { id: "under", name: `Under ${po.line} potions drunk`, p: po.under, line: po.line },
+    { id: "critover", name: `Over ${co.line} critical hits`, p: co.over, line: co.line },
+    { id: "critunder", name: `Under ${co.line} critical hits`, p: co.under, line: co.line },
+    { id: "buffover", name: `Over ${bo.line} buff skills cast`, p: bo.over, line: bo.line },
+    { id: "buffunder", name: `Under ${bo.line} buff skills cast`, p: bo.under, line: bo.line }
+  ].map((x) => ({ ...x, price: sideP(x.p) }));
   return {
-    pa, pb, pd, draws,
+    pa, pb, pd, draws, n: N,
     a: fighterPrice(pa, favA ? E.fav : E.dog), b: fighterPrice(pb, favA ? E.dog : E.fav),
-    // the Draw is priced from at least 1 in 200, so a pair that rarely draws doesn't get an absurd price
-    draw: draws ? Math.min(E.drawCap, Math.max(1.05, floor2((1 - E.draw) / Math.max(pd, 0.005)))) : 0,
+    // a Draw is only offered when it actually happens in the practice fights (at least 1 in 100)
+    draw: draws && pd >= E.minDraw ? offer((1 - E.draw) / safeP(pd, N), E.drawCap) : 0,
     side
   };
 }
 
 // ---------- bets ----------
 // A bet line: { k, amount, price } where k is "a", "b", "draw" or a side bet id. line = the over/under line.
-export const OPPOSITE = { over: "under", under: "over", critover: "critunder", critunder: "critover" };
+export const OPPOSITE = { over: "under", under: "over", critover: "critunder", critunder: "critover", buffover: "buffunder", buffunder: "buffover" };
 export function lineKeyOk(k, odds) {
-  if (k === "a" || k === "b") return true;
-  if (k === "draw") return !!odds.draws && odds.draw > 1;
-  return (odds.side || []).some((s) => s.id === k);
+  if (k === "draw" && !odds.draws) return false;
+  return priceFor(k, odds) > 1;
+}
+// Bets that can't both be on one fight: both fighters, both sides of an over/under.
+export const CONFLICT = { a: "b", b: "a", over: "under", under: "over", critover: "critunder", critunder: "critover", buffover: "buffunder", buffunder: "buffover", onehitA: "onehitB", onehitB: "onehitA" };
+// The first pair of keys in this list that can't go together, or null.
+export function conflictIn(keys) {
+  const set = new Set(keys);
+  for (const k of set) if (CONFLICT[k] && set.has(CONFLICT[k])) return [k, CONFLICT[k]];
+  return null;
 }
 export function priceFor(k, odds) {
   if (k === "a") return odds.a;
@@ -370,7 +390,8 @@ export function lineReturn(l, o, odds) {
   if (l.k === "draw") return o.draw ? won(l.price) : 0;
   const line = l.line != null ? l.line : lineOf(l.k, odds);
   const hit = l.k === "onehitA" ? o.oneHitBy[0] : l.k === "onehitB" ? o.oneHitBy[1] : l.k === "nocritko" ? !o.critko
-    : l.k === "over" ? o.pots > line : l.k === "under" ? o.pots < line : l.k === "critover" ? o.crits > line : l.k === "critunder" ? o.crits < line : false;
+    : l.k === "over" ? o.pots > line : l.k === "under" ? o.pots < line : l.k === "critover" ? o.crits > line : l.k === "critunder" ? o.crits < line
+    : l.k === "buffover" ? (o.buffs || 0) > line : l.k === "buffunder" ? (o.buffs || 0) < line : false;
   return hit ? won(l.price) : 0;
 }
 export const betReturn = (lines, o, odds) => (lines || []).reduce((a, l) => a + lineReturn(l, o, odds), 0);
@@ -395,6 +416,8 @@ export function lineLabel(l, names) {
     case "under": return `Under ${l.line} potions drunk`;
     case "critover": return `Over ${l.line} critical hits`;
     case "critunder": return `Under ${l.line} critical hits`;
+    case "buffover": return `Over ${l.line} buff skills cast`;
+    case "buffunder": return `Under ${l.line} buff skills cast`;
     default: return String(l.k);
   }
 }

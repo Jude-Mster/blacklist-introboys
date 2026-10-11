@@ -7,7 +7,7 @@
 //   * A bet is paid once, inside its owner's lock. It is marked pay_started before the
 //     points move, and a retry looks in the points log before paying again.
 import { changePoints, withMemberLock, todayStr, UserError } from './points.ts';
-import { lineKeyOk, priceFor, lineOf, betReturn, lineLabel } from './arenaEngine.ts';
+import { lineKeyOk, priceFor, lineOf, betReturn, lineLabel, conflictIn } from './arenaEngine.ts';
 import { postFeed } from './feed.ts';
 import { announceBigWin, announceLoss, lossWorthTelling } from './chat.ts';
 
@@ -62,6 +62,9 @@ export async function placeBets(b, me, settings, o: { key: FightKey; label: stri
       if (k) k.amount += l.amount; else merged.push(l);
     }
     if (merged.length > MAX_LINES * 2) throw new UserError('You have too many separate bets on this fight.');
+    // Never both sides of the same question on one fight (both fighters, both sides of an over/under).
+    const clash = conflictIn(merged.map((l) => l.k));
+    if (clash) throw new UserError(`You can't bet on both "${lineLabel({ k: clash[0], line: lineOf(clash[0], o.odds) }, o.names)}" and "${lineLabel({ k: clash[1], line: lineOf(clash[1], o.odds) }, o.names)}" on the same fight.`);
     const today = todayStr();
     const fresh = await E(b).Member.get(me.id).catch(() => me);
     const usedToday = fresh.daily_bet_date === today ? fresh.daily_bet_total || 0 : 0;

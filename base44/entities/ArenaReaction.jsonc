@@ -1,0 +1,34 @@
+{
+  "name": "ArenaReaction",
+  "type": "object",
+  "description": "An emoji a member threw at the fighters in the Blacklist Arena. Kept for two minutes.",
+  "properties": {
+    "scope": {
+      "type": "string",
+      "description": "live, or tour:<tournament id>"
+    },
+    "member_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "emoji": {
+      "type": "string"
+    },
+    "side": {
+      "type": "integer",
+      "description": "0 or 1: the fighter it is aimed at; -1 = anywhere"
+    },
+    "at": {
+      "type": "number",
+      "description": "Milliseconds since 1970"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

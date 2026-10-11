@@ -24,17 +24,18 @@ export default function TourLeader({ data, onChanged }) {
   const [error, setError] = useState("");
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [refund, setRefund] = useState(true);
+  const [keepRepeating, setKeepRepeating] = useState(false);
 
   // the form starts from the open tournament (or from scratch)
   useEffect(() => {
     if (form) return;
     if (editing) {
       setForm({
-        title: t.title, starts_at: toLocal(t.starts_at),
+        title: t.title, starts_at: toLocal(t.starts_at), repeat: t.repeat || "none",
         prizes: t.prizes.map((p) => ({ kind: p.kind, points: p.points ? String(p.points) : "", label: p.kind === "points" ? "" : p.label, from_bank: !!p.from_bank, code: "", from_stock: false })),
         values: normValues(t.values)
       });
-    } else if (!t) setForm({ title: "", starts_at: "", prizes: [blankPrize(), blankPrize(), blankPrize()], values: normValues(DEFAULT_VALUES) });
+    } else if (!t) setForm({ title: "", starts_at: "", repeat: "none", prizes: [blankPrize(), blankPrize(), blankPrize()], values: normValues(DEFAULT_VALUES) });
   }, [t, editing, form]);
   // a different tournament (or one that moved on): start the form again
   const keyRef = React.useRef(`${t ? t.id : ""}:${t ? t.status : ""}`);
@@ -85,6 +86,7 @@ export default function TourLeader({ data, onChanged }) {
   const payload = () => ({
     title: form.title,
     starts_at: form.starts_at ? new Date(form.starts_at).toISOString() : "",
+    repeat: form.repeat || "none",
     prizes: form.prizes.map((p) => ({
       kind: p.kind, points: p.kind === "points" ? Number(p.points) : 0, label: p.label, from_bank: p.kind === "points" && p.from_bank,
       code: p.kind === "code" ? (p.from_stock ? { from_stock: true } : p.code.trim() ? { code: normalizeCode(p.code) } : null) : null
@@ -111,7 +113,22 @@ export default function TourLeader({ data, onChanged }) {
           <div>
             <label className="label" htmlFor="tour-start">Start time (your time)</label>
             <input id="tour-start" type="datetime-local" className="field h-11 w-full" value={form.starts_at} onChange={(e) => set("starts_at", e.target.value)} />
-            <p className="mt-1 text-xs text-mist">It starts by itself at this time. Leave it empty to start it only with Start now. With 1 sign-up it is cancelled and refunded; with 2 it is a single 1v1.</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5" aria-label="Quick timer">
+              {[[15, "15 min"], [30, "30 min"], [60, "1 hour"], [120, "2 hours"], [1440, "Tomorrow, same time"]].map(([m, label]) => (
+                <button key={m} type="button" onClick={() => set("starts_at", toLocal(new Date(Date.now() + m * 60000).toISOString()))} className="btn-bronze h-8 px-2.5 text-xs">{m === 1440 ? label : `Start in ${label}`}</button>
+              ))}
+              {form.starts_at && <button type="button" onClick={() => set("starts_at", "")} className="btn-bronze h-8 px-2.5 text-xs">No start time</button>}
+            </div>
+            <p className="mt-1 text-xs text-mist">It starts by itself at this time, and guild chat and Discord get a "starts in 10 minutes" reminder. Leave it empty to start it only with Start now. With 1 sign-up it is cancelled and refunded; with 2 it is a single 1v1.</p>
+          </div>
+          <div>
+            <label className="label" htmlFor="tour-repeat">Schedule</label>
+            <select id="tour-repeat" className="field h-11 w-full" value={form.repeat || "none"} onChange={(e) => set("repeat", e.target.value)}>
+              <option value="none">Just this once</option>
+              <option value="daily">Every day at this time</option>
+              <option value="weekly">Every week, same day and time</option>
+            </select>
+            <p className="mt-1 text-xs text-mist">A repeating tournament opens the next one by itself when it ends (also when it's cancelled for too few sign-ups), with the same name, prizes and upgrade values. Prize codes taken from stock take a new code from stock; a typed code can only be used once, so add a new one for the next tournament. Needs a start time.</p>
           </div>
 
           <fieldset className="space-y-3">
@@ -177,8 +194,9 @@ export default function TourLeader({ data, onChanged }) {
             <div className="rounded border border-ember/60 bg-[#2a0a0c] p-3 text-sm">
               <p>Cancel "{t.title}"? Every fighter and character is removed.</p>
               <label className="mt-2 flex items-center gap-2"><input type="checkbox" checked={refund} onChange={(e) => setRefund(e.target.checked)} /> Refund what members paid ({fmt(t.bank_in)} points, out of the bank)</label>
+              {t.repeat && t.repeat !== "none" && <label className="mt-1 flex items-center gap-2"><input type="checkbox" checked={keepRepeating} onChange={(e) => setKeepRepeating(e.target.checked)} /> Still open the next one on schedule</label>}
               <div className="mt-2 flex gap-2">
-                <button type="button" disabled={!!busy} onClick={() => call("cancel", { action: "cancel", refund }, "Cancelled.")} className="btn-seal h-10 px-4 text-sm">{busy === "cancel" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Yes, cancel it"}</button>
+                <button type="button" disabled={!!busy} onClick={() => call("cancel", { action: "cancel", refund, keep_repeating: keepRepeating }, "Cancelled.")} className="btn-seal h-10 px-4 text-sm">{busy === "cancel" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Yes, cancel it"}</button>
                 <button type="button" onClick={() => setConfirmCancel(false)} className="btn-bronze h-10 px-4 text-sm">Keep it</button>
               </div>
             </div>

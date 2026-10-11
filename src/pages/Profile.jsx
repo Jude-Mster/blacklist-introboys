@@ -9,6 +9,7 @@ import ActivityList from "@/components/ActivityList";
 import { useGuild } from "@/lib/GuildContext";
 import { Points, ROLE_TITLE } from "@/components/SealLogo";
 import { GAME_NAME, FACTIONS } from "@/lib/games";
+import { lineLabel } from "@/lib/arenaEngine";
 import { cn } from "@/lib/utils";
 
 const SOURCES = [
@@ -17,6 +18,7 @@ const SOURCES = [
   { id: "game", label: "Games" },
   { id: "daily", label: "Daily" },
   { id: "poker", label: "Poker" },
+  { id: "tournament", label: "Tournament" },
   { id: "import", label: "Starting" }
 ];
 
@@ -43,6 +45,13 @@ function describe(b) {
       return o.result === "blackjack" ? "Blackjack!" : `Your ${o.player_total ?? "hand"} against the dealer's ${o.dealer_total ?? "hand"}${o.doubled ? " · doubled" : ""}`;
     case "lucky9":
       return `Your ${o.player_total} against the banker's ${o.banker_total}`;
+    case "arena": {
+      // Blacklist Arena: the fight, who won, and what was backed
+      const names = o.names || ["Fighter A", "Fighter B"], r = o.result || {};
+      const result = r.draw ? "Draw" : r.winner === 0 || r.winner === 1 ? `${names[r.winner]} won${r.how === "ko" ? " by KO" : r.how === "time" ? " on time" : ""}` : "";
+      const bets = (o.lines || []).map((l) => lineLabel(l, names)).join(", ");
+      return [o.label, `${names[0]} vs ${names[1]}`, result, bets && `Bet: ${bets}`].filter(Boolean).join(" · ");
+    }
     default:
       return "";
   }

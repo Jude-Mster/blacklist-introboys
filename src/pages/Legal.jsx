@@ -26,9 +26,9 @@ export function Privacy() {
     <Page title="Privacy policy">
       <p>BLACKLIST INTROBOYS is a members-only guild site run by the guild's leader. This page explains what the site stores about you.</p>
       <h2>What we store</h2>
-      <p>When you log in we store your email address and login method. When you link Discord we store your Discord ID, username, display name and avatar. We also store your guild points, your rank, your game and raffle history, and the chat messages you send on the site.</p>
+      <p>When you log in we store your email address and login method. When you link Discord we store your Discord ID, username, display name and avatar. We also store your guild points, your rank, your game, tournament and raffle history, and the chat messages you send on the site.</p>
       <h2>How it is used</h2>
-      <p>Only to run the guild site: to show your points and rank, to run the games and raffles, and to show guild chat. Guild officers can see member names, ranks and point history. Messages in guild chat may also be shown in the guild's Discord server.</p>
+      <p>Only to run the guild site: to show your points and rank, to run the games and tournaments, and to show guild chat. Guild officers can see member names, ranks and point history. Messages in guild chat may also be shown in the guild's Discord server.</p>
       <h2>What we do not do</h2>
       <p>We do not sell or share your information with advertisers. We do not read your Discord messages outside the linked guild channel. Google and Discord only tell us who you are when you log in.</p>
       <h2>Where it is kept</h2>

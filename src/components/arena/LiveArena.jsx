@@ -3,9 +3,10 @@ import { Loader2, History, Radio } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import { useGuild, errorText } from "@/lib/GuildContext";
-import { simulate, LIMIT, DRAW_REFUND } from "@/lib/arenaEngine";
+import { simulate, LIMIT } from "@/lib/arenaEngine";
 import { cn } from "@/lib/utils";
-import { ArenaStage, FighterCard, BetSlip, MyBets, BetBoard, asFighter, fmt, fmtPrice, lookColor, useServerClock } from "./arenaUi";
+import ArenaRules from "./ArenaRules";
+import { ArenaStage, ReplayStage, FighterCard, BetSlip, MyBets, BetBoard, asFighter, fmt, fmtPrice, lookColor, useServerClock, useArenaCrowd } from "./arenaUi";
 
 // The Live Arena: one shared fight every few minutes between two members of the site, picked at random with
 // random builds. Betting is open first, then every screen plays the same fight from the seed the server
@@ -110,7 +111,7 @@ export default function LiveArena({ balance }) {
     const b = { ...replay.builds[1], name: replay.f[1].name, look: replay.f[1].look, avatar: replay.f[1].avatar };
     return { key: `replay-${replay.r}-${replay.started}`, a, b, fight: simulate(a, b, replay.seed, { draws: true }) };
   }, [replay]);
-  const replayClock = useCallback(() => (replay ? { t: (Date.now() - replay.started) / 1000 - 3 } : { idle: true }), [replay]);
+  const crowd = useArenaCrowd("live");
 
   if (!table) {
     return (
@@ -168,7 +169,8 @@ export default function LiveArena({ balance }) {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
       <div className="min-w-0 space-y-3">
-        <ArenaStage spec={replaySpec || liveSpec} clock={replaySpec ? replayClock : liveClock} logTitle={replaySpec ? "Fight log (replay)" : "Fight log"} />
+        {replaySpec ? <ReplayStage key={replaySpec.key} spec={replaySpec} crowd={crowd} />
+          : <ArenaStage spec={liveSpec} clock={liveClock} crowd={crowd} chip={status === "betting" ? { text: "Bets open" } : status === "fighting" ? { text: "Live", live: true } : { text: "Result" }} />}
         {replay && (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-gold/50 bg-gold/10 px-3 py-2 text-sm">
             <span>Replay of fight {fmt(replay.r)}: {replay.f[0].name} vs {replay.f[1].name}</span>
@@ -181,7 +183,7 @@ export default function LiveArena({ balance }) {
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <p className="text-sm text-mist">Fight {fmt(round)} · betting closes in <span className="font-heading text-xl font-extrabold tabular-nums text-gold">{closeIn}</span> s</p>
               <div className="h-1.5 min-w-[120px] flex-1 overflow-hidden rounded-full bg-black/60">
-                <div className="h-full bg-gold/80 transition-[width] duration-300 ease-linear" style={{ width: `${Math.min(100, (closeIn / (table.bet_seconds || 120)) * 100)}%` }} />
+                <div className="h-full bg-gold/80 transition-[width] duration-300 ease-linear" style={{ width: `${Math.min(100, (closeIn / (table.bet_seconds || 30)) * 100)}%` }} />
               </div>
             </div>
           ) : <p className="font-heading text-base font-bold text-gold">Betting is closed. The fighters step into the ring.</p>)}
@@ -226,7 +228,7 @@ export default function LiveArena({ balance }) {
                   </span>
                   <span className="shrink-0 text-xs text-mist">{r.winner === -1 ? "Draw" : r.how === "ko" ? "KO" : "Time"} · {Number(r.length).toFixed(0)} s</span>
                   {r.seed != null && r.builds && (
-                    <button type="button" onClick={() => setReplay({ ...r, started: Date.now() })} className="flex h-8 shrink-0 items-center gap-1 rounded border border-bronze/45 px-2 text-xs text-mist hover:border-gold hover:text-gold">
+                    <button type="button" onClick={() => { setReplay({ ...r, started: Date.now() }); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="flex h-8 shrink-0 items-center gap-1 rounded border border-bronze/45 px-2 text-xs text-mist hover:border-gold hover:text-gold">
                       <History className="h-3.5 w-3.5" /> Watch
                     </button>
                   )}
@@ -238,20 +240,11 @@ export default function LiveArena({ balance }) {
       </div>
 
       <div className="min-w-0 space-y-4">
-        <BetSlip fightKey={round} odds={table.odds} names={names} draws open={open} closedText={status === "betting" ? "Betting is closing" : "Wait for the next fight"}
+        <BetSlip fightKey={round} odds={table.odds} names={names} draws open={open} mineLines={mine ? mine.lines : []} closedText={status === "betting" ? "Betting is closing" : "Wait for the next fight"}
           limit={table.limit || 5000} minBet={table.min_bet || 1} placed={placed} balance={balance} onPlace={place} busy={busy} error={error} notice={notice} />
         <MyBets mine={mine} names={names} outcome={outcome} open={open} busy={busy} onRemove={remove} />
         <BetBoard board={state} names={names} done={!!outcome} />
-        <details className="rounded border border-bronze/30 bg-black/30 px-2.5 py-2">
-          <summary className="cursor-pointer text-sm text-gold">How the Live Arena works</summary>
-          <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-mist">
-            <li>A new fight about every 3 minutes between two members of the site picked at random, each with a random build: entries, weapon level, buff skills, pet and mount.</li>
-            <li>Betting is open for {table.bet_seconds || 120} seconds. Then every screen plays the same fight, decided by the server before betting opened.</li>
-            <li>Bet on {names[0]}, {names[1]} or a Draw, and add side bets. You can bet {fmt(table.min_bet || 1)} to {fmt(table.limit || 5000)} on one fight and take bets back until betting closes.</li>
-            <li>A fight lasts at most {table.limit_seconds || LIMIT} seconds. No knockout by then is a <b className="text-[hsl(var(--foreground))]">Draw</b>: Draw bets win at their higher price, and bets on either fighter get {Math.round(DRAW_REFUND * 100)}% of the stake back.</li>
-            <li>The price is what you get back for each point, your stake included: 100 at 1.80× returns 180. Winnings are paid as soon as the fight ends, even if you leave the page.</li>
-          </ul>
-        </details>
+        <ArenaRules mode="live" betSeconds={table.bet_seconds || 30} limit={table.limit || 5000} minBet={table.min_bet || 1} />
       </div>
     </div>
   );

@@ -53,3 +53,20 @@
 .arena-pips span { width: 7px; height: 9px; border-radius: 1px; background: #2b2a33; }
 .arena-pips span.on { background: #d6ad52; }
 .arena-pips span.new { background: #f1d38c; box-shadow: 0 0 6px #f1d38c; }
+/* the chip at the top of the stage: Bets open / Live / Replay, and how many are watching */
+.arena-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 2px; font: 700 12px "Barlow Condensed", sans-serif; letter-spacing: 0.12em; text-transform: uppercase; background: rgba(8, 9, 12, 0.72); border: 1px solid rgba(255, 255, 255, 0.14); color: #fff; }
+.arena-chip.live { background: #c3151f; border-color: #ff5a62; }
+.arena-chip.live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: arena-blink 1.2s infinite; }
+@keyframes arena-blink { 50% { opacity: 0.25; } }
+
+/* emoji thrown by viewers: each one rises from under the stage, sways, and fades at the top */
+.arena-emofx { position: absolute; inset: 0; pointer-events: none; z-index: 2; overflow: hidden; }
+.arena-emofx .emo { position: absolute; bottom: -84px; display: grid; justify-items: center; gap: 3px; transform: translateX(-50%); animation: arena-rise var(--dur, 4.2s) cubic-bezier(.35, .1, .6, 1) forwards; will-change: transform, opacity; }
+.arena-emofx .emo .bub { display: grid; place-items: center; animation: arena-sway 1.4s ease-in-out infinite alternate; }
+.arena-emofx .emo .bub span { font: 40px/1 "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.55)); }
+.arena-emofx .emo b { font: 700 11px "Barlow Condensed", sans-serif; letter-spacing: 0.06em; color: #fff; background: rgba(0, 0, 0, 0.55); padding: 1px 6px; border-radius: 2px; white-space: nowrap; }
+.arena-emofx .emo.mine b { background: #c3151f; }
+@keyframes arena-rise { 0% { opacity: 0; transform: translate(-50%, 0) scale(0.55); } 8% { opacity: 1; transform: translate(-50%, -60px) scale(1); } 86% { opacity: 1; transform: translate(-50%, calc(var(--rise) * -0.86)) scale(1); } 94% { opacity: 1; transform: translate(-50%, calc(var(--rise) * -0.93)) scale(1.18); } 100% { opacity: 0; transform: translate(-50%, calc(var(--rise) * -0.96)) scale(1.6); } }
+@keyframes arena-sway { from { transform: translateX(calc(var(--sw, 10px) * -1)); } to { transform: translateX(var(--sw, 10px)); } }
+@media (max-width: 560px) { .arena-emofx .emo .bub span { font-size: 30px; } }
+@media (prefers-reduced-motion: reduce) { .arena-emofx .emo .bub, .arena-chip.live::before { animation: none; } }

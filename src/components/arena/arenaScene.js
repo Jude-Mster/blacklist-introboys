@@ -7,7 +7,7 @@
 //   const sc = createArenaScene({ stage, gl, hud, tip, onLog, onEnd });
 //   sc.show({ key, a, b, fight, values, clock });   // a, b: { name, rank, look, entries, ups, weapon, skills, pet, mount }
 //   clock() -> { betting, betLeft, t }  t = seconds since betting closed (the fight starts after the intro)
-//   sc.setSound(on), sc.setCamera("high" | "low" | "top"), sc.dispose()
+//   sc.setSound(on), sc.dispose()   (one fixed camera: the game's own view, raised and pulled back)
 // Without a clock the fight plays from the start on the page's own clock (replays).
 //
 // Every picture is in public/arena. Colours are kept exactly as in the preview: three's colour management
@@ -1339,7 +1339,7 @@ export function createArenaScene(opts) {
   const debugBuffs = [null, null];
   const INTRO = opts.intro || 3; // "FIGHT!" on screen before the first move (the server allows for it)
   let hitStopUntil = 0, shakeAmp = 0, shakeAt = 0;
-  let clockT = 0, lastNow = 0, speed = 1, shownEvents = 0, camMode = "high", flashUntil = 0;
+  let clockT = 0, lastNow = 0, speed = 1, shownEvents = 0, flashUntil = 0;   // one camera only: the game's own, fixed overhead (as agreed for the preview)
   const camPos = new THREE.Vector3(0, 10, 12), camLook = new THREE.Vector3(0, 1, 0);
 
   const worldX = (x) => (x - 6) * 1.3;
@@ -1353,8 +1353,6 @@ export function createArenaScene(opts) {
 
   function camTarget(mid, w, h, clock) {
     const narrow = w / h < 1;
-    if (camMode === "top") return [new THREE.Vector3(mid, narrow ? 15 : 11, 5), new THREE.Vector3(mid, 0.6, 0), narrow ? 64 : 52];
-    if (camMode === "low") return [new THREE.Vector3(mid + Math.sin(clock * 0.2) * 1.2, 2.2, narrow ? 10.5 : 7.2), new THREE.Vector3(mid, 1.5, 0), narrow ? 66 : 54];
     // the game's camera: raised and pulled back, looking down on the two fighters
     const orbit = Math.sin(clock * 0.12) * 0.12;
     return [new THREE.Vector3(mid + Math.sin(orbit) * 7, narrow ? 4.6 : 3.9, Math.cos(orbit) * (narrow ? 8.2 : 6.6)), new THREE.Vector3(mid, 1.3, 0), narrow ? 68 : 62];
@@ -1863,7 +1861,6 @@ export function createArenaScene(opts) {
     ready,
     show,
     setSound: (want) => { if (SFX.isOn ? SFX.isOn() !== want : true) SFX.toggle(); },
-    setCamera: (mode) => { camMode = mode; },
     dispose() {
       alive = false;
       cancelAnimationFrame(raf);

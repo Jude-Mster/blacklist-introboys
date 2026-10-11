@@ -1,0 +1,24 @@
+{
+  "name": "ArenaPresence",
+  "type": "object",
+  "description": "Who has the Blacklist Arena open right now (for the watching count). One row per member per screen; old rows are removed.",
+  "properties": {
+    "scope": {
+      "type": "string",
+      "description": "live, or tour:<tournament id>"
+    },
+    "member_id": {
+      "type": "string"
+    },
+    "seen": {
+      "type": "number",
+      "description": "Last seen, in milliseconds since 1970"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

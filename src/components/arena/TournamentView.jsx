@@ -1,18 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Trophy, Shuffle } from "lucide-react";
+import { Loader2, Trophy, Shuffle, History, Radio, Repeat, Eye } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import Avatar from "@/components/Avatar";
 import { useGuild, errorText } from "@/lib/GuildContext";
 import { PLACE } from "@/lib/prizes";
 import {
-  simulate, SKILLS, WEAPON, PET, MOUNT, MAX_SKILLS, UPGRADES, TOTAL_CAP, PER_STAT, petGrowth, petBonus, mountText, normValues, LIMIT, STAT_NAME
+  simulate, SKILLS, WEAPON, PET, MOUNT, MAX_SKILLS, UPGRADES, TOTAL_CAP, PER_STAT, petGrowth, petBonus, mountText, normValues, STAT_NAME
 } from "@/lib/arenaEngine";
 import { cn } from "@/lib/utils";
 import {
-  ArenaStage, FighterCard, BetSlip, MyBets, BetBoard, RollDialog, SkillIcons, Pips, asFighter, fmt, fmtPrice, hex, lookTitle, lookColor, useServerClock
+  ArenaStage, ReplayStage, FighterCard, BetSlip, MyBets, BetBoard, RollDialog, SkillIcons, Pips, asFighter, fmt, fmtPrice, hex, lookTitle, lookColor, useServerClock, useArenaCrowd
 } from "./arenaUi";
 import TourLeader from "./TourLeader";
+import ArenaRules from "./ArenaRules";
 
 // Arena tournaments. Sign-up: your first entry gives you a fighter (a random character, one free re-roll),
 // and everything you buy makes it stronger. At the start the bracket is drawn and every match is fought
@@ -105,8 +106,8 @@ export default function TournamentView({ balance, member }) {
           <Panel title="Tournament">
             <p className="text-sm text-mist">There is no tournament right now. The Guild Leader opens them; when one is open you can sign up here, build your fighter and bet on every match.</p>
           </Panel>
-          {data.last && <LastTournament t={data.last} />}
-          <Rules costs={data.costs} values={normValues(null)} />
+          {data.last && <LastTournament t={data.last} member={member} sn={sn} />}
+          <ArenaRules mode="tour" costs={data.costs} />
         </div>
         <div className="min-w-0 space-y-4">{leaderPanel}</div>
       </div>
@@ -123,7 +124,8 @@ export default function TournamentView({ balance, member }) {
 }
 
 // ---------- the header: name, prizes, start ----------
-function Header({ t, sn, children }) {
+const REPEAT_TEXT = { daily: "Repeats every day", weekly: "Repeats every week" };
+function Header({ t, sn, children, crowd }) {
   const starts = t.starts_at ? Date.parse(t.starts_at) : 0;
   return (
     <div className="rounded-md border border-[#5a4724] bg-gradient-to-b from-[#1a1b24] to-[#13141b] p-4">
@@ -133,6 +135,8 @@ function Header({ t, sn, children }) {
         {t.status === "signup" && <div><dt className="text-[11px] uppercase tracking-[0.16em] text-mist">Starts</dt><dd className="font-heading text-lg font-bold tabular-nums text-[#f1d38c]">{starts ? (starts > sn ? `in ${countdown(starts - sn)}` : "now") : "When the Guild Leader starts it"}</dd></div>}
         <div><dt className="text-[11px] uppercase tracking-[0.16em] text-mist">Fighters</dt><dd className="font-heading text-lg font-bold tabular-nums text-[#f1d38c]">{fmt(t.status === "signup" ? t.entrant_count : t.field.length)}</dd></div>
         <div><dt className="text-[11px] uppercase tracking-[0.16em] text-mist">Paid into the bank</dt><dd className="font-heading text-lg font-bold tabular-nums text-[#f1d38c]">{fmt(t.bank_in)}</dd></div>
+        {crowd && <div><dt className="text-[11px] uppercase tracking-[0.16em] text-mist">Watching</dt><dd className="flex items-center gap-1.5 font-heading text-lg font-bold tabular-nums text-white"><Eye className="h-4 w-4" aria-hidden="true" />{fmt(crowd.watching)}</dd></div>}
+        {REPEAT_TEXT[t.repeat] && <div><dt className="text-[11px] uppercase tracking-[0.16em] text-mist">Schedule</dt><dd className="flex items-center gap-1.5 font-heading text-lg font-bold text-[#f1d38c]"><Repeat className="h-4 w-4" aria-hidden="true" />{REPEAT_TEXT[t.repeat]}</dd></div>}
       </dl>
       {t.prizes.length > 0 && (
         <ul className="mt-3 flex flex-wrap gap-2">
@@ -169,6 +173,7 @@ function SignUp({ data, t, sn, balance, member, setBalance, onChanged, leaderPan
   }, [data.entrants, me && JSON.stringify(me)]);  
   const spec = useMemo(() => (pair ? { key: `signup-${pair[0].look}-${pair[1].look}`, a: pair[0], b: pair[1], values, fight: simulate(pair[0], pair[1], 1, { draws: false, limit: 0.2, values }) } : null), [pair, JSON.stringify(values)]);  
   const stageClock = useCallback(() => ({ idle: true, banner: me ? "Your fighter · sign-up is open" : "Buy an entry to get your own fighter" }), [me]);
+  const crowd = useArenaCrowd(`tour:${t.id}`);
 
   const buy = async (item, count = 1) => {
     setBusy(item + count); setError(""); setRolled("");
@@ -202,8 +207,8 @@ function SignUp({ data, t, sn, balance, member, setBalance, onChanged, leaderPan
   return (
     <>
       <div className="min-w-0 space-y-4">
-        <Header t={t} sn={sn} />
-        <ArenaStage spec={spec} clock={stageClock} showLog={false} />
+        <Header t={t} sn={sn} crowd={crowd} />
+        <ArenaStage spec={spec} clock={stageClock} showLog={false} crowd={crowd} chip={{ text: "Sign-up open" }} />
 
         <Panel title="Your fighter">
           {!me ? (
@@ -290,7 +295,7 @@ function SignUp({ data, t, sn, balance, member, setBalance, onChanged, leaderPan
             </div>
           ) : <p className="px-4 text-sm text-mist">No one has signed up yet. Be the first.</p>}
         </Panel>
-        <Rules costs={costs} values={values} />
+        <ArenaRules mode="tour" costs={costs} values={values} />
       </div>
       <div className="min-w-0 space-y-4">
         {myFighter && <FighterCard f={myFighter} values={values} side="You" />}
@@ -308,8 +313,9 @@ function Running({ data, t, sn, serverNow, balance, member, setBalance, changedA
   const ms = t.matches;
   const RESULT_MS = (data.result_seconds || 10) * 1000;
   // the match on screen: the one open or being fought, else the last one's result, else the next one
-  const cur = ms.find((m) => sn >= Date.parse(m.open_at) && sn < (m.end_at ? Date.parse(m.end_at) : Date.parse(m.close_at) + LIMIT * 1000) + RESULT_MS)
-    || ms.find((m) => sn < Date.parse(m.open_at)) || ms[ms.length - 1];
+  // (a match only gets its betting window once the one before it has been fought: nothing is decided ahead)
+  const cur = ms.find((m) => m.open_at && sn >= Date.parse(m.open_at) && (!m.end_at || sn < Date.parse(m.end_at) + RESULT_MS))
+    || ms.find((m) => m.open_at && sn < Date.parse(m.open_at)) || ms.find((m) => !m.outcome) || ms[ms.length - 1];
   const known = cur && cur.a != null && cur.b != null;
   const fa = known ? field[cur.a] : null, fb = known ? field[cur.b] : null;
   const seed = cur ? cur.seed : null;
@@ -322,6 +328,7 @@ function Running({ data, t, sn, serverNow, balance, member, setBalance, changedA
   const stageClock = useCallback(() => {
     const m = curRef.current, now = serverNow();
     if (!m) return { idle: true };
+    if (!m.open_at) return { idle: true, banner: `Match ${m.no} · waiting for the match before it` };
     const open = Date.parse(m.open_at), close = Date.parse(m.close_at);
     if (now < open) return { idle: true, banner: `Match ${m.no} · betting opens in ${Math.ceil((open - now) / 1000)} s` };
     if (now < close) return { betting: true, betLeft: (close - now) / 1000 };
@@ -333,8 +340,12 @@ function Running({ data, t, sn, serverNow, balance, member, setBalance, changedA
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   useEffect(() => { setError(""); setNotice(""); }, [cur && cur.no]);
+  const crowd = useArenaCrowd(`tour:${t.id}`);
+  // a finished match watched again from its seed
+  const [replay, setReplay] = useState(null);
+  const replaySpec = useMemo(() => (replay ? replaySpecOf(t, field, ms.find((m) => m.no === replay.no), values, replay.started) : null), [replay]);
   const board = data.board && cur && data.board.match_no === cur.no ? data.board : null;
-  const status = cur ? (sn < Date.parse(cur.open_at) ? "waiting" : sn < Date.parse(cur.close_at) ? "betting" : cur.outcome ? "done" : "fighting") : "";
+  const status = cur ? (!cur.open_at || sn < Date.parse(cur.open_at) ? "waiting" : sn < Date.parse(cur.close_at) ? "betting" : cur.outcome ? "done" : "fighting") : "";
   const open = status === "betting" && Date.parse(cur.close_at) - sn > 500;
   const names = known ? [fa.name, fb.name] : ["", ""];
 
@@ -367,21 +378,29 @@ function Running({ data, t, sn, serverNow, balance, member, setBalance, changedA
   const outcome = cur && cur.outcome;
   const mine = board ? board.mine : null;
   const nameOf = (i) => (i == null ? null : field[i].name);
-  const refName = (ref) => (ref.s !== undefined ? field[ref.s].name : ref.w !== undefined ? `Winner of match ${ref.w}` : `Loser of match ${ref.l}`);
-  const rounds = [...new Set(ms.map((m) => m.round))];
+  const refName = refNameOf(field);
 
   return (
     <>
       <div className="min-w-0 space-y-4">
-        <Header t={t} sn={sn} />
-        {spec ? <ArenaStage spec={spec} clock={stageClock} /> : <Panel><p className="text-sm text-mist">Waiting for the next match.</p></Panel>}
+        <Header t={t} sn={sn} crowd={crowd} />
+        {replaySpec ? (
+          <>
+            <ReplayStage key={replaySpec.key} spec={replaySpec} crowd={crowd} />
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-gold/50 bg-gold/10 px-3 py-2 text-sm">
+              <span>Replay of match {replay.no}: {replaySpec.a.name} vs {replaySpec.b.name}</span>
+              <button type="button" onClick={() => setReplay(null)} className="btn-seal h-9 px-4 text-sm"><Radio className="h-4 w-4" /> Back to live</button>
+            </div>
+          </>
+        ) : spec ? <ArenaStage spec={spec} clock={stageClock} crowd={crowd} chip={status === "betting" ? { text: "Bets open" } : status === "fighting" ? { text: "Live", live: true } : status === "done" ? { text: "Result" } : { text: "Next match" }} />
+          : <Panel><p className="text-sm text-mist">Waiting for the next match.</p></Panel>}
         {cur && (
           <div className="rounded-md border border-bronze/45 bg-black/40 px-3 py-2.5" aria-live="polite">
             <p className="font-heading text-base font-bold text-gold">
               {cur.stage} · match {cur.no} of {ms.length}: {known ? `${fa.name} vs ${fb.name}` : `${refName(cur.refs[0])} vs ${refName(cur.refs[1])}`}
             </p>
             <p className="text-sm text-mist">
-              {status === "waiting" && `Betting opens in ${countdown(Date.parse(cur.open_at) - sn)}`}
+              {status === "waiting" && (cur.open_at ? `Betting opens in ${countdown(Date.parse(cur.open_at) - sn)}` : "Betting opens after the match before it")}
               {status === "betting" && `Betting closes in ${Math.max(0, Math.ceil((Date.parse(cur.close_at) - sn) / 1000))} s`}
               {status === "fighting" && "Fight in progress"}
               {status === "done" && `${nameOf(cur.winner)} wins ${outcome.how === "ko" ? "by KO" : "on time (more HP left)"} in ${outcome.length.toFixed(1)} s`}
@@ -397,46 +416,11 @@ function Running({ data, t, sn, serverNow, balance, member, setBalance, changedA
             ))}
           </div>
         )}
-        <Panel title="Bracket">
-          <div className="space-y-4">
-            {rounds.map((r) => (
-              <div key={r}>
-                <p className="mb-1.5 text-xs uppercase tracking-[0.16em] text-mist">{ms.find((m) => m.round === r && !m.bronze) ? ms.find((m) => m.round === r && !m.bronze).stage : ""}</p>
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2">
-                  {ms.filter((m) => m.round === r).map((m) => {
-                    const st = sn < Date.parse(m.open_at) ? "waiting" : sn < Date.parse(m.close_at) ? "betting" : m.outcome ? "done" : "fighting";
-                    const side = (k) => {
-                      const i = k ? m.b : m.a, ref = m.refs[k];
-                      const name = i != null ? field[i].name : refName(ref);
-                      const win = st === "done" && m.winner === i, lose = st === "done" && m.winner !== i;
-                      return (
-                        <div className={cn("flex items-center gap-2 px-2.5 py-1.5", k && "border-t border-bronze/25", win && "font-bold text-gold", lose && "text-mist line-through decoration-transparent")}>
-                          {i != null && <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: lookColor(field[i].look) }} aria-hidden="true" />}
-                          <span className={cn("min-w-0 flex-1 truncate", i == null && "italic text-mist")}>{name}{i != null && field[i].name && t.field[i].member_id === member.id ? " (you)" : ""}</span>
-                          {m.odds && i != null && st !== "done" && <span className="shrink-0 text-xs tabular-nums text-mist">{fmtPrice(k ? m.odds.b : m.odds.a)}</span>}
-                          {win && <Trophy className="h-3.5 w-3.5 shrink-0" />}
-                        </div>
-                      );
-                    };
-                    return (
-                      <div key={m.no} className={cn("overflow-hidden rounded border bg-black/30 text-sm", cur && cur.no === m.no ? "border-gold ring-1 ring-gold" : "border-bronze/40")}>
-                        <div className="flex items-center justify-between bg-black/40 px-2.5 py-1 text-[11px] uppercase tracking-wider text-mist">
-                          <span>{m.bronze ? "Third place" : `Match ${m.no}`}</span>
-                          <span className={cn(st === "betting" && "text-gold", st === "fighting" && "text-crimson")}>{st === "waiting" ? new Date(Date.parse(m.open_at)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : st === "betting" ? "Bets open" : st === "fighting" ? "Live" : m.outcome.how === "ko" ? "KO" : "Time"}</span>
-                        </div>
-                        {side(0)}{side(1)}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </Panel>
+        <Bracket t={t} field={field} sn={sn} curNo={cur ? cur.no : 0} memberId={member.id} watching={replay ? replay.no : 0} onWatch={(m) => { setReplay({ no: m.no, started: Date.now() }); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
       </div>
       <div className="min-w-0 space-y-4">
         {known && cur.odds && (
-          <BetSlip fightKey={`${t.id}-${cur.no}`} odds={cur.odds} names={names} draws={false} open={open}
+          <BetSlip fightKey={`${t.id}-${cur.no}`} odds={cur.odds} names={names} draws={false} open={open} mineLines={mine ? mine.lines : []}
             closedText={status === "waiting" ? "Betting opens soon" : status === "betting" ? "Betting is closing" : "Wait for the next match"}
             limit={data.limit || 5000} minBet={data.min_bet || 1} placed={mine ? mine.amount || 0 : 0} balance={balance} onPlace={place} busy={busy} error={error} notice={notice} />
         )}
@@ -448,42 +432,88 @@ function Running({ data, t, sn, serverNow, balance, member, setBalance, changedA
   );
 }
 
-// ---------- the last tournament's result ----------
-function LastTournament({ t }) {
-  if (t.status === "cancelled") {
-    return <Panel title={`"${t.title}" was cancelled`}><p className="text-sm">{t.cancel_reason}</p></Panel>;
-  }
+// ---------- the bracket (tap a finished match to watch it again) ----------
+const refNameOf = (field) => (ref) => (ref.s !== undefined ? field[ref.s].name : ref.w !== undefined ? `Winner of match ${ref.w}` : `Loser of match ${ref.l}`);
+function replaySpecOf(t, field, m, values, started) {
+  if (!m || m.seed == null || m.a == null || m.b == null) return null;
+  const a = field[m.a], b = field[m.b];
+  return { key: `tour-replay-${t.id}-${m.no}-${started}`, a, b, values, fight: simulate(a, b, m.seed, { draws: false, values }) };
+}
+function Bracket({ t, field, sn, curNo, memberId, watching, onWatch }) {
+  const ms = t.matches || [];
+  const refName = refNameOf(field);
+  const rounds = [...new Set(ms.map((m) => m.round))];
   return (
-    <Panel title={`"${t.title}": results`}>
-      <ol className="space-y-2">
-        {(t.results || []).map((r) => (
-          <li key={r.place} className={cn("flex items-center gap-3 rounded border px-3 py-2", r.place === 1 ? "border-gold bg-gold/10" : "border-bronze/40 bg-black/30")}>
-            <span className="w-10 font-heading text-lg font-bold text-gold">{PLACE[r.place - 1]}</span>
-            <Avatar url={r.avatar} name={r.name} size={28} />
-            <span className="min-w-0 flex-1 truncate font-bold">{r.name}</span>
-            <span className="text-sm text-mist">{r.prize || ""}{r.kind === "points" && r.paid ? " · paid" : r.kind === "code" ? (r.code_status === "delivered" ? " · code sent" : "") : r.kind === "item" ? " · from the Guild Leader" : ""}</span>
-          </li>
+    <Panel title="Bracket">
+      <p className="-mt-1 mb-3 text-xs text-mist">Tap Watch on a finished match to see it again.</p>
+      <div className="space-y-4">
+        {rounds.map((r) => (
+          <div key={r}>
+            <p className="mb-1.5 text-xs uppercase tracking-[0.16em] text-mist">{ms.find((m) => m.round === r && !m.bronze) ? ms.find((m) => m.round === r && !m.bronze).stage : ""}</p>
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2">
+              {ms.filter((m) => m.round === r).map((m) => {
+                const st = !m.open_at || sn < Date.parse(m.open_at) ? "waiting" : sn < Date.parse(m.close_at) ? "betting" : m.outcome ? "done" : "fighting";
+                const side = (k) => {
+                  const i = k ? m.b : m.a, ref = m.refs[k];
+                  const name = i != null ? field[i].name : refName(ref);
+                  const win = st === "done" && m.winner === i, lose = st === "done" && m.winner !== i;
+                  return (
+                    <div className={cn("flex items-center gap-2 px-2.5 py-1.5", k && "border-t border-bronze/25", win && "font-bold text-gold", lose && "text-mist")}>
+                      {i != null && <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: lookColor(field[i].look) }} aria-hidden="true" />}
+                      <span className={cn("min-w-0 flex-1 truncate", i == null && "italic text-mist")}>{name}{i != null && t.field[i].member_id === memberId ? " (you)" : ""}</span>
+                      {m.odds && i != null && st !== "done" && <span className="shrink-0 text-xs tabular-nums text-mist">{fmtPrice(k ? m.odds.b : m.odds.a)}</span>}
+                      {win && <Trophy className="h-3.5 w-3.5 shrink-0" />}
+                    </div>
+                  );
+                };
+                return (
+                  <div key={m.no} className={cn("overflow-hidden rounded border bg-black/30 text-sm", curNo === m.no || watching === m.no ? "border-gold ring-1 ring-gold" : "border-bronze/40")}>
+                    <div className="flex items-center justify-between gap-2 bg-black/40 px-2.5 py-1 text-[11px] uppercase tracking-wider text-mist">
+                      <span>{m.bronze ? "Third place" : `Match ${m.no}`}</span>
+                      <span className="flex items-center gap-2">
+                        <span className={cn(st === "betting" && "text-gold", st === "fighting" && "text-crimson")}>{st === "waiting" ? (m.open_at ? new Date(Date.parse(m.open_at)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Later") : st === "betting" ? "Bets open" : st === "fighting" ? "Live" : m.outcome.how === "ko" ? "KO" : "Time"}</span>
+                        {st === "done" && m.seed != null && onWatch && (
+                          <button type="button" onClick={() => onWatch(m)} className="flex items-center gap-1 rounded border border-bronze/45 px-1.5 py-0.5 normal-case tracking-normal text-mist hover:border-gold hover:text-gold"><History className="h-3 w-3" /> Watch</button>
+                        )}
+                      </span>
+                    </div>
+                    {side(0)}{side(1)}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         ))}
-      </ol>
+      </div>
     </Panel>
   );
 }
 
-// ---------- the rules ----------
-function Rules({ costs, values }) {
+// ---------- the last tournament's result ----------
+function LastTournament({ t, member, sn }) {
+  const field = useMemo(() => (t.field || []).map((x) => asFighter(x)), [t.id]);
+  const values = normValues(t.values);
+  const [replay, setReplay] = useState(null);
+  const replaySpec = useMemo(() => (replay ? replaySpecOf(t, field, (t.matches || []).find((m) => m.no === replay.no), values, replay.started) : null), [replay]);
+  if (t.status === "cancelled") {
+    return <Panel title={`"${t.title}" was cancelled`}><p className="text-sm">{t.cancel_reason}</p></Panel>;
+  }
   return (
-    <details className="rounded border border-bronze/30 bg-black/30 px-3 py-2">
-      <summary className="cursor-pointer text-sm text-gold">How tournaments work</summary>
-      <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-mist">
-        <li><b className="text-[hsl(var(--foreground))]">Sign-up</b>: your first entry ({fmt(costs.entry)} points) gives you a fighter, one of the guild's characters at random. One free re-roll, never the same one back. Fighters are removed when the tournament ends.</li>
-        <li><b className="text-[hsl(var(--foreground))]">Entries</b>: each entry after the first rolls one upgrade: {UPGRADES.map((u) => `${u.name} +${fmt(values.ups[u.id])}${u.unit}`).join(" · ")}. Crit defense comes up 1 roll in 5, the others about 1 in 11 each; up to {PER_STAT} per stat and {TOTAL_CAP} in all. Every entry also raises your halo.</li>
-        <li><b className="text-[hsl(var(--foreground))]">Weapon</b>: {fmt(costs.weaponTry)} points per try, {Math.round(values.weapon.chance * 100)}% success rate. Each level gives +{Math.round(values.weapon.atk * 100)}% ATK and +{values.weapon.crit}% Crit rate and an aura: light blue, light purple, dark purple, dark pink, red. Up to +{WEAPON.max}.</li>
-        <li><b className="text-[hsl(var(--foreground))]">Skills</b>: Add skill ({fmt(costs.skill)} points) teaches a random buff skill you don't have yet, up to {MAX_SKILLS}. Hover a skill for its details. Buffs that come up on the same turn stack.</li>
-        <li><b className="text-[hsl(var(--foreground))]">Pet and mount</b>: the Iron Condor grows 25% per buy ({fmt(costs.pet)} points) up to 200%. A mount ({fmt(costs.mountLevel)} points a level) draws two stats and adds 1% to each per level up to 10; a reset ({fmt(costs.mountReset)} points) draws a new pair.</li>
-        <li><b className="text-[hsl(var(--foreground))]">The bracket</b>: drawn at random when the tournament starts, with byes when the number of fighters isn't a power of two. 2 fighters play a single 1v1. 1 fighter: the tournament is cancelled and refunded. The two semi-final losers fight for 3rd place.</li>
-        <li><b className="text-[hsl(var(--foreground))]">Matches</b>: every match plays live. Betting is open for 10 seconds, then the fight. A fight lasts at most {LIMIT} seconds; if nobody is knocked out, the fighter with the larger share of HP left wins. Anyone can bet, fighters included.</li>
-        <li><b className="text-[hsl(var(--foreground))]">The bank</b>: every point paid goes into the Arena bank. No refunds once paid, except when only one fighter signs up or the Guild Leader cancels with refunds.</li>
-      </ul>
-    </details>
+    <div className="space-y-4">
+      <Panel title={`"${t.title}": results`}>
+        <ol className="space-y-2">
+          {(t.results || []).map((r) => (
+            <li key={r.place} className={cn("flex items-center gap-3 rounded border px-3 py-2", r.place === 1 ? "border-gold bg-gold/10" : "border-bronze/40 bg-black/30")}>
+              <span className="w-10 font-heading text-lg font-bold text-gold">{PLACE[r.place - 1]}</span>
+              <Avatar url={r.avatar} name={r.name} size={28} />
+              <span className="min-w-0 flex-1 truncate font-bold">{r.name}</span>
+              <span className="text-sm text-mist">{r.prize || ""}{r.kind === "points" && r.paid ? " · paid" : r.kind === "code" ? (r.code_status === "delivered" ? " · code sent" : "") : r.kind === "item" ? " · from the Guild Leader" : ""}</span>
+            </li>
+          ))}
+        </ol>
+      </Panel>
+      {replaySpec && <ReplayStage key={replaySpec.key} spec={replaySpec} />}
+      {(t.matches || []).length > 0 && <Bracket t={t} field={field} sn={sn} curNo={0} memberId={member.id} watching={replay ? replay.no : 0} onWatch={(m) => { setReplay({ no: m.no, started: Date.now() }); window.scrollTo({ top: 0, behavior: "smooth" }); }} />}
+    </div>
   );
 }
