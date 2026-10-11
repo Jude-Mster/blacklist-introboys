@@ -10,7 +10,9 @@
 // Plain JavaScript on purpose: the backend functions (Deno) and the page (Vite) both import this
 // one file, so the rules can never drift apart. Change ENGINE_VERSION whenever a rule changes.
 
-export const ENGINE_VERSION = 3;   // 2: tighter prices, no near-certain or long-shot side bets
+export const ENGINE_VERSION = 5;   // 2: tighter prices, no near-certain or long-shot side bets
+                                   // 4: Speed sets the pace of every move, MP only spent by skills, the Draw always offered
+                                   // 5: new upgrade values (see DEFAULT_VALUES), stronger weapon levels, pet and mount, Spirits Within +20% Speed
 
 // ---------- dice ----------
 export const mulberry32 = (a) => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
@@ -30,13 +32,13 @@ export const UPGRADES = [
   { id: "eva", name: "Evasion", unit: "%", w: 0.0889 },
   { id: "pots", name: "HP potions", unit: "", w: 0.0889 },
   { id: "potheal", name: "Potion heal", unit: "%", w: 0.0889 },
-  { id: "spd", name: "Attack speed", unit: "%", w: 0.0889 }
+  { id: "spd", name: "Speed", unit: "%", w: 0.0889 }
 ];
 export const PER_STAT = 9, TOTAL_CAP = 25;
 // What each upgrade gives. The Guild Leader can change these for a tournament (saved on it).
 export const DEFAULT_VALUES = {
-  ups: { hp: 5000, atk: 400, def: 400, crit: 1, critdef: 2, acc: 5, eva: 5, pots: 1, potheal: 3, spd: 5 },
-  weapon: { atk: 0.10, crit: 3, chance: 0.30 }
+  ups: { hp: 7000, atk: 950, def: 900, crit: 1.5, critdef: 3, acc: 5, eva: 8, pots: 2, potheal: 3, spd: 10 },
+  weapon: { atk: 0.15, crit: 5, chance: 0.30 }
 };
 // Keep only sane numbers; anything missing falls back to the default.
 export function normValues(v) {
@@ -50,18 +52,31 @@ export function normValues(v) {
 }
 
 // ---------- prices in the tournament shop ----------
+// The defaults; the Guild Leader sets a tournament's own prices when opening it (saved on it as costs).
 export const COSTS = { entry: 500, skill: 1000, weaponTry: 500, pet: 1500, mountLevel: 1500, mountReset: 2500 };
+export const COST_ITEMS = [
+  { id: "entry", name: "Entry (each)" }, { id: "skill", name: "Add skill" }, { id: "weaponTry", name: "Weapon upgrade try" },
+  { id: "pet", name: "Pet growth (each 25%)" }, { id: "mountLevel", name: "Mount level (each)" }, { id: "mountReset", name: "Mount stat reset" }
+];
+// Whole points from 1 to 1,000,000; anything else falls back to the default.
+export function normCosts(c) {
+  const out = {};
+  for (const { id } of COST_ITEMS) { const x = Math.floor(Number(c && c[id])); out[id] = Number.isFinite(x) && x >= 1 && x <= 1000000 ? x : COSTS[id]; }
+  return out;
+}
 
 // ---------- pet, mount, weapon ----------
-// Iron Condor (Epic): 25% of growth per level, up to 200%. At 200% the game's full bonus.
-export const PET = { name: "Iron Condor (Epic)", levels: 8, full: { hp: 2200, atk: 1350, def: 2200 } };
+// Iron Condor (Epic): 25% of growth per level, up to 200%. Each 25% gives HP +550, ATK +337.5, DEF +550
+// (twice the game's own bonus since 6.7), so at 200%: HP +4,400, ATK +2,700, DEF +4,400.
+export const PET = { name: "Iron Condor (Epic)", levels: 8, full: { hp: 4400, atk: 2700, def: 4400 } };
 export const petGrowth = (lv) => lv * 25;
 export const petBonus = (lv, id) => Math.round((PET.full[id] || 0) * lv / PET.levels);
-// Mount: the first level draws one pair at random; every level after adds 1% more to the same pair.
+// Mount: the first level draws one pair at random; every level after adds MOUNT.per % more to the same pair.
 // HP, ATK and DEF grow by that % of the fighter's total; Crit rate, Dodge and Crit defense by that many points.
-export const MOUNT = { levels: 10, pairs: [["atk", "def"], ["atk", "hp"], ["def", "hp"], ["crit", "eva"], ["def", "eva"], ["critdef", "def"]] };
+export const MOUNT = { levels: 10, per: 3, pairs: [["atk", "def"], ["atk", "hp"], ["def", "hp"], ["crit", "eva"], ["def", "eva"], ["critdef", "def"]] };
 export const STAT_NAME = { hp: "HP", atk: "ATK", def: "DEF", crit: "Crit rate", eva: "Dodge", critdef: "Crit defense" };
-export const mountText = (m, lv = m.lv) => MOUNT.pairs[m.pair].map((id) => `${STAT_NAME[id]} +${lv}%`).join(" · ");
+export const mountPct = (lv) => lv * MOUNT.per;
+export const mountText = (m, lv = m.lv) => MOUNT.pairs[m.pair].map((id) => `${STAT_NAME[id]} +${mountPct(lv)}%`).join(" · ");
 // Weapon: each try works the tournament's chance; each level adds ATK % and Crit rate, and an aura.
 export const WEAPON = {
   max: 5,
@@ -82,7 +97,7 @@ export const LOOK_KEYS = ["juts", "judy", "bronze", "ivory", "ember", "jade", "v
 export const SKILLS = {
   shield: { name: "Heavenly Shield", chance: 0.35, cd: 3, charges: 2, cut: 0.5, mp: 1035.3, color: 0x5aa8ff, text: "halves the next 2 hits that land" },
   blow: { name: "Heavenly Blow", chance: 0.15, cd: 4, attacks: 2, crit: 20, mp: 1035.3, color: 0xff3030, text: "+20% Crit rate for 2 attacks, then 4 attacks to cool down" },
-  spirits: { name: "Spirits Within", chance: 0.2, cd: 0, attacks: 3, atk: 0.15, spd: 0.15, mp: 108.75, color: 0xa8e4ff, text: "+15% ATK and +15% attack speed for 3 attacks" },
+  spirits: { name: "Spirits Within", chance: 0.2, cd: 0, attacks: 3, atk: 0.15, spd: 0.20, mp: 108.75, color: 0xa8e4ff, text: "+15% ATK and +20% Speed for 3 attacks" },
   blood: { name: "Blood Lust", chance: 0.2, cd: 0, attacks: 3, atk: 0.25, mp: 415.14, color: 0xff5a1a, text: "+25% ATK for 3 attacks, and the blade catches fire" },
   garuda: { name: "Garuda's Prayer", chance: 0.15, cd: 0, guards: 3, eva: 25, mp: 1144.43, color: 0xc9a0ff, text: "+25% Evasion against the next 3 attacks" },
   nirvana: { name: "Nirvana Soul Blast", chance: 0.25, cd: 4, guards: 3, critdef: 20, mp: 1821.04, color: 0xb060ff, text: "+20% Crit defense against the next 3 attacks, then 4 attacks to cool down" },
@@ -93,12 +108,20 @@ export const BUFF_STACK = { stackCap: 2 };
 const OWN_BUFFS = ["blow", "spirits", "blood"], GUARD_BUFFS = ["garuda", "nirvana"];
 export const noBuffs = () => ({ shield: 0, blow: 0, spirits: 0, blood: 0, garuda: 0, nirvana: 0 });
 export const usesOf = (id) => SKILLS[id].charges || SKILLS[id].attacks || SKILLS[id].guards;
-export const CHARGE = { name: "Crimson LightningCharger", mp: 145.5, upTo: 2 };
+// Crimson LightningCharger: every fighter's own buff skill, cast before each Skyfall. It charges the spear so the
+// Skyfall hits for 1x to 2x. (It is not one of the bought buff skills and is not counted in the buff side bets.)
+export const CHARGE = { name: "Crimson LightningCharger", mp: 145.5, upTo: 2, color: 0xff2a3a };
 
 // ---------- timings (seconds) ----------
 export const CAST = 1.0, SPIN = 0.8, RECOVER = 0.35, POTION = 0.6, GAP = 0.3, RANGE = 3.2, WALK = 3.4, DT = 0.05;
 export const LIMIT = 180;   // a fight lasts at most 3 minutes
-const DMG_K = 0.46, CRIT_MIN = 3, CRIT_MAX = 7, MP_REGEN = 20, POT_AT = 0.7;
+const DMG_K = 0.46, CRIT_MIN = 3, CRIT_MAX = 7, POT_AT = 0.7;
+// Speed is one stat: it sets the turn order (below) and the pace of the fighter's own moves. At 100% a buff
+// cast, the charge, Skyfall and the recovery take their full time; faster fighters do them quicker (down to
+// PACE_MIN of the time). Spirits Within adds its Speed the moment it is cast. MP only goes down when a skill
+// is cast; it does not come back during the fight.
+export const PACE_MIN = 0.55;
+export const paceOf = (spd) => clamp(100 / Math.max(1, spd), PACE_MIN, 1);
 const START = [4.0, 8.0];
 
 // ---------- a fighter's numbers ----------
@@ -108,7 +131,7 @@ export function statsOf(f, values) {
   const s = { ...BASE };
   for (const u of UPGRADES) s[u.id] += ((f.ups && f.ups[u.id]) || 0) * (V.ups[u.id] ?? DEFAULT_VALUES.ups[u.id]);
   if (f.pet) for (const id of ["hp", "atk", "def"]) s[id] += petBonus(f.pet, id);
-  if (f.mount && MOUNT.pairs[f.mount.pair]) for (const id of MOUNT.pairs[f.mount.pair]) s[id] = ["hp", "atk", "def"].includes(id) ? Math.round(s[id] * (1 + f.mount.lv / 100)) : s[id] + f.mount.lv;
+  if (f.mount && MOUNT.pairs[f.mount.pair]) for (const id of MOUNT.pairs[f.mount.pair]) s[id] = ["hp", "atk", "def"].includes(id) ? Math.round(s[id] * (1 + mountPct(f.mount.lv) / 100)) : s[id] + mountPct(f.mount.lv);
   const wl = Math.min(WEAPON.max, f.weapon || 0);
   if (wl) { s.atk = Math.round(s.atk * (1 + V.weapon.atk * wl)); s.crit += V.weapon.crit * wl; }
   return s;
@@ -139,6 +162,8 @@ const hitChance = (acc, eva) => clamp(acc - eva, 25, 97) / 100;          // base
 const critChance = (crit, critdef) => clamp(crit - critdef, 1, 60) / 100; // base 15%, at most 60%
 const effAtk = (m) => m.s.atk * (1 + (m.buf.spirits > 0 ? SKILLS.spirits.atk : 0) + (m.buf.blood > 0 ? SKILLS.blood.atk : 0));
 const effSpd = (m) => m.s.spd * (m.buf.spirits > 0 ? 1 + SKILLS.spirits.spd : 1);
+// the Speed a fighter has right now (with Spirits Within up or not), as a whole %
+export const speedNow = (spd, spiritsUp) => Math.round(spd * (spiritsUp ? 1 + SKILLS.spirits.spd : 1));
 const effCrit = (m) => m.s.crit + (m.buf.blow > 0 ? SKILLS.blow.crit : 0);
 const effEva = (m) => m.s.eva + (m.buf.garuda > 0 ? SKILLS.garuda.eva : 0);
 const effCritdef = (m) => m.s.critdef + (m.buf.nirvana > 0 ? SKILLS.nirvana.critdef : 0);
@@ -206,12 +231,11 @@ export function simulate(fa, fb, seed, opts = {}) {
   const toss = r() < 0.5 ? 0 : 1, nx = [100 / F[0].s.spd, 100 / F[1].s.spd];
   let t = 0, winner = -1, how = "", turn = nextActor(nx, 1 - toss), phase = "walk", left = 0, done = false;
   const drinks = [];
-  let casting = [];
+  let casting = [], pace = 1;
   const ev = (who, type, extra) => events.push({ t: round2(t), who, type, ...extra });
   const nextTurn = () => { nx[turn] += 100 / F[turn].stepSpd; const prev = turn; turn = nextActor(nx, prev); if (turn === prev) ev(turn, "again", {}); phase = "gap"; left = GAP; };
   ev(turn, "first", { toss: toss === turn });
   while (t < limit && !done) {
-    for (const m of F) m.mp = Math.min(m.s.mp, m.mp + MP_REGEN * DT);
     const gap = Math.abs(F[1].x - F[0].x);
     if (phase === "walk") {
       if (gap > RANGE + 1e-6) { const step = Math.min(WALK * DT, (gap - RANGE) / 2); F[0].x += step; F[1].x -= step; }
@@ -221,16 +245,17 @@ export function simulate(fa, fb, seed, opts = {}) {
     } else if ((left -= DT) <= 0) {
       const me = F[turn], foe = F[1 - turn];
       if (phase === "gap") casting = castBuffs(me, r).map((id) => ({ id, stacked: me.buf[id] > usesOf(id) }));
-      if ((phase === "gap" || phase === "buff") && casting.length) { const c = casting.shift(); phase = "buff"; left = BUFF_CAST; ev(turn, "buff", { skill: c.id, stacked: c.stacked }); }
-      else if (phase === "gap" || phase === "buff") { me.mp = Math.max(0, me.mp - CHARGE.mp); phase = "cast"; left = CAST; ev(turn, "cast", {}); }
-      else if (phase === "cast") { me.charged = true; phase = "spin"; left = SPIN; ev(turn, "spin", {}); }
+      if (phase === "gap" || phase === "buff") pace = paceOf(effSpd(me));   // a Spirits Within cast just now already counts
+      if ((phase === "gap" || phase === "buff") && casting.length) { const c = casting.shift(); phase = "buff"; left = BUFF_CAST * pace; ev(turn, "buff", { skill: c.id, stacked: c.stacked, k: pace }); }
+      else if (phase === "gap" || phase === "buff") { me.mp = Math.max(0, me.mp - CHARGE.mp); phase = "cast"; left = CAST * pace; ev(turn, "cast", { k: pace }); }
+      else if (phase === "cast") { me.charged = true; phase = "spin"; left = SPIN * pace; ev(turn, "spin", { k: pace }); }
       else if (phase === "spin") {
-        me.charged = false; phase = "recover"; left = RECOVER;
+        me.charged = false; phase = "recover"; left = RECOVER * pace;
         const s = strike(me, foe, r), u = s.used;
-        if (s.miss) ev(turn, "miss", { dodge: u.garuda });
+        if (s.miss) ev(turn, "miss", { dodge: u.garuda, k: pace });
         else {
           foe.x = clamp(foe.x - foe.dir * (s.crit ? 0.9 : 0.35), 0.8, 11.2);
-          ev(turn, "hit", { dmg: s.dmg, shielded: s.shielded, crit: s.crit, mult: s.mult, power: s.power, oneHit: s.oneHit, reflect: s.reflect, reflectKo: s.reflectKo, blow: u.blow, spirits: u.spirits, blood: u.blood, nirvana: u.nirvana });
+          ev(turn, "hit", { k: pace, dmg: s.dmg, shielded: s.shielded, crit: s.crit, mult: s.mult, power: s.power, oneHit: s.oneHit, reflect: s.reflect, reflectKo: s.reflectKo, blow: u.blow, spirits: u.spirits, blood: u.blood, nirvana: u.nirvana });
           if (s.dead) { foe.dead = true; winner = turn; how = "ko"; done = true; ev(1 - turn, "ko", { crit: s.crit, oneHit: s.oneHit }); }
           else if (s.reflectKo) { me.dead = true; winner = 1 - turn; how = "ko"; done = true; ev(turn, "ko", { crit: false, oneHit: false, reflect: true }); }
           else { if (s.drink) drinks.push(1 - turn); if (s.drinkMe) drinks.push(turn); }
@@ -241,7 +266,7 @@ export function simulate(fa, fb, seed, opts = {}) {
         else nextTurn();
       }
     }
-    if (keepFrames) frames.push({ t: round2(t), x: [F[0].x, F[1].x], hp: [F[0].hp, F[1].hp], mp: [F[0].mp, F[1].mp], pots: [F[0].pots, F[1].pots], charged: [F[0].charged, F[1].charged], sk: [{ ...F[0].buf }, { ...F[1].buf }], cd: [{ ...F[0].cd }, { ...F[1].cd }], buff: F.map((m) => (m.charged ? { lightning: 1 } : {})) });
+    if (keepFrames) frames.push({ t: round2(t), x: [F[0].x, F[1].x], hp: [F[0].hp, F[1].hp], mp: [F[0].mp, F[1].mp], pots: [F[0].pots, F[1].pots], charged: [F[0].charged, F[1].charged], spd: [effSpd(F[0]), effSpd(F[1])], sk: [{ ...F[0].buf }, { ...F[1].buf }], cd: [{ ...F[0].cd }, { ...F[1].cd }], buff: F.map((m) => (m.charged ? { lightning: 1 } : {})) });
     t += DT;
   }
   if (!done) {
@@ -267,7 +292,7 @@ export function outcomeOf(fight) {
 
 // The same fight without the walking, about 100 times faster: used for the practice fights that set
 // the prices. (The time it keeps is close to the real fight's, not exact.)
-const TURN_T = GAP + CAST + SPIN + RECOVER + 0.15;
+const MOVE_T = CAST + SPIN + RECOVER + 0.15;
 export function quickFight(fa, fb, seed, opts = {}) {
   const limit = opts.limit || LIMIT;
   const r = mulberry32(seed >>> 0);
@@ -276,9 +301,8 @@ export function quickFight(fa, fb, seed, opts = {}) {
   let t = 0.6, turn = nextActor(nx, 1 - toss), pots = 0, crits = 0, buffs = 0;
   while (t < limit) {
     const me = F[turn], foe = F[1 - turn];
-    t += TURN_T;
-    const cast = castBuffs(me, r).length;
-    buffs += cast; t += cast * BUFF_CAST;
+    const cast = castBuffs(me, r).length, pace = paceOf(effSpd(me));
+    buffs += cast; t += GAP + (MOVE_T + cast * BUFF_CAST) * pace;
     const s = strike(me, foe, r);
     if (!s.miss) {
       if (s.crit) crits++;
@@ -303,7 +327,7 @@ export function quickFight(fa, fb, seed, opts = {}) {
 //   * every line carries a house edge: 10% on the favourite, 15% on the outsider, the side bets and the Draw;
 //   * caps: a fighter pays at most 6x, a side bet at most 5x, the Draw at most 10x;
 //   * a side bet is only offered when it comes up between 10% and 90% of the time in this matchup (no lottery
-//     tickets, no near-certainties), and the Draw only when it comes up in at least 1 fight in 100;
+//     tickets, no near-certainties); the Draw is always offered, at most drawCap;
 //   * nobody can hold both fighters or both sides of an over/under on one fight.
 // On a Draw (Live Arena only) bets on either fighter get half back, and their prices allow for that.
 export const DEFAULT_EDGES = { fav: 0.10, dog: 0.15, side: 0.15, draw: 0.15, maxPrice: 6, maxSide: 5, drawCap: 10, minDraw: 0.01, minP: 0.10, maxP: 0.90 };
@@ -351,8 +375,8 @@ export function priceMatch(fa, fb, seed, opts = {}) {
   return {
     pa, pb, pd, draws, n: N,
     a: fighterPrice(pa, favA ? E.fav : E.dog), b: fighterPrice(pb, favA ? E.dog : E.fav),
-    // a Draw is only offered when it actually happens in the practice fights (at least 1 in 100)
-    draw: draws && pd >= E.minDraw ? offer((1 - E.draw) / safeP(pd, N), E.drawCap) : 0,
+    // the Draw is always offered in the Live Arena: priced from the cautious rate, never more than drawCap
+    draw: draws ? offer((1 - E.draw) / safeP(pd, N), E.drawCap) : 0,
     side
   };
 }

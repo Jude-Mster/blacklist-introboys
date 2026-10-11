@@ -36,7 +36,7 @@ export default function ArenaRules({ mode = "live", values, costs = COSTS, betSe
               <p>The price is what you get back per point, your stake included: 100 at 1.80× returns 180. Fighters pay at most {E.maxPrice}×, side bets at most {E.maxSide}×. Side bets that come up less than {Math.round(E.minP * 100)}% or more than {Math.round(E.maxP * 100)}% of the time in that matchup aren't offered.</p>
             </Rule>
             <Rule title="Draw">
-              <p>A fight lasts at most {LIMIT} seconds. No knockout by then is a Draw: Draw bets win and bets on either fighter get {Math.round(DRAW_REFUND * 100)}% of the stake back. The Draw is only offered when the two builds actually draw in at least {Math.round(E.minDraw * 100)} of 100 practice fights, and pays at most {E.drawCap}×.</p>
+              <p>A fight lasts at most {LIMIT} seconds. No knockout by then is a Draw: Draw bets win and bets on either fighter get {Math.round(DRAW_REFUND * 100)}% of the stake back. The Draw is always offered and pays at most {E.drawCap}×. Knockouts are the norm, so a Draw is rare.</p>
             </Rule>
           </>
         ) : (
@@ -50,7 +50,7 @@ export default function ArenaRules({ mode = "live", values, costs = COSTS, betSe
           </>
         )}
         <Rule title="Base fighter">
-          <p>Everyone starts the same: HP {fmt(BASE.hp)} · ATK {fmt(BASE.atk)} · DEF {fmt(BASE.def)} · Crit rate {BASE.crit}% · Crit defense {BASE.critdef}% · Accuracy {BASE.acc}% · Evasion {BASE.eva}% · Attack speed {BASE.spd}% · {BASE.pots} HP potions that heal {BASE.potheal}%.</p>
+          <p>Everyone starts the same: HP {fmt(BASE.hp)} · ATK {fmt(BASE.atk)} · DEF {fmt(BASE.def)} · Crit rate {BASE.crit}% · Crit defense {BASE.critdef}% · Accuracy {BASE.acc}% · Evasion {BASE.eva}% · Speed {BASE.spd}% · {BASE.pots} HP potions that heal {BASE.potheal}%.</p>
         </Rule>
         <Rule title="Entry upgrades">
           <p>Each entry after the first rolls one: {UPGRADES.map((u) => `${u.name} +${fmt(V.ups[u.id])}${u.unit}`).join(" · ")}. Crit defense comes up 1 roll in 5, the others about 1 in 11 each. Up to {PER_STAT} per stat and {TOTAL_CAP} in all; entries after that still raise the halo.</p>
@@ -66,10 +66,10 @@ export default function ArenaRules({ mode = "live", values, costs = COSTS, betSe
         </Rule>
         <Rule title="Pet and mount">
           <p>{PET.name}: {fmt(costs.pet)} points per 25% of growth, up to {petGrowth(PET.levels)}%. At 200%: HP +{fmt(PET.full.hp)}, ATK +{fmt(PET.full.atk)}, DEF +{fmt(PET.full.def)}.</p>
-          <p>Mount: {fmt(costs.mountLevel)} points per level, up to {MOUNT.levels}. The first level draws one pair ({MOUNT.pairs.map((p) => p.map((id) => STAT_NAME[id]).join(" & ")).join(", ")}); each level adds 1% to both. A reset ({fmt(costs.mountReset)} points) draws a new pair and keeps the level.</p>
+          <p>Mount: {fmt(costs.mountLevel)} points per level, up to {MOUNT.levels}. The first level draws one pair ({MOUNT.pairs.map((p) => p.map((id) => STAT_NAME[id]).join(" & ")).join(", ")}); each level adds {MOUNT.per}% to both. A reset ({fmt(costs.mountReset)} points) draws a new pair and keeps the level.</p>
         </Rule>
         <Rule title="Combat">
-          <p><B>Skyfall</B> (the 360° slash) lands with Accuracy − the target's Evasion. <B>Crimson LightningCharger</B> charges it for 1× to 2× damage. A <B>critical</B> (Crit rate − the target's Crit defense, at most 60%) does 3× to 7×. An <B>HP potion</B> is drunk after any hit that leaves the fighter at 70% HP or less. <B>Attack speed</B> sets the turn order; a faster fighter sometimes attacks twice in a row.</p>
+          <p><B>Skyfall</B> (the 360° slash) lands with Accuracy − the target's Evasion. <B>Crimson LightningCharger</B>, the buff every fighter casts before each Skyfall, charges it for 1× to 2× damage (it costs MP but isn't counted in the buff side bets). MP only goes down when a skill or buff is cast. A <B>critical</B> (Crit rate − the target's Crit defense, at most 60%) does 3× to 7×. An <B>HP potion</B> is drunk after any hit that leaves the fighter at 70% HP or less. <B>Speed</B> sets the turn order and how quickly a fighter moves: a faster fighter charges and swings quicker and sometimes attacks twice in a row. Spirits Within adds {Math.round(SKILLS.spirits.spd * 100)}% Speed from the moment it is cast.</p>
         </Rule>
         <Rule title="Halo">
           <p>The ring of light over a fighter's head: one level per entry, and its look changes every 8 levels. It is for show only.</p>

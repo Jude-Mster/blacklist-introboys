@@ -134,7 +134,6 @@ export function ArenaStage({ spec, clock, className, showLog = true, logTitle = 
       </div>
       {crowd && crowd.send && (
         <div className="flex flex-wrap items-center gap-2 border-t border-[#2b2a33] bg-[#0d0e13] px-2.5 py-2">
-          <span className="arena-label text-xs font-bold uppercase tracking-[0.18em] text-crimson">Tease</span>
           <div className="flex flex-wrap gap-1" role="group" aria-label="Throw an emoji">
             {EMOJIS.map(([e, nm]) => (
               <button key={e} type="button" title={nm} aria-label={nm} onClick={() => taunt(e)} className="rounded border border-[#2b2a33] bg-[#1a1b24] px-1.5 py-1 text-xl leading-none active:scale-90">{e}</button>
@@ -228,7 +227,7 @@ export function FighterCard({ f, values, side, highlight, children, className })
   const rows = [
     ["HP", fmt(s.hp), "hp"], ["ATK", fmt(s.atk), "atk"], ["DEF", fmt(s.def), "def"],
     ["Crit rate", `${s.crit}%`, "crit"], ["Crit defense", `${s.critdef}%`, "critdef"], ["Accuracy", `${s.acc}%`, "acc"],
-    ["Evasion", `${s.eva}%`, "eva"], ["HP potions", s.pots, "pots"], ["Potion heal", `${s.potheal}%`, "potheal"], ["Attack speed", `${s.spd}%`, "spd"]
+    ["Evasion", `${s.eva}%`, "eva"], ["HP potions", s.pots, "pots"], ["Potion heal", `${s.potheal}%`, "potheal"], ["Speed", `${s.spd}%`, "spd"]
   ];
   return (
     <div className={cn("min-w-0 rounded border bg-black/30 p-3", highlight ? "border-gold" : "border-bronze/40", className)}>
@@ -277,24 +276,27 @@ export function BetSlip({ fightKey, odds, names, draws, open, closedText, limit,
   const problem = !picks.length || !amt ? "" : amt < minBet ? `The smallest bet is ${fmt(minBet)}.` : total > balance ? "Not enough points for that." : placed + total > limit ? `You can bet up to ${fmt(limit)} on one fight (${fmt(Math.max(0, limit - placed))} left).` : "";
   const can = open && picks.length && amt >= minBet && !problem && !busy;
   const place = async () => { if (!can) return; const ok = await onPlace(picks.map((k) => ({ k, amount: amt }))); if (ok) { setPicks([]); } };
-  const Btn = ({ k, label, sub }) => {
+  // stack: name, line and price under each other (the three main buttons, so "Draw" and its price both fit)
+  // called as a function, not used as <Btn>: a component made inside BetSlip would be a new one on every
+  // redraw, and a tap landing while React swaps it would be lost
+  const btn = ({ k, label, sub, stack }) => {
     const p = priceOf(k), on = picks.includes(k), lock = locked(k);
     const why = lock ? "You already bet on the other side" : !(p > 1) ? (k === "draw" ? `Not offered: no realistic chance of a draw in ${LIMIT} s` : "Not offered on this fight") : sub;
     return (
-      <button type="button" disabled={!open || !(p > 1) || lock} onClick={() => toggle(k)} aria-pressed={on} title={lock || !(p > 1) ? why : undefined}
-        className={cn("flex min-w-0 items-center justify-between gap-2 rounded border px-2.5 py-2 text-left text-[13px] transition-colors disabled:cursor-default",
+      <button key={k} type="button" disabled={!open || !(p > 1) || lock} onClick={() => toggle(k)} aria-pressed={on} title={lock || !(p > 1) ? why : undefined}
+        className={cn("flex min-w-0 rounded border px-2.5 py-2 text-left text-[13px] transition-colors disabled:cursor-default", stack ? "flex-col items-start gap-0.5" : "items-center justify-between gap-2",
           on ? "border-gold bg-gold/20" : "border-bronze/45 bg-black/30 enabled:hover:border-gold", (!(p > 1) || lock) && "opacity-40")}>
-        <span className="min-w-0"><span className="block truncate">{label}</span>{why && <span className="block truncate text-[11px] text-mist">{why}</span>}</span>
-        <b className="shrink-0 font-heading tabular-nums text-gold">{fmtPrice(p)}</b>
+        <span className={cn("min-w-0", stack && "w-full")}><span className="block truncate">{label}</span>{why && <span className="block truncate text-[11px] text-mist">{why}</span>}</span>
+        <b className={cn("shrink-0 font-heading tabular-nums text-gold", stack && "text-base")}>{fmtPrice(p)}</b>
       </button>
     );
   };
   return (
     <Panel title="Bet slip">
       <div className={cn("grid gap-1.5", draws ? "grid-cols-3" : "grid-cols-2")}>
-        <Btn k="a" label={names[0]} sub="to win" />
-        {draws && <Btn k="draw" label="Draw" sub={`no KO in ${LIMIT} s`} />}
-        <Btn k="b" label={names[1]} sub="to win" />
+        {btn({ k: "a", label: names[0], sub: "to win", stack: true })}
+        {draws && btn({ k: "draw", label: "Draw", sub: `no KO in ${LIMIT} s`, stack: true })}
+        {btn({ k: "b", label: names[1], sub: "to win", stack: true })}
       </div>
       {(() => {
         const offered = (odds.side || []).filter((x) => x.price > 1);
@@ -312,7 +314,7 @@ export function BetSlip({ fightKey, odds, names, draws, open, closedText, limit,
             )}
             {show && (
               <div className="mt-1 grid grid-cols-1 gap-1.5">
-                {offered.map((x) => <Btn key={x.id} k={x.id} label={x.name} />)}
+                {offered.map((x) => btn({ k: x.id, label: x.name }))}
                 {(odds.side || []).some((x) => !(x.price > 1)) && <p className="text-[11px] text-mist">Side bets that almost never or almost always happen in this matchup aren't offered.</p>}
               </div>
             )}
@@ -437,13 +439,13 @@ export function RollDialog({ open, onClose, mode, won, owned = [], old = null, m
   useEffect(() => { if (!open) return undefined; const k = (e) => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [open, onClose]);
   if (!open) return null;
   const pct = (id) => ["hp", "atk", "def"].includes(id);
-  const per = (pair, lv) => pair.map((id) => `${STAT_NAME[id]} +${lv}${pct(id) ? "% of total" : lv === 1 ? " point" : " points"}`).join(" · ");
+  const per = (pair, lv) => pair.map((id) => `${STAT_NAME[id]} +${lv * MOUNT.per}${pct(id) ? "% of total" : " points"}`).join(" · ");
   const title = mode === "skills"
     ? (won == null ? "All buff skills" : done ? `You learned ${SKILLS[won].name}` : "Rolling for a skill…")
     : (won == null ? "Mount stats" : done ? `Your mount drew ${MOUNT.pairs[won].map((id) => STAT_NAME[id]).join(" & ")}` : old != null ? "Resetting your mount's stats…" : "Drawing your mount's stats…");
   const sub = mode === "skills"
     ? `${ids.length} skills. Add skill (${fmt(costs.skill)} pts) draws one you don't have yet at random, up to 2. Hover or tab to a skill for its details.`
-    : `${MOUNT.pairs.length} possible pairs, each as likely as the others. The first level (${fmt(costs.mountLevel)} pts) draws one pair at random and every level after adds 1% more to the same two, up to level ${MOUNT.levels}. A reset (${fmt(costs.mountReset)} pts) draws a new pair, never the one you had, and keeps the level. HP, ATK and DEF grow by that % of the fighter's total; Crit rate, Dodge and Crit defense by that many points.`;
+    : `${MOUNT.pairs.length} possible pairs, each as likely as the others. The first level (${fmt(costs.mountLevel)} pts) draws one pair at random and every level after adds ${MOUNT.per}% more to the same two, up to level ${MOUNT.levels}. A reset (${fmt(costs.mountReset)} pts) draws a new pair, never the one you had, and keeps the level. HP, ATK and DEF grow by that % of the fighter's total; Crit rate, Dodge and Crit defense by that many points.`;
   return (
     <div className="arena-root fixed inset-0 z-50 grid place-items-center bg-[rgba(5,6,9,0.78)] p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div role="dialog" aria-modal="true" aria-label={title} className="max-h-[calc(100vh-32px)] w-full max-w-[760px] overflow-auto rounded border border-[#5a4724] bg-[#13141b] p-4 sm:p-5">

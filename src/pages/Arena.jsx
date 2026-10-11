@@ -28,7 +28,7 @@ export default function Arena() {
   const liveOpen = (settings.games_enabled || []).includes("arena");
 
   return (
-    <div className="mx-auto max-w-[80rem] space-y-4">
+    <div className="mx-auto max-w-[76rem] space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <img src="/arena/guild-mark.png" alt="" aria-hidden="true" className="h-12 w-12 object-contain drop-shadow-[0_3px_10px_rgba(195,21,31,0.7)]" />
         <div className="min-w-0 flex-1">

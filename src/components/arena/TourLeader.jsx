@@ -6,11 +6,11 @@ import CodeInput from "@/components/prizes/CodeInput";
 import { Points } from "@/components/SealLogo";
 import { errorText } from "@/lib/GuildContext";
 import { normalizeCode, PLACE } from "@/lib/prizes";
-import { UPGRADES, DEFAULT_VALUES, normValues } from "@/lib/arenaEngine";
+import { UPGRADES, DEFAULT_VALUES, normValues, COSTS, COST_ITEMS, normCosts } from "@/lib/arenaEngine";
 import { cn } from "@/lib/utils";
 import { fmt } from "./arenaUi";
 
-// The Guild Leader's tournament controls: open one (name, start time, prizes, what each upgrade gives),
+// The Guild Leader's tournament controls: open one (name, start time, prizes, prices, what each upgrade gives),
 // change it before it starts, start it now, cancel it, post it to Discord; and the Arena bank.
 const toLocal = (iso) => { if (!iso) return ""; const d = new Date(iso); const p = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
 const blankPrize = (kind = "points") => ({ kind, points: "", label: "", from_bank: false, code: "", from_stock: false });
@@ -33,9 +33,9 @@ export default function TourLeader({ data, onChanged }) {
       setForm({
         title: t.title, starts_at: toLocal(t.starts_at), repeat: t.repeat || "none",
         prizes: t.prizes.map((p) => ({ kind: p.kind, points: p.points ? String(p.points) : "", label: p.kind === "points" ? "" : p.label, from_bank: !!p.from_bank, code: "", from_stock: false })),
-        values: normValues(t.values)
+        values: normValues(t.values), costs: normCosts(t.costs)
       });
-    } else if (!t) setForm({ title: "", starts_at: "", repeat: "none", prizes: [blankPrize(), blankPrize(), blankPrize()], values: normValues(DEFAULT_VALUES) });
+    } else if (!t) setForm({ title: "", starts_at: "", repeat: "none", prizes: [blankPrize(), blankPrize(), blankPrize()], values: normValues(DEFAULT_VALUES), costs: normCosts(COSTS) });
   }, [t, editing, form]);
   // a different tournament (or one that moved on): start the form again
   const keyRef = React.useRef(`${t ? t.id : ""}:${t ? t.status : ""}`);
@@ -80,6 +80,7 @@ export default function TourLeader({ data, onChanged }) {
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setPrize = (i, k, v) => setForm((f) => ({ ...f, prizes: f.prizes.map((p, j) => (j === i ? { ...p, [k]: v } : p)) }));
   const setUp = (id, v) => setForm((f) => ({ ...f, values: { ...f.values, ups: { ...f.values.ups, [id]: v } } }));
+  const setCost = (id, v) => setForm((f) => ({ ...f, costs: { ...f.costs, [id]: v.replace(/[^\d]/g, "") } }));
   const setW = (k, v) => setForm((f) => ({ ...f, values: { ...f.values, weapon: { ...f.values.weapon, [k]: v } } }));
   const slot = (i) => (data.code_slots || [])[i];
 
@@ -91,6 +92,7 @@ export default function TourLeader({ data, onChanged }) {
       kind: p.kind, points: p.kind === "points" ? Number(p.points) : 0, label: p.label, from_bank: p.kind === "points" && p.from_bank,
       code: p.kind === "code" ? (p.from_stock ? { from_stock: true } : p.code.trim() ? { code: normalizeCode(p.code) } : null) : null
     })),
+    costs: Object.fromEntries(COST_ITEMS.map((c) => [c.id, Number(form.costs[c.id])])),
     values: {
       ups: Object.fromEntries(UPGRADES.map((u) => [u.id, Number(form.values.ups[u.id])])),
       weapon: { atk: Number(form.values.weapon.atk), crit: Number(form.values.weapon.crit), chance: Number(form.values.weapon.chance) }
@@ -164,6 +166,19 @@ export default function TourLeader({ data, onChanged }) {
             ))}
             {form.prizes.length < 4 && <button type="button" onClick={() => setForm((f) => ({ ...f, prizes: [...f.prizes, blankPrize()] }))} className="btn-bronze h-9 px-3 text-sm"><Plus className="h-4 w-4" /> Add a prize</button>}
             <p className="text-xs text-mist">Points prizes are created by the site unless you tick "Pay from the Arena bank". 1st and 2nd come from the final, 3rd from the match for third place, 4th is its loser.</p>
+          </fieldset>
+
+          <fieldset className="rounded border border-bronze/40 bg-black/30 p-3">
+            <legend className="px-1 font-heading font-bold text-gold">Prices (points)</legend>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {COST_ITEMS.map((c) => (
+                <label key={c.id} className="flex flex-col justify-between text-xs text-mist">{c.name}
+                  <input type="text" inputMode="numeric" className="field mt-1 h-9 w-full tabular-nums" value={form.costs[c.id]} onChange={(e) => setCost(c.id, e.target.value)} aria-label={`${c.name} price in points`} />
+                </label>
+              ))}
+            </div>
+            <button type="button" onClick={() => set("costs", normCosts(COSTS))} className="btn-bronze mt-3 h-9 px-3 text-sm">Back to the default prices</button>
+            <p className="mt-2 text-xs text-mist">What members pay in this tournament for each part of their character, 1 to 1,000,000 points. A changed price counts from the next purchase; what was already bought isn't charged again or refunded. A repeating tournament keeps these prices.</p>
           </fieldset>
 
           <details className="rounded border border-bronze/40 bg-black/30 p-3">
