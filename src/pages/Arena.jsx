@@ -33,12 +33,12 @@ export default function Arena() {
         <img src="/arena/guild-mark.png" alt="" aria-hidden="true" className="h-12 w-12 object-contain drop-shadow-[0_3px_10px_rgba(195,21,31,0.7)]" />
         <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-crimson">BLACKLIST INTROBOYS</p>
-          <h1 className="font-heading text-3xl font-bold leading-tight text-white">Blacklist Arena</h1>
+          <h1 className="font-heading text-2xl font-bold sm:text-3xl leading-tight text-white">Blacklist Arena</h1>
         </div>
-        <div className="flex gap-1.5" role="tablist" aria-label="Arena">
+        <div className="grid w-full grid-cols-2 gap-1.5 sm:flex sm:w-auto" role="tablist" aria-label="Arena">
           {[["live", "Live Arena"], ["tournament", "Tournament"]].map(([id, label]) => (
             <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setParams(id === "live" ? {} : { tab: id }, { replace: true })}
-              className={cn("h-10 rounded border px-4 font-heading text-sm font-semibold uppercase tracking-wider", tab === id ? "border-gold bg-gold/15 text-gold" : "border-bronze/50 text-mist hover:border-gold")}>
+              className={cn("h-10 whitespace-nowrap rounded border px-3 font-heading sm:px-4 text-sm font-semibold uppercase tracking-wider", tab === id ? "border-gold bg-gold/15 text-gold" : "border-bronze/50 text-mist hover:border-gold")}>
               {label}
             </button>
           ))}

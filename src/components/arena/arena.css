@@ -54,7 +54,7 @@
 .arena-pips span.on { background: #d6ad52; }
 .arena-pips span.new { background: #f1d38c; box-shadow: 0 0 6px #f1d38c; }
 /* the chip at the top of the stage: Bets open / Live / Replay, and how many are watching */
-.arena-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 2px; font: 700 12px "Barlow Condensed", sans-serif; letter-spacing: 0.12em; text-transform: uppercase; background: rgba(8, 9, 12, 0.72); border: 1px solid rgba(255, 255, 255, 0.14); color: #fff; }
+.arena-chip { display: inline-flex; white-space: nowrap; flex-shrink: 0; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 2px; font: 700 12px "Barlow Condensed", sans-serif; letter-spacing: 0.12em; text-transform: uppercase; background: rgba(8, 9, 12, 0.72); border: 1px solid rgba(255, 255, 255, 0.14); color: #fff; }
 .arena-chip.live { background: #c3151f; border-color: #ff5a62; }
 .arena-chip.live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: arena-blink 1.2s infinite; }
 @keyframes arena-blink { 50% { opacity: 0.25; } }

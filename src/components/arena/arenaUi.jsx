@@ -262,6 +262,8 @@ export function FighterCard({ f, values, side, highlight, children, className })
 export function BetSlip({ fightKey, odds, names, draws, open, closedText, limit, minBet, placed, balance, onPlace, busy, error, notice, mineLines = [] }) {
   const [picks, setPicks] = useState([]);
   const [amount, setAmount] = useState("");
+  const wide = useWide(640);
+  const [sideOpen, setSideOpen] = useState(false);
   useEffect(() => { setPicks([]); }, [fightKey]);
   // Both sides of the same question can't be backed on one fight: picking one swaps out the other, and one
   // already placed locks the other out.
@@ -294,11 +296,29 @@ export function BetSlip({ fightKey, odds, names, draws, open, closedText, limit,
         {draws && <Btn k="draw" label="Draw" sub={`no KO in ${LIMIT} s`} />}
         <Btn k="b" label={names[1]} sub="to win" />
       </div>
-      <p className="mt-2 text-xs uppercase tracking-wider text-mist">Side bets <span className="normal-case tracking-normal">· pick as many as you like, but only one side of each</span></p>
-      <div className="mt-1 grid grid-cols-1 gap-1.5">
-        {(odds.side || []).filter((x) => x.price > 1).map((x) => <Btn key={x.id} k={x.id} label={x.name} />)}
-        {(odds.side || []).some((x) => !(x.price > 1)) && <p className="text-[11px] text-mist">Side bets that almost never or almost always happen in this matchup aren't offered.</p>}
-      </div>
+      {(() => {
+        const offered = (odds.side || []).filter((x) => x.price > 1);
+        const chosen = picks.filter((k) => offered.some((x) => x.id === k)).length;
+        const show = wide || sideOpen;
+        return (
+          <>
+            {wide ? (
+              <p className="mt-2 text-xs uppercase tracking-wider text-mist">Side bets <span className="normal-case tracking-normal">· pick as many as you like, but only one side of each</span></p>
+            ) : (
+              <button type="button" onClick={() => setSideOpen((v) => !v)} aria-expanded={sideOpen}
+                className="mt-2 flex h-9 w-full items-center justify-between rounded border border-bronze/45 bg-black/30 px-2.5 text-xs uppercase tracking-wider text-mist">
+                <span>Side bets · {offered.length}{chosen ? ` · ${chosen} picked` : ""}</span><span aria-hidden="true">{sideOpen ? "▲" : "▼"}</span>
+              </button>
+            )}
+            {show && (
+              <div className="mt-1 grid grid-cols-1 gap-1.5">
+                {offered.map((x) => <Btn key={x.id} k={x.id} label={x.name} />)}
+                {(odds.side || []).some((x) => !(x.price > 1)) && <p className="text-[11px] text-mist">Side bets that almost never or almost always happen in this matchup aren't offered.</p>}
+              </div>
+            )}
+          </>
+        );
+      })()}
       <label className="mt-3 block text-xs text-mist" htmlFor={`amt-${fightKey}`}>Amount on each bet</label>
       <input id={`amt-${fightKey}`} type="number" inputMode="numeric" min={minBet} step={1} value={amount} disabled={!open}
         onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, "").slice(0, 9))} onKeyDown={(e) => { if (e.key === "Enter") place(); }}
@@ -470,6 +490,20 @@ export function Pips({ n, fresh }) {
   return <span className="arena-pips" aria-label={`${n} of ${PER_STAT}`}>{Array.from({ length: PER_STAT }, (_, k) => <span key={k} className={k < n ? (fresh && k === n - 1 ? "new" : "on") : ""} />)}</span>;
 }
 export { UPGRADES, PER_STAT, TOTAL_CAP, PET, petBonus };
+
+// true on a computer-width screen (the bet slip sits beside the stage); false on a phone or small
+// tablet, where the bet slip goes straight under the stage instead of below the stats and history.
+export function useWide(min = 1024) {
+  const q = typeof window !== "undefined" && window.matchMedia ? window.matchMedia(`(min-width: ${min}px)`) : null;
+  const [wide, setWide] = useState(q ? q.matches : true);
+  useEffect(() => {
+    if (!q) return undefined;
+    const on = () => setWide(q.matches);
+    q.addEventListener ? q.addEventListener("change", on) : q.addListener(on);
+    return () => (q.removeEventListener ? q.removeEventListener("change", on) : q.removeListener(on));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return wide;
+}
 
 // Server time: the offset is kept from each answer, so countdowns agree with the server.
 export function useServerClock() {

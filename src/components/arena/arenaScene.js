@@ -756,6 +756,8 @@ export function createArenaScene(opts) {
   }
 
   const GLOW_LAYER = false;
+  // The fighters are drawn bigger than the recording's own scale so they read well on every screen.
+  const FIGHTER_SCALE = 1.3;
   function makeFighter(key) {
     const lk = LOOKS[key];
     const root = new THREE.Group();                  // position on the floor
@@ -797,6 +799,7 @@ export function createArenaScene(opts) {
     const contact = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.42), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, opacity: 0.9, depthWrite: false }));
     contact.rotation.x = -Math.PI / 2; contact.position.y = 0.025; root.add(contact);
     const blade = makeBlade(fall), swing = makeSwingTrail(root), haloFx = makeHalo(fall);
+    root.scale.setScalar(FIGHTER_SCALE);
     scene.add(root);
     const f = { root, bill, fall, shadow, contact, blade, swing, haloFx, aura, key, lk, flip: { mesh, mat, ghost, halo, frame: { clip: "idle", k0: 0, k1: 0, mix: 0 } }, shield: { g: shield, bubble, lattice, star }, trails, ring, motes, hasPet: false, koFall: 0, views: {} };
     f.buffFx = makeBuffFx(f);   // the buff skills' auras
@@ -854,7 +857,7 @@ export function createArenaScene(opts) {
     uniform vec4 dH; uniform vec4 dS; uniform vec4 dV; uniform vec4 dL; uniform vec4 dOn;
     uniform vec3 tint; uniform float alpha; uniform float grey; uniform float cutY; uniform float keepX; uniform vec4 erase;
     uniform float halo; uniform float rim; uniform vec3 rimColor; uniform vec2 texel;
-    uniform float hideAura; uniform float lightAmt; uniform float mirror; uniform vec4 headBox; uniform float headOn; uniform vec3 headCut;
+    uniform float hideAura; uniform float lightAmt; uniform float solid; uniform float mirror; uniform vec4 headBox; uniform float headOn; uniform vec3 headCut;
     varying vec2 vUv;
     vec3 hsv2rgb(vec3 c) { vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0); return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y); }
     float pick(vec4 v, int i) { return i == 0 ? v.x : i == 1 ? v.y : i == 2 ? v.z : v.w; }
@@ -960,7 +963,17 @@ export function createArenaScene(opts) {
       }
       float g = dot(rgb, vec3(0.299, 0.587, 0.114));
       rgb = mix(mix(rgb, vec3(g) * vec3(0.78, 0.8, 0.9), grey) * tint, vec3(1.0), flash);
-      gl_FragColor = vec4(pow(rgb, vec3(2.2)), c.a * alpha * keepA);  // the sheets hold sRGB colours; the renderer converts back
+      // The recording's attack frames are motion-blurred, so the body comes out see-through in them. Make the
+      // body, wings and armour solid again (the spear glow, the aura and white glare stay soft).
+      float aOut = c.a * keepA;
+      bool softRegion = reg == 0 || reg == 2 || (reg == -1 && mx0 > 0.7);
+      if (solid > 0.0) {
+        if (!softRegion) aOut = mix(aOut, max(aOut, smoothstep(0.03, 0.38, c.a)), solid);
+        // purple/pink armour and bright metal share colours with the glow: where the picture is mostly
+        // opaque it is body, not glow, so it keeps its full strength
+        else aOut = mix(aOut, max(aOut, c.a), smoothstep(0.45, 0.8, c.a) * solid);
+      }
+      gl_FragColor = vec4(pow(rgb, vec3(2.2)), aOut * alpha);  // the sheets hold sRGB colours; the renderer converts back
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
     }`;
@@ -973,7 +986,7 @@ export function createArenaScene(opts) {
         dL: { value: v4((d) => (d && d.light) || 0) }, dOn: { value: v4((d) => (d ? 1 : 0)) },
         tint: { value: new THREE.Color(1, 1, 1) }, alpha: { value: 1 }, grey: { value: 0 }, cutY: { value: 0 }, keepX: { value: 0 }, erase: { value: new THREE.Vector4() },
         halo: { value: 0 }, rim: { value: 0 }, rimColor: { value: new THREE.Color(0x3f8cff) }, texel: { value: new THREE.Vector2(1 / 600, 1 / 480) },
-        hideAura: { value: 0 }, lightAmt: { value: 0 }, mirror: { value: 1 }, swayAmp: { value: 0 }, swayT: { value: 0 },
+        hideAura: { value: 0 }, lightAmt: { value: 0 }, solid: { value: 0 }, mirror: { value: 1 }, swayAmp: { value: 0 }, swayT: { value: 0 },
         headBox: { value: new THREE.Vector4() }, headOn: { value: 0 }, headCut: { value: new THREE.Vector3() }
       },
       vertexShader: DYE_VERT, fragmentShader: DYE_FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide, ...extra
@@ -1000,7 +1013,13 @@ export function createArenaScene(opts) {
     const ko = p.koT == null ? -1 : p.koT;
     if (ko >= 0 || p.hurt > 0) setFlipFrame(f, "idle", 0);
     else if (p.buffK > 0) setFlipFrame(f, "cast", Math.min(3, p.buffK * 4));   // casting a buff: hands up, before the charge's seals appear
-    else if (p.spin > 0) setFlipFrame(f, "spin", p.spin * (FLIP.meta.spin.n - 1));
+    else if (p.spin > 0) {
+      // The middle of the recording's spin (frames 3 to 8) is motion-blurred: the body is a see-through smear
+      // there. Hold a crisp pose for the body instead, and lay the blurred frame over it as a glowing swirl.
+      const kf = p.spin * (FLIP.meta.spin.n - 1), k = Math.round(kf), blurred = k >= 3 && k <= 8;
+      setFlipFrame(f, "spin", blurred ? (k <= 6 ? 2 : 9) : kf);
+      f.spinBlur = blurred ? kf : -1;
+    }
     else if (p.cast > 0) setFlipFrame(f, "cast", p.cast * (FLIP.meta.cast.n - 1));
     else if (p.walk) setFlipFrame(f, "dash", clock * FLIP_FPS, true);
     else setFlipFrame(f, "idle", ping(FLIP.meta.idle.n, 8));
@@ -1026,12 +1045,21 @@ export function createArenaScene(opts) {
     const u = f.flip.mat.uniforms, dark = ko >= 0 ? ramp(ko, 0.3, 1.2) : 0;
     const red = ko >= 0 ? Math.max(0, 1 - ko / 0.35) : p.hurt;
     u.tint.value.setRGB(1 - dark * 0.12, (1 - red * 0.55) * (1 - dark * 0.15), (1 - red * 0.55) * (1 - dark * 0.1));
-    u.grey.value = dark * 0.6; u.alpha.value = 1;
+    u.grey.value = dark * 0.6; u.alpha.value = 1; u.solid.value = 1;   // a solid body in every frame, attacks included
     u.flash.value = ko < 0 && p.hurt > 0.8 ? (p.hurt - 0.8) / 0.2 * 0.55 : 0;   // white flash on the frame of impact
     // after-images that follow the spear round the spin
     const trailOn = p.spin > 0.04 && p.spin < 0.97 && ko < 0;
+    const swirl = trailOn && p.spin > 0 && f.spinBlur >= 0;
     f.trails.forEach((tm, j) => {
       tm.visible = trailOn; if (!trailOn) return;
+      if (j === 0 && swirl) {
+        // the recording's own blurred spin frame, as a glow over the solid body
+        setFlipFrame(f, "spin", f.spinBlur, false, tm.material);
+        tm.material.uniforms.cutY.value = 0.19;
+        tm.position.set(0, f.fall.position.y, 0.02);
+        tm.material.uniforms.alpha.value = 0.5;
+        return;
+      }
       setFlipFrame(f, "spin", p.spin * (FLIP.meta.spin.n - 1) - (j + 1) * 1.3, false, tm.material);
       tm.material.uniforms.cutY.value = 0.19;
       tm.position.set((j + 1) * 0.3, f.fall.position.y, -0.02 * (j + 1));
@@ -1340,7 +1368,8 @@ export function createArenaScene(opts) {
   const INTRO = opts.intro || 3; // "FIGHT!" on screen before the first move (the server allows for it)
   let hitStopUntil = 0, shakeAmp = 0, shakeAt = 0;
   let clockT = 0, lastNow = 0, speed = 1, shownEvents = 0, flashUntil = 0;   // one camera only: the game's own, fixed overhead (as agreed for the preview)
-  const camPos = new THREE.Vector3(0, 10, 12), camLook = new THREE.Vector3(0, 1, 0);
+  const camPos = new THREE.Vector3(0, 4.1, 6.9), camLook = new THREE.Vector3(0, 1.9, 0);
+  camera.position.copy(camPos); camera.lookAt(camLook);   // already in place on the first frame (sprites face the camera)
 
   const worldX = (x) => (x - 6) * 1.3;
   const IMG = {};
@@ -1355,7 +1384,9 @@ export function createArenaScene(opts) {
     const narrow = w / h < 1;
     // the game's camera: raised and pulled back, looking down on the two fighters
     const orbit = Math.sin(clock * 0.12) * 0.12;
-    return [new THREE.Vector3(mid + Math.sin(orbit) * 7, narrow ? 4.6 : 3.9, Math.cos(orbit) * (narrow ? 8.2 : 6.6)), new THREE.Vector3(mid, 1.3, 0), narrow ? 68 : 62];
+    // tall phone screens pull further back so both fighters stay in the picture
+    const back = narrow ? Math.min(13.5, 9.6 * Math.max(1, 0.95 / (w / h))) : 6.9;
+    return [new THREE.Vector3(mid + Math.sin(orbit) * 7, narrow ? 1.2 + back * 0.42 : 4.1, Math.cos(orbit) * back), new THREE.Vector3(mid, narrow ? 1.8 : 1.9, 0), narrow ? 68 : 62];
   }
   function project(v, w, h) { const p = v.clone().project(camera); return [(p.x + 1) / 2 * w, (1 - p.y) / 2 * h, p.z]; }
 
@@ -1529,7 +1560,7 @@ export function createArenaScene(opts) {
   // Sound effects, synthesised with the Web Audio API, so there is nothing to license or download.
   // Tunables: master is the overall level (0.7 is about -3 dB, with a limiter after it so nothing clips);
   // hit, crit, swing and koStinger scale each sound; pitchJitter is the random pitch spread (±5%).
-  const SOUND = { master: 0.7, hit: 1, crit: 1, swing: 0.6, koStinger: 1, pitchJitter: 0.05 };
+  const SOUND = { master: 0.7, hit: 1, crit: 1, swing: 0.6, koStinger: 1, powerUp: 0.9, pitchJitter: 0.05 };
   const SFX = (() => {
     let ctx = null, out = null, noiseBuf = null, on = true;
     const irs = [];   // room tails for the reverb, short to long
@@ -1602,6 +1633,52 @@ export function createArenaScene(opts) {
         [55, 82.4, 110, 130.8].forEach((f) => tone("sawtooth", f * p, f * p * 0.96, 1.5, 0.06 * v, 0.14, 0.04, [lp]));
         [[196, 1], [271, 0.6], [412, 0.4], [587, 0.25]].forEach(([f, w]) => tone("sine", f * p, f * p * 0.995, 2.2, 0.09 * w * v, 0.12, 0.004, [out, r]));
       },
+      // A buff skill: an anime power-up. A fighter's yell ("haaaAAAH!") rising in pitch and strength, with a
+      // gritty edge, over the roar of an aura igniting (a rising rush of wind, a low rumble and crackling
+      // sparks). arg.side picks the voice (the two fighters sound different); arg.short = another buff
+      // cast straight after the first in the same turn: just the aura surge, no second yell.
+      powerUp(arg = {}) {
+        const v = SOUND.powerUp, t = ctx.currentTime, p = jitter(), r = room(2, 0.28), both = [out, r];
+        const voice = arg.side ? 1.18 : 1, dur = arg.short ? 0.55 : 1.15;
+        // the aura: wind rushing up, a low rumble that swells, sparks crackling
+        noise("bandpass", 380 * p, 2600 * p, dur, 0.34 * v, 0, 0.9, dur * 0.55, both);
+        noise("highpass", 2400, 7200, dur * 0.9, 0.08 * v, 0.05, 0.7, dur * 0.4, both);
+        tone("sine", 52 * p, 74 * p, dur + 0.15, 0.55 * v, 0, dur * 0.4);
+        tone("sawtooth", 41 * p, 58 * p, dur + 0.1, 0.07 * v, 0, dur * 0.5, [r]);
+        for (let k = 0; k < (arg.short ? 4 : 9); k++) noise("bandpass", 3200 + Math.random() * 3800, 2000, 0.03, 0.22 * v, 0.08 + Math.random() * (dur - 0.1), 4, 0.001, both);
+        if (arg.short) return;
+        // the yell: a buzzing voice source (sawtooth with vibrato and a little breath), shaped into an "ah"
+        // by three formant filters, roughened by soft clipping, rising from a grunt into a shout
+        const o = ctx.createOscillator(), vib = ctx.createOscillator(), vibG = ctx.createGain();
+        o.type = "sawtooth";
+        const f0 = 150 * voice * p;
+        o.frequency.setValueAtTime(f0, t);
+        o.frequency.linearRampToValueAtTime(f0 * 1.25, t + 0.35);
+        o.frequency.linearRampToValueAtTime(f0 * 1.62, t + dur * 0.85);
+        o.frequency.linearRampToValueAtTime(f0 * 1.45, t + dur);
+        vib.frequency.value = 6.2; vibG.gain.setValueAtTime(2, t); vibG.gain.linearRampToValueAtTime(f0 * 0.06, t + dur);
+        vib.connect(vibG); vibG.connect(o.frequency);
+        const breath = ctx.createBufferSource(); breath.buffer = noiseBuf;
+        const bg = ctx.createGain(); bg.gain.value = 0.18; breath.connect(bg);
+        const pre = ctx.createGain(); pre.gain.value = 1; o.connect(pre); bg.connect(pre);
+        const clip = ctx.createWaveShaper(), curve = new Float32Array(1024);
+        for (let i = 0; i < 1024; i++) { const x = i / 511.5 - 1; curve[i] = Math.tanh(x * 3.2); }
+        clip.curve = curve; pre.connect(clip);
+        const vox = ctx.createGain();
+        env(vox, t, 0.12, 0.5 * v, dur);
+        vox.gain.setValueAtTime(0.5 * v * 0.55, t + 0.14);
+        vox.gain.linearRampToValueAtTime(0.5 * v, t + dur * 0.8);
+        vox.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.12);
+        // "aah" opening into "AAH": the first formant rises as the mouth opens
+        [[760, 1050, 7, 1], [1150, 1350, 9, 0.6], [2700, 2900, 12, 0.25]].forEach(([fa, fb, q, w]) => {
+          const bp = ctx.createBiquadFilter(), g = ctx.createGain();
+          bp.type = "bandpass"; bp.Q.value = q; bp.frequency.setValueAtTime(fa * voice, t); bp.frequency.linearRampToValueAtTime(fb * voice, t + dur * 0.7);
+          g.gain.value = w * 3.2; clip.connect(bp); bp.connect(g); g.connect(vox);
+        });
+        send(vox, both);
+        o.start(t); vib.start(t); breath.start(t, Math.random());
+        const end = t + dur + 0.2; o.stop(end); vib.stop(end); breath.stop(end);
+      },
       fight: quiet, cast: quiet, shieldCast: quiet, miss: quiet, shieldBreak: quiet, potion: quiet, ko: quiet, pop: quiet
     };
     return {
@@ -1652,7 +1729,7 @@ export function createArenaScene(opts) {
       const f = floaters[k], age = now - f.born;
       if (age < 0) continue;
       if (age > 2.6) { floaters.splice(k, 1); continue; }
-      const head = project(new THREE.Vector3(worldX(fr.x[f.side]), FLOOR + 3.0, 0), w, h);
+      const head = project(new THREE.Vector3(worldX(fr.x[f.side]), FLOOR + 3.0 * FIGHTER_SCALE, 0), w, h);
       const pop = age < 0.18 ? age / 0.18 * 1.25 : age < 0.3 ? 1.25 - (age - 0.18) / 0.12 * 0.25 : 1;
       const x = head[0] + f.dx + Math.sin(age * 4 + f.wob) * 10, y = head[1] - (narrow ? 14 : 20) - age * (narrow ? 26 : 34);
       hctx.globalAlpha = age > 2 ? 1 - (age - 2) / 0.6 : 1;
@@ -1671,36 +1748,41 @@ export function createArenaScene(opts) {
     if (hud.width !== Math.round(w * dpr) || hud.height !== Math.round(h * dpr)) { hud.width = Math.round(w * dpr); hud.height = Math.round(h * dpr); }
     hctx.setTransform(dpr, 0, 0, dpr, 0, 0); hctx.clearRect(0, 0, w, h);
     hudHits.length = 0;
-    const narrow = w < 640, S = Math.max(0.6, Math.min(1, w / 1150));
+    // S: the size of the HUD. On a computer it grows with the stage (bigger text and skill icons); on a phone
+    // it shrinks just enough to fit the two player frames side by side.
+    const narrow = w < 640, S = narrow ? Math.max(0.55, Math.min(0.8, w / 620)) : Math.max(0.9, Math.min(1.45, w / 680));
     // name plates over heads and the red/blue bars at the feet
     [0, 1].forEach((i) => {
       const f = i ? cur.b : cur.a;
-      const top = project(new THREE.Vector3(worldX(fr.x[i]), FLOOR + (cur.models[i].hasPet ? 3.55 : 3.0) - (cur.models[i].koFall || 0) * 1.5, 0), w, h);
+      const top = project(new THREE.Vector3(worldX(fr.x[i]), FLOOR + ((cur.models[i].hasPet ? 3.55 : 3.0) - (cur.models[i].koFall || 0) * 1.5) * FIGHTER_SCALE, 0), w, h);
       const feet = project(new THREE.Vector3(worldX(fr.x[i]), FLOOR, 1.0), w, h);
       hctx.textAlign = "center"; hctx.textBaseline = "middle"; hctx.lineWidth = 3; hctx.strokeStyle = "rgba(0,0,0,.8)";
-      const fs = narrow ? 10 : 11; hctx.font = `500 ${fs}px Barlow, sans-serif`;
+      const fs = narrow ? 10 : Math.round(12 * S); hctx.font = `500 ${fs}px Barlow, sans-serif`;
       const l1 = "[Premium]", l2 = `[${f.rank || "Member"}] INTROBOYS`, l3 = f.name;
-      const ys = [top[1] - fs * 2.6, top[1] - fs * 1.3, top[1]];
+      // keep the plate clear of the player frames and the chips at the top of the stage
+      const minY = Math.max(8 + 66 * S, 74) + fs * 0.6, lift = Math.max(0, minY - (top[1] - fs * 2.6));
+      const ys = [top[1] - fs * 2.6 + lift, top[1] - fs * 1.3 + lift, top[1] + lift];
       hctx.strokeText(l1, top[0], ys[0]); hctx.fillStyle = "#e8d27a"; hctx.fillText(l1, top[0], ys[0]);
       hctx.strokeText(l2, top[0] + 8, ys[1]); hctx.fillStyle = "#9cc9ff"; hctx.fillText(l2, top[0] + 8, ys[1]);
       const l2w = hctx.measureText(l2).width; hctx.save(); hctx.shadowColor = "rgba(195,21,31,.9)"; hctx.shadowBlur = 6; drawImg("logo", top[0] + 8 - l2w / 2 - 19, ys[1] - 8, 15, 16); hctx.restore();
       hctx.font = `500 ${fs}px Barlow, sans-serif`; hctx.strokeText(l3, top[0], ys[2]); hctx.fillStyle = "#ffffff"; hctx.fillText(l3, top[0], ys[2]);
-      const bw = narrow ? 52 : 70, x0 = feet[0] - bw / 2, y0 = feet[1] + 4;
+      const bw = narrow ? 52 : Math.round(70 * S), x0 = feet[0] - bw / 2, y0 = feet[1] + 4;
       bar(x0, y0, bw, 6, fr.hp[i] / cur.fight.maxhp[i], "#e0383e", "#8c1418", "", "left");
       bar(x0, y0 + 7, bw, 5, fr.mp[i] / cur.fight.maxmp[i], "#3f8fd8", "#173f74", "", "left");
     });
     playerFrame("left", w, h, fr, 0, S);
     playerFrame("right", w, h, fr, 1, S);
     // timer
-    hctx.fillStyle = "rgba(0,0,0,.7)"; hctx.fillRect(w / 2 - 24, 8, 48, 26); hctx.strokeStyle = "rgba(201,163,90,.7)"; hctx.strokeRect(w / 2 - 23.5, 8.5, 47, 25);
-    hctx.fillStyle = "#fff"; hctx.font = "700 17px 'Barlow Condensed', sans-serif"; hctx.textAlign = "center"; hctx.textBaseline = "middle"; hctx.fillText(String(Math.max(0, Math.ceil(LIMIT - fr.t))), w / 2, 21.5);
+    { const tS = narrow ? 1 : S, tw = 48 * tS, th = 26 * tS;
+      hctx.fillStyle = "rgba(0,0,0,.7)"; hctx.fillRect(w / 2 - tw / 2, 8, tw, th); hctx.strokeStyle = "rgba(201,163,90,.7)"; hctx.strokeRect(w / 2 - tw / 2 + 0.5, 8.5, tw - 1, th - 1);
+      hctx.fillStyle = "#fff"; hctx.font = `700 ${Math.round(17 * tS)}px 'Barlow Condensed', sans-serif`; hctx.textAlign = "center"; hctx.textBaseline = "middle"; hctx.fillText(String(Math.max(0, Math.ceil(LIMIT - fr.t))), w / 2, 8 + th / 2 + 0.5); }
     // floating numbers
     for (let k = pops.length - 1; k >= 0; k--) {
       const p = pops[k], age = clockT - p.born;
       if (age > 1.3) { pops.splice(k, 1); continue; }
-      const sp = project(new THREE.Vector3(p.x, FLOOR + 2.1 + age * 1.1 + p.off, 0), w, h);
+      const sp = project(new THREE.Vector3(p.x, FLOOR + (2.1 + p.off) * FIGHTER_SCALE + age * 1.1, 0), w, h);
       hctx.globalAlpha = Math.min(1, 1.6 - age * 1.2); hctx.textAlign = "center";
-      hctx.font = `700 ${p.big ? (narrow ? 22 : 28) : p.off ? (narrow ? 11 : 13) : narrow ? 14 : 17}px 'Barlow Condensed', sans-serif`; hctx.strokeStyle = "rgba(0,0,0,.85)"; hctx.lineWidth = 4;
+      hctx.font = `700 ${Math.round((p.big ? (narrow ? 22 : 28) : p.off ? (narrow ? 11 : 13) : narrow ? 14 : 17) * (narrow ? 1 : S))}px 'Barlow Condensed', sans-serif`; hctx.strokeStyle = "rgba(0,0,0,.85)"; hctx.lineWidth = 4;
       hctx.strokeText(p.txt, sp[0], sp[1]); hctx.fillStyle = p.col; hctx.fillText(p.txt, sp[0], sp[1]); hctx.globalAlpha = 1;
     }
     if (clockT < flashUntil) { hctx.fillStyle = `rgba(255,225,160,${Math.min(0.32, (flashUntil - clockT) * 1.5)})`; hctx.fillRect(0, 0, w, h); }
@@ -1783,7 +1865,7 @@ export function createArenaScene(opts) {
       const tx = worldX(fr.x[tgt]);
       let txt = "", col = "#fff", big = false, line = "", off = 0;
       if (e.type === "first") { line = e.toss ? `<b>${S(e.who)}</b> wins the toss and strikes first` : `<b>${S(e.who)}</b> is faster and strikes first`; }
-      else if (e.type === "buff" && (snd("shieldCast"), false)) {}
+      else if (e.type === "buff" && live && (SFX.play("powerUp", { side: e.who, short: F.events.some((x) => x !== e && x.type === "buff" && x.who === e.who && e.t - x.t > 0 && e.t - x.t < 0.7) }), false)) {}
       else if (e.type === "buff") { const k = SKILLS[e.skill]; txt = k.name; col = hexStr(k.color); off = 1.4; spawnFx("shock", worldX(fr.x[e.who]), k.color); line = `<span class="buff"><b>${S(e.who)}</b> casts ${k.name}${e.stacked ? " again, stacking it" : ""}: ${k.text}</span>`; if (e.stacked) txt += " ×2"; }
       else if (e.type === "potion" && (crowd(e.who, ["🍼", "🧂", "😭"], 1), snd("potion"), false)) {}
       else if (e.type === "potion") { txt = "+" + fmt(e.heal); col = "#6fd39b"; big = false; spawnFx("burst", tx, 0x40ff80); line = `<span class="heal"><b>${S(e.who)}</b> drinks an HP potion: +${fmt(e.heal)} HP (${e.left} left)</span>`; }

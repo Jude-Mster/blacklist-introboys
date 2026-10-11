@@ -10,7 +10,7 @@ import {
 } from "@/lib/arenaEngine";
 import { cn } from "@/lib/utils";
 import {
-  ArenaStage, ReplayStage, FighterCard, BetSlip, MyBets, BetBoard, RollDialog, SkillIcons, Pips, asFighter, fmt, fmtPrice, hex, lookTitle, lookColor, useServerClock, useArenaCrowd
+  ArenaStage, ReplayStage, FighterCard, BetSlip, MyBets, BetBoard, RollDialog, SkillIcons, Pips, asFighter, fmt, fmtPrice, hex, lookTitle, lookColor, useServerClock, useArenaCrowd, useWide
 } from "./arenaUi";
 import TourLeader from "./TourLeader";
 import ArenaRules from "./ArenaRules";
@@ -376,10 +376,22 @@ function Running({ data, t, sn, serverNow, balance, member, setBalance, changedA
   };
 
   const outcome = cur && cur.outcome;
+  const wide = useWide();
   const mine = board ? board.mine : null;
   const nameOf = (i) => (i == null ? null : field[i].name);
   const refName = refNameOf(field);
 
+  // the bet slip and this member's bets: beside the stage on a computer, straight under it on a phone
+  const slip = known ? (
+    <>
+      {cur.odds && (
+        <BetSlip fightKey={`${t.id}-${cur.no}`} odds={cur.odds} names={names} draws={false} open={open} mineLines={mine ? mine.lines : []}
+          closedText={status === "waiting" ? "Betting opens soon" : status === "betting" ? "Betting is closing" : "Wait for the next match"}
+          limit={data.limit || 5000} minBet={data.min_bet || 1} placed={mine ? mine.amount || 0 : 0} balance={balance} onPlace={place} busy={busy} error={error} notice={notice} />
+      )}
+      <MyBets mine={mine} names={names} outcome={status === "done" ? outcome : null} open={open} busy={busy} onRemove={remove} />
+    </>
+  ) : null;
   return (
     <>
       <div className="min-w-0 space-y-4">
@@ -407,6 +419,7 @@ function Running({ data, t, sn, serverNow, balance, member, setBalance, changedA
             </p>
           </div>
         )}
+        {!wide && <div className="space-y-3">{slip}</div>}
         {known && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {[fa, fb].map((f, i) => (
@@ -419,12 +432,7 @@ function Running({ data, t, sn, serverNow, balance, member, setBalance, changedA
         <Bracket t={t} field={field} sn={sn} curNo={cur ? cur.no : 0} memberId={member.id} watching={replay ? replay.no : 0} onWatch={(m) => { setReplay({ no: m.no, started: Date.now() }); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
       </div>
       <div className="min-w-0 space-y-4">
-        {known && cur.odds && (
-          <BetSlip fightKey={`${t.id}-${cur.no}`} odds={cur.odds} names={names} draws={false} open={open} mineLines={mine ? mine.lines : []}
-            closedText={status === "waiting" ? "Betting opens soon" : status === "betting" ? "Betting is closing" : "Wait for the next match"}
-            limit={data.limit || 5000} minBet={data.min_bet || 1} placed={mine ? mine.amount || 0 : 0} balance={balance} onPlace={place} busy={busy} error={error} notice={notice} />
-        )}
-        {known && <MyBets mine={mine} names={names} outcome={status === "done" ? outcome : null} open={open} busy={busy} onRemove={remove} />}
+        {wide && slip}
         {known && <BetBoard board={board} names={names} done={status === "done"} />}
         {leaderPanel}
       </div>

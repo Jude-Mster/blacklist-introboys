@@ -6,7 +6,7 @@ import { useGuild, errorText } from "@/lib/GuildContext";
 import { simulate, LIMIT } from "@/lib/arenaEngine";
 import { cn } from "@/lib/utils";
 import ArenaRules from "./ArenaRules";
-import { ArenaStage, ReplayStage, FighterCard, BetSlip, MyBets, BetBoard, asFighter, fmt, fmtPrice, lookColor, useServerClock, useArenaCrowd } from "./arenaUi";
+import { ArenaStage, ReplayStage, FighterCard, BetSlip, MyBets, BetBoard, asFighter, fmt, fmtPrice, lookColor, useServerClock, useArenaCrowd, useWide } from "./arenaUi";
 
 // The Live Arena: one shared fight every few minutes between two members of the site, picked at random with
 // random builds. Betting is open first, then every screen plays the same fight from the seed the server
@@ -112,6 +112,7 @@ export default function LiveArena({ balance }) {
     return { key: `replay-${replay.r}-${replay.started}`, a, b, fight: simulate(a, b, replay.seed, { draws: true }) };
   }, [replay]);
   const crowd = useArenaCrowd("live");
+  const wide = useWide();
 
   if (!table) {
     return (
@@ -166,6 +167,14 @@ export default function LiveArena({ balance }) {
   const nextIn = Math.max(0, Math.ceil((nextAt - sn) / 1000));
   const resultText = outcome ? (outcome.draw ? `Draw: no knockout in ${table.limit_seconds || LIMIT} seconds` : `${names[outcome.winner]} wins ${outcome.how === "ko" ? "by KO" : "on time"} in ${outcome.length.toFixed(1)} s`) : "";
 
+  // the bet slip and this member's bets: beside the stage on a computer, straight under it on a phone
+  const slip = (
+    <>
+      <BetSlip fightKey={round} odds={table.odds} names={names} draws open={open} mineLines={mine ? mine.lines : []} closedText={status === "betting" ? "Betting is closing" : "Wait for the next fight"}
+        limit={table.limit || 5000} minBet={table.min_bet || 1} placed={placed} balance={balance} onPlace={place} busy={busy} error={error} notice={notice} />
+      <MyBets mine={mine} names={names} outcome={outcome} open={open} busy={busy} onRemove={remove} />
+    </>
+  );
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
       <div className="min-w-0 space-y-3">
@@ -198,6 +207,8 @@ export default function LiveArena({ balance }) {
             </div>
           )}
         </div>
+
+        {!wide && <div className="space-y-3">{slip}</div>}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {fighters.map((f, i) => (
@@ -240,9 +251,7 @@ export default function LiveArena({ balance }) {
       </div>
 
       <div className="min-w-0 space-y-4">
-        <BetSlip fightKey={round} odds={table.odds} names={names} draws open={open} mineLines={mine ? mine.lines : []} closedText={status === "betting" ? "Betting is closing" : "Wait for the next fight"}
-          limit={table.limit || 5000} minBet={table.min_bet || 1} placed={placed} balance={balance} onPlace={place} busy={busy} error={error} notice={notice} />
-        <MyBets mine={mine} names={names} outcome={outcome} open={open} busy={busy} onRemove={remove} />
+        {wide && slip}
         <BetBoard board={state} names={names} done={!!outcome} />
         <ArenaRules mode="live" betSeconds={table.bet_seconds || 30} limit={table.limit || 5000} minBet={table.min_bet || 1} />
       </div>
