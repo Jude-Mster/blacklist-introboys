@@ -1,6 +1,6 @@
 import React from "react";
 import {
-  BASE, UPGRADES, PER_STAT, TOTAL_CAP, SKILLS, MAX_SKILLS, WEAPON, PET, MOUNT, STAT_NAME, LIMIT, DRAW_REFUND, DEFAULT_EDGES, COSTS, PRACTICE_FIGHTS, normValues, petGrowth
+  BASE, UPGRADES, PER_STAT, TOTAL_CAP, SKILLS, MAX_SKILLS, WEAPON, PET, MOUNT, STAT_NAME, LIMIT, OT, DRAW_REFUND, DEFAULT_EDGES, COSTS, PRACTICE_FIGHTS, normValues, petGrowth
 } from "@/lib/arenaEngine";
 
 // How the arena works, written from the same numbers the fights use (the preview's rules, made live).
@@ -45,7 +45,7 @@ export default function ArenaRules({ mode = "live", values, costs = COSTS, betSe
               <p>Your first entry ({fmt(costs.entry)} points) gives you a fighter: one of the guild's 50 characters at random. One free re-roll, never the same one back. Fighters are removed when the tournament ends. Every point paid goes into the Arena bank; no refunds once paid, unless only one fighter signs up or the Guild Leader cancels with refunds.</p>
             </Rule>
             <Rule title="The bracket">
-              <p>Drawn at random at the start, with byes when the number of fighters isn't a power of two. 2 fighters play a single 1v1; 1 fighter cancels and refunds. The semi-final losers fight for 3rd place. Every match is live: 10 seconds of betting, the fight, the result. At the {LIMIT}-second limit the fighter with the larger share of HP left wins. Anyone can bet, fighters included, but never on both fighters or both sides of a side bet.</p>
+              <p>Drawn at random at the start, with byes when the number of fighters isn't a power of two. 2 fighters play a single 1v1; 1 fighter cancels and refunds. The semi-final losers fight for 3rd place. Every match is live: 10 seconds of betting, the fight, the result. No knockout at the {LIMIT}-second limit means <b>overtime</b>: sudden death with no potions, where every hit does ×{OT.start} damage, rising by one every {OT.every} seconds. If neither fighter is down after {OT.max} seconds of overtime (practically never), the larger share of HP left wins. Anyone can bet, fighters included, but never on both fighters or both sides of a side bet.</p>
             </Rule>
           </>
         )}

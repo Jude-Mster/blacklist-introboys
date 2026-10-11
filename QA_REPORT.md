@@ -24,7 +24,7 @@ nobody is below 0.** It held through every game, every double click and every ra
 | ID | Severity | Where | Steps to reproduce | Expected | Actual | Root cause | Status |
 |---|---|---|---|---|---|---|---|
 | F1 | **Critical** (points created) | awardPoints; the Discord /award command | An officer with a 1,000 daily cap sends 6 awards of 400 at the same moment | At most 1,000 given; the rest refused | All 6 went through: 2,400 given | The cap was read, then the award made, with nothing stopping several requests reading the same "used" total at once | **Fixed**: the cap check and the award now run together under the officer's own award lock (site and Discord share it). Re-test: 6 × 400 at once gives 800 (2 accepted), the rest refused |
-| F2 | Decision needed | awardPoints | An officer awards points to their own Discord ID | ? | Allowed (within the daily cap) | No rule against it | **Waiting on the Guild Leader** |
+| F2 | Decision needed | awardPoints | An officer awards points to their own Discord ID | ? | Allowed (within the daily cap) | No rule against it | **Left as is** (the Guild Leader's decision) |
 | F3 | Low | Arena bets, shop quantity, officer awards, tournament entries, Derby bets | Send an amount of 1.5, or "buy 0 entries" | Refused | 1.5 rounded down to 1; "0 entries" bought 1 entry and charged for it | Amounts were rounded down before being checked; a missing count defaulted to 1 even when 0 was sent | **Fixed**: whole numbers only; 0 refused. The site's own buttons never send these, so members were not affected |
 | F4 | Low | chatSend, delete | An officer deletes a message id that doesn't exist | "Message not found" (404) | Server error (500) | The lookup's error wasn't caught | **Fixed** (404) |
 
@@ -32,10 +32,10 @@ Not failures, but noted (by design in the code; tell me if any should change):
 
 | ID | Where | Note |
 |---|---|---|
-| N1 | Derby | Horses with under 1% chance are still offered at the top 8× price, so those bets return about 3-5% (contenders return 68-78%). The Arena hides bets this unlikely. |
-| N2 | Jade Roulette | Green pays back 56%, Dragon and Tiger 28% (red/black 96%). The code says this is the guild's choice. |
-| N3 | Tournament | A match that ends on time with both fighters on exactly the same share of HP goes to fighter A. Very rare. |
-| N4 | Rankings | The board lists members who lost their Discord role (it only hides banned members). |
+| N1 | Derby | Horses with under 1% chance are still offered at the top 8× price, so those bets return about 3-5% (contenders return 68-78%). The Arena hides bets this unlikely. Left as is (the Guild Leader's decision). |
+| N2 | Jade Roulette | Green pays back 56%, Dragon and Tiger 28% (red/black 96%). The Guild Leader confirmed this is the guild's choice: kept. |
+| N3 | Tournament | ~~A match that ends on time with both fighters on exactly the same share of HP goes to fighter A.~~ Changed in 6.9: such matches now go to overtime (see section 6). |
+| N4 | Rankings | ~~The board lists members who lost their Discord role.~~ Changed in 6.9: they are hidden (site, Discord /leaderboard, posted rankings). |
 | N5 | Pusoy | Keeps a 2% house cut of each pot (by design). Tested: nothing else is lost or created. |
 | N6 | Roulette, sic bo, wheel, instant games, card tables | Amounts like 100.5 are rounded down to 100 (charges less, never more). Left as is. |
 | N7 | Blackjack / Lucky 9 | A bet of 0 means "take my bet off" (by design). |
@@ -95,3 +95,25 @@ Not failures, but noted (by design in the code; tell me if any should change):
 | F4 chat delete | base44/functions/chatSend/entry.ts | gating test: officer and leader now get 404 |
 
 Automated tests added in `tests/` (see tests/README.md): `npm run test:formulas` (Node) and `npm run test:backend` (Deno).
+
+## 6. Version 6.9 additions (executed)
+
+| Check | How | Result |
+|---|---|---|
+| Overtime starts at 180 s, never earlier, in every long tournament fight | 300 fights between very tanky fighters (227 reached overtime) | Pass |
+| Overtime damage is ×(2 + 1 per 5 s of overtime) on every hit | 1,538 overtime hits recomputed | Pass |
+| No potions in overtime | Found 4 potions drunk just after 180 s (queued by a hit just before); fixed, re-tested: 0 | Pass after fix |
+| Overtime always ends with a winner, within 90 s | 300 fights; also 8,000 maximum-tank fights: longest overtime 63.8 s, never reached the 90 s fallback | Pass |
+| Live Arena unchanged (Draw at the limit) and every earlier formula | the full formula suite | Pass |
+| Rankings hide members without the Discord role, keep older member rows, show them again when the role returns | shop_codes_test | Pass |
+| GP code from stock: shown to the buyer at once, charged exactly the price shown, in My orders and My prizes, nobody else (leader included) can load it | shop_codes_test, and in the browser (phone) | Pass |
+| 6 buyers at once for the last 2 codes: 2 sold, no code given twice, nobody charged without a code | shop_codes_test | Pass |
+| Codes added on the Prizes page restock the shop item; sold out and "only N left" refused; stale price refused | shop_codes_test | Pass |
+| Leader types the code: wrong count, a code already used, the same code twice, a malformed code all refused; only the leader can do it; three clicks at once complete once; the buyer then sees the codes; stored encrypted; leader sees the last 4 | shop_codes_test, and in the browser (computer) | Pass |
+| A waiting typed-code order rejects with a full refund; a code already handed over can't be refunded | shop_codes_test | Pass |
+| Ledger (points = start + PointLog, never below 0) after every shop step | shop_codes_test | Pass |
+| Every earlier backend test | npm run test:backend (10 files) | Pass |
+| Overtime on the stage (banner, OT timer, log lines) on a computer and a phone | browser screenshots | Pass |
+| Tournament scheduling with overtime | the next match is timed from each fight's real length, which includes overtime | Code-reviewed, not executed |
+
+Not verifiable here: the Discord DM with the code (needs the bot) and the live Base44 database.

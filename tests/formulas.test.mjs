@@ -49,7 +49,7 @@ for (let i = 0; i < 1500; i++) {
       expCrit += critP; if (e.crit) crits++;
       if (e.crit !== (e.mult >= 3) || (e.crit && (e.mult < 3 || e.mult > 7 || !Number.isInteger(e.mult))) || (!e.crit && e.mult !== 1)) multBad++;
       // damage: max(ATK x 0.2, ATK - DEF x 0.5) x 0.46 x charge x crit, rounded; a shield halves it
-      const base = Math.max(atk * 0.2, atk - foe.def * 0.5) * 0.46 * e.power * e.mult;
+      const base = Math.max(atk * 0.2, atk - foe.def * 0.5) * 0.46 * e.power * e.mult * (e.ot || 1);
       const full = Math.max(1, Math.round(base));
       const want = e.shielded ? Math.max(1, Math.round(e.shielded * 0.5)) : full;
       const ref = e.shielded ? e.shielded : e.dmg;
@@ -83,6 +83,34 @@ for (let i = 0; i < 1500; i++) {
     }
   }
 }
+// ---- tournament overtime (stated rule: no KO at 180 s -> sudden death, no potions, every hit x2, +1 every 5 s,
+// at most 90 s; then the larger share of HP left wins) ----
+let otFights = 0, otMissing = 0, otPot = 0, otMultBad = 0, otHits = 0, otNoWinner = 0, otHpEnd = 0, otLong = 0, otEarly = 0;
+const rt = E.mulberry32(99);
+const tank = () => ({ entries: 25, ups: { hp: 8, def: 8, pots: 8 }, weapon: 0, skills: ["shield", "bullet"], pet: 8, mount: { lv: 5, pair: 2 } });
+for (let i = 0; i < 300; i++) {
+  const mixed = i % 3 === 0;
+  const a = mixed ? E.randomBuild(rt) : tank(), b = tank();
+  const f = E.simulate(a, b, (rt() * 2 ** 32) >>> 0, { draws: false, frames: false });
+  if (f.winner !== 0 && f.winner !== 1) otNoWinner++;
+  if (f.length > 180 + 90 + 0.06) otLong++;
+  const start = f.events.find((e) => e.type === "overtime");
+  if (f.length > 180 + 1e-6 && !start) otMissing++;
+  if (start && Math.abs(start.t - 180) > 0.051) otEarly++;
+  if (!start) continue;
+  otFights++;
+  if (f.how === "time") otHpEnd++;
+  for (const e of f.events) {
+    if (e.t < 180 - 1e-9) { if (e.type === "hit" && e.ot) otMultBad++; continue; }
+    if (e.type === "potion") otPot++;
+    if (e.type === "hit") { otHits++; const want = 2 + Math.floor((e.t - 180 + 1e-9) / 5); if (e.ot !== want) otMultBad++; }
+  }
+}
+check("Overtime starts", "tournament fight with no KO at 180 s goes to overtime at 180 s", "300 long fights", "every one", `${otFights} went to overtime, ${otMissing} missing, ${otEarly} at the wrong time`, otMissing === 0 && otEarly === 0 && otFights > 150);
+check("Overtime damage", "every overtime hit x(2 + 1 per 5 s of overtime)", `${otHits} overtime hits`, "0 wrong", `${otMultBad} wrong`, otMultBad === 0 && otHits > 0);
+check("Overtime potions", "no potions in overtime", `${otFights} fights`, "0 potions", `${otPot}`, otPot === 0);
+check("Overtime ends", "always a winner; at most 90 s of overtime", "300 fights", "0 without a winner, 0 too long", `${otNoWinner} without a winner, ${otLong} too long, ${otHpEnd} decided on HP after 90 s`, otNoWinner === 0 && otLong === 0);
+
 check("Fighter stats", "base + rolls x per-roll + pet (full x lv/8) + mount (lv x 3%) + weapon (+15% ATK, +5 crit a level)", "1,500 fights, 3,000 builds", "0 differences", `${statBad} differences`, statBad === 0);
 check("Damage", "round(max(ATK x 0.2, ATK - DEF x 0.5) x 0.46 x charge x crit), ATK +15% Spirits, +25% Blood Lust", `${dmgN} hits`, "every hit within rounding", `${dmgBad} off${worstDmg ? ` (worst ${worstDmg.ref} vs ${worstDmg.full})` : ""}`, dmgBad === 0);
 check("Shield", "a shielded hit = round(full x 0.5), at least 1", "all shielded hits", "exact", dmgBad === 0 ? "exact" : "see damage", dmgBad === 0);

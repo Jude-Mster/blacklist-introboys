@@ -3,7 +3,7 @@ import { secrets } from 'base44:runtime';
 import nacl from 'npm:tweetnacl@1.0.3';
 import { announcePoints } from '../../shared/discordPost.ts';
 import { getSettings, getMemberByDiscordId, changePoints, withMemberLock, withRecordLock, awardedLast24h, UserError } from '../../shared/points.ts';
-import { resilient } from '../../shared/points.ts';
+import { resilient, rankedMembers } from '../../shared/points.ts';
 
 function hexToBytes(hex) {
   const out = new Uint8Array(hex.length / 2);
@@ -68,10 +68,7 @@ export default async function(req) {
     }
 
     if (cmdName === 'leaderboard') {
-      const { items } = await b.asServiceRole.entities.Member.filter(
-        { banned: false },
-        { sort: '-points', limit: 10, fields: ['discord_name', 'discord_id', 'points'] }
-      );
+      const items = await rankedMembers(b, 10, ['discord_name', 'discord_id', 'points']);
       const desc = items.length
         ? items.map((m, i) => `${['🥇', '🥈', '🥉'][i] || `\`${String(i + 1).padStart(2, ' ')}\``}  ${m.discord_name || m.discord_id} — **${(m.points || 0).toLocaleString()}**`).join('\n')
         : 'No members yet.';

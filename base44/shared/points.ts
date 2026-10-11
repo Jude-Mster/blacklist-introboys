@@ -446,3 +446,13 @@ export function roulettePayout(bets, kind: string) {
   }
   return payout;
 }
+// The points ranking: the top `n` members, leaving out banned members and members who lost
+// their Discord role (no_access). Older rows may have no no_access field at all, so the
+// filtering is done here rather than in the query.
+export async function rankedMembers(b, n: number, fields: string[]) {
+  const { items } = await b.asServiceRole.entities.Member.filter(
+    { banned: false },
+    { sort: '-points', limit: Math.min(500, n * 4 + 40), fields: [...new Set([...fields, 'no_access'])] }
+  );
+  return items.filter((m) => !m.no_access).slice(0, n).map((m) => { const o = { ...m }; if (!fields.includes('no_access')) delete o.no_access; return o; });
+}

@@ -10,7 +10,8 @@
 // Plain JavaScript on purpose: the backend functions (Deno) and the page (Vite) both import this
 // one file, so the rules can never drift apart. Change ENGINE_VERSION whenever a rule changes.
 
-export const ENGINE_VERSION = 5;   // 2: tighter prices, no near-certain or long-shot side bets
+export const ENGINE_VERSION = 6;   // 6: tournament matches go to overtime at the time limit
+export const ENGINE_VERSION_NOTES = 5;   // 2: tighter prices, no near-certain or long-shot side bets
                                    // 4: Speed sets the pace of every move, MP only spent by skills, the Draw always offered
                                    // 5: new upgrade values (see DEFAULT_VALUES), stronger weapon levels, pet and mount, Spirits Within +20% Speed
 
@@ -115,6 +116,12 @@ export const CHARGE = { name: "Crimson LightningCharger", mp: 145.5, upTo: 2, co
 // ---------- timings (seconds) ----------
 export const CAST = 1.0, SPIN = 0.8, RECOVER = 0.35, POTION = 0.6, GAP = 0.3, RANGE = 3.2, WALK = 3.4, DT = 0.05;
 export const LIMIT = 180;   // a fight lasts at most 3 minutes
+// Overtime (tournament matches only; the Live Arena calls a Draw instead): with no knockout at the time limit
+// the fight goes on as sudden death. No potions, and every hit does OT.start times its damage, plus one
+// more for every OT.every seconds of overtime. If nobody is down after OT.max seconds (practically never),
+// the larger share of HP left wins, and an exact tie is settled by the fight's own coin toss.
+export const OT = { max: 90, start: 2, every: 5 };
+export const otMult = (sinceLimit) => OT.start + Math.floor(Math.max(0, sinceLimit) / OT.every);
 const DMG_K = 0.46, CRIT_MIN = 3, CRIT_MAX = 7, POT_AT = 0.7;
 // Speed is one stat: it sets the turn order (below) and the pace of the fighter's own moves. At 100% a buff
 // cast, the charge, Skyfall and the recovery take their full time; faster fighters do them quicker (down to
@@ -194,7 +201,7 @@ function landStrike(me, foe, r, used) {
   let dmg = Math.max(atk * 0.2, atk - foe.s.def * 0.5) * DMG_K * power;
   const crit = r() < critChance(effCrit(me), effCritdef(foe));
   const mult = crit ? CRIT_MIN + Math.floor(r() * (CRIT_MAX - CRIT_MIN + 1)) : 1;
-  dmg = Math.max(1, Math.round(dmg * mult));
+  dmg = Math.max(1, Math.round(dmg * mult * (me.ot || 1)));
   let shielded = 0;
   if (foe.buf.shield > 0) { shielded = dmg; dmg = Math.max(1, Math.round(dmg * SKILLS.shield.cut)); foe.buf.shield--; }
   const before = foe.hp;
@@ -207,12 +214,12 @@ function landStrike(me, foe, r, used) {
   return {
     dmg, shielded, crit, mult, power: Math.round(power * 100) / 100, used, reflect, reflectKo, dead,
     oneHit: dead && before >= foe.s.hp * 0.95,
-    drink: !dead && foe.hp <= foe.s.hp * POT_AT && foe.pots > 0,
-    drinkMe: reflect > 0 && !reflectKo && me.hp <= me.s.hp * POT_AT && me.pots > 0
+    drink: !dead && !foe.ot && foe.hp <= foe.s.hp * POT_AT && foe.pots > 0,
+    drinkMe: reflect > 0 && !reflectKo && !me.ot && me.hp <= me.s.hp * POT_AT && me.pots > 0
   };
 }
 const drinkPot = (d) => { const heal = Math.min(d.s.hp - d.hp, Math.round(d.s.hp * d.s.potheal / 100)); d.hp += heal; d.pots--; return heal; };
-const mkSide = (f, x, dir, values) => { const s = statsOf(f, values); return { f, s, x, dir, hp: s.hp, mp: s.mp, pots: s.pots, charged: false, dead: false, sk: (f.skills || []).filter((id) => SKILLS[id]).slice(0, MAX_SKILLS), buf: noBuffs(), cd: noBuffs(), stepSpd: s.spd }; };
+const mkSide = (f, x, dir, values) => { const s = statsOf(f, values); return { f, s, x, dir, hp: s.hp, mp: s.mp, pots: s.pots, charged: false, dead: false, ot: 0, sk: (f.skills || []).filter((id) => SKILLS[id]).slice(0, MAX_SKILLS), buf: noBuffs(), cd: noBuffs(), stepSpd: s.spd }; };
 // Turn order by attack speed: each fighter's place on the timeline moves on by 100 ÷ speed after each of
 // their attacks, and the one furthest behind attacks next. Equal speeds take turns.
 const nextActor = (nx, last) => (nx[0] < nx[1] - 1e-9 ? 0 : nx[1] < nx[0] - 1e-9 ? 1 : 1 - last);
@@ -220,11 +227,12 @@ const round2 = (n) => Math.round(n * 100) / 100;
 
 // One fight, frame by frame.
 //   opts.draws   true (Live Arena): no knockout by the time limit is a Draw (winner -1).
-//                false (tournament): at the time limit the higher share of HP wins.
+//                false (tournament): at the time limit the fight goes to overtime (see OT).
+//   opts.ot      false: stop at the limit with no overtime (only for the short still poses on the page).
 //   opts.frames  false on the server, which only needs the events.
 //   opts.values  what each upgrade gives (a tournament's own values).
 export function simulate(fa, fb, seed, opts = {}) {
-  const limit = opts.limit || LIMIT, keepFrames = opts.frames !== false;
+  const limit = opts.limit || LIMIT, keepFrames = opts.frames !== false, end = opts.draws || opts.ot === false ? limit : limit + OT.max;
   const r = mulberry32(seed >>> 0);
   const F = [mkSide(fa, START[0], 1, opts.values), mkSide(fb, START[1], -1, opts.values)];
   const frames = [], events = [];
@@ -235,7 +243,13 @@ export function simulate(fa, fb, seed, opts = {}) {
   const ev = (who, type, extra) => events.push({ t: round2(t), who, type, ...extra });
   const nextTurn = () => { nx[turn] += 100 / F[turn].stepSpd; const prev = turn; turn = nextActor(nx, prev); if (turn === prev) ev(turn, "again", {}); phase = "gap"; left = GAP; };
   ev(turn, "first", { toss: toss === turn });
-  while (t < limit && !done) {
+  while (t < end - 1e-9 && !done) {
+    if (t >= limit - 1e-9) {   // overtime (never in the Live Arena: its loop ends at the limit)
+      const m = otMult(t - limit);
+      if (!F[0].ot) ev(-1, "overtime", { mult: m });
+      else if (m !== F[0].ot) ev(-1, "otup", { mult: m });
+      F[0].ot = F[1].ot = m;
+    }
     const gap = Math.abs(F[1].x - F[0].x);
     if (phase === "walk") {
       if (gap > RANGE + 1e-6) { const step = Math.min(WALK * DT, (gap - RANGE) / 2); F[0].x += step; F[1].x -= step; }
@@ -255,23 +269,24 @@ export function simulate(fa, fb, seed, opts = {}) {
         if (s.miss) ev(turn, "miss", { dodge: u.garuda, k: pace });
         else {
           foe.x = clamp(foe.x - foe.dir * (s.crit ? 0.9 : 0.35), 0.8, 11.2);
-          ev(turn, "hit", { k: pace, dmg: s.dmg, shielded: s.shielded, crit: s.crit, mult: s.mult, power: s.power, oneHit: s.oneHit, reflect: s.reflect, reflectKo: s.reflectKo, blow: u.blow, spirits: u.spirits, blood: u.blood, nirvana: u.nirvana });
+          ev(turn, "hit", { k: pace, ot: me.ot, dmg: s.dmg, shielded: s.shielded, crit: s.crit, mult: s.mult, power: s.power, oneHit: s.oneHit, reflect: s.reflect, reflectKo: s.reflectKo, blow: u.blow, spirits: u.spirits, blood: u.blood, nirvana: u.nirvana });
           if (s.dead) { foe.dead = true; winner = turn; how = "ko"; done = true; ev(1 - turn, "ko", { crit: s.crit, oneHit: s.oneHit }); }
           else if (s.reflectKo) { me.dead = true; winner = 1 - turn; how = "ko"; done = true; ev(turn, "ko", { crit: false, oneHit: false, reflect: true }); }
           else { if (s.drink) drinks.push(1 - turn); if (s.drinkMe) drinks.push(turn); }
         }
       }
       else if (phase === "recover" || phase === "potion") {
+        if (F[0].ot) drinks.length = 0;   // a potion still waiting when overtime starts is not drunk
         if (drinks.length) { const d = drinks.shift(), heal = drinkPot(F[d]); ev(d, "potion", { heal, left: F[d].pots }); phase = "potion"; left = POTION; }
         else nextTurn();
       }
     }
-    if (keepFrames) frames.push({ t: round2(t), x: [F[0].x, F[1].x], hp: [F[0].hp, F[1].hp], mp: [F[0].mp, F[1].mp], pots: [F[0].pots, F[1].pots], charged: [F[0].charged, F[1].charged], spd: [effSpd(F[0]), effSpd(F[1])], sk: [{ ...F[0].buf }, { ...F[1].buf }], cd: [{ ...F[0].cd }, { ...F[1].cd }], buff: F.map((m) => (m.charged ? { lightning: 1 } : {})) });
+    if (keepFrames) frames.push({ t: round2(t), x: [F[0].x, F[1].x], hp: [F[0].hp, F[1].hp], mp: [F[0].mp, F[1].mp], pots: [F[0].pots, F[1].pots], charged: [F[0].charged, F[1].charged], spd: [effSpd(F[0]), effSpd(F[1])], sk: [{ ...F[0].buf }, { ...F[1].buf }], cd: [{ ...F[0].cd }, { ...F[1].cd }], ot: F[0].ot, buff: F.map((m) => (m.charged ? { lightning: 1 } : {})) });
     t += DT;
   }
   if (!done) {
     if (opts.draws) { winner = -1; how = "draw"; ev(-1, "draw", {}); }
-    else { const pa = F[0].hp / F[0].s.hp, pb = F[1].hp / F[1].s.hp; winner = pa >= pb ? 0 : 1; how = "time"; ev(winner, "time", {}); }
+    else { const pa = F[0].hp / F[0].s.hp, pb = F[1].hp / F[1].s.hp; winner = pa > pb ? 0 : pb > pa ? 1 : toss; how = "time"; ev(winner, "time", {}); }
   }
   if (keepFrames && frames.length) frames.push({ ...frames[frames.length - 1], t: round2(t) });
   return { frames, events, winner, how, length: round2(t), maxhp: [F[0].s.hp, F[1].s.hp], maxmp: [F[0].s.mp, F[1].s.mp], maxpots: [F[0].s.pots, F[1].s.pots], skills: [F[0].sk, F[1].sk], stats: [F[0].s, F[1].s] };
@@ -282,6 +297,7 @@ export function outcomeOf(fight) {
   const ev = fight.events, ko = ev.find((e) => e.type === "ko");
   return {
     winner: fight.winner, draw: fight.winner === -1, how: fight.how, length: fight.length,
+    ot: ev.some((e) => e.type === "overtime"),
     critko: !!(ko && ko.crit),
     oneHitBy: [0, 1].map((i) => ev.some((e) => e.type === "hit" && e.oneHit && e.who === i)),
     pots: ev.filter((e) => e.type === "potion").length,
@@ -294,12 +310,14 @@ export function outcomeOf(fight) {
 // the prices. (The time it keeps is close to the real fight's, not exact.)
 const MOVE_T = CAST + SPIN + RECOVER + 0.15;
 export function quickFight(fa, fb, seed, opts = {}) {
-  const limit = opts.limit || LIMIT;
+  const limit = opts.limit || LIMIT, end = opts.draws || opts.ot === false ? limit : limit + OT.max;
   const r = mulberry32(seed >>> 0);
   const F = [mkSide(fa, 0, 1, opts.values), mkSide(fb, 0, -1, opts.values)];
   const toss = r() < 0.5 ? 0 : 1, nx = [100 / F[0].s.spd, 100 / F[1].s.spd], oneHitBy = [false, false];
   let t = 0.6, turn = nextActor(nx, 1 - toss), pots = 0, crits = 0, buffs = 0;
-  while (t < limit) {
+  let ot = false;
+  while (t < end) {
+    if (t >= limit) { ot = true; F[0].ot = F[1].ot = otMult(t - limit); }
     const me = F[turn], foe = F[1 - turn];
     const cast = castBuffs(me, r).length, pace = paceOf(effSpd(me));
     buffs += cast; t += GAP + (MOVE_T + cast * BUFF_CAST) * pace;
@@ -307,8 +325,8 @@ export function quickFight(fa, fb, seed, opts = {}) {
     if (!s.miss) {
       if (s.crit) crits++;
       if (s.oneHit) oneHitBy[turn] = true;
-      if (s.dead) return { winner: turn, how: "ko", crit: s.crit, oneHitBy, pots, crits, buffs, t };
-      if (s.reflectKo) return { winner: 1 - turn, how: "ko", crit: false, reflect: true, oneHitBy, pots, crits, buffs, t };
+      if (s.dead) return { winner: turn, how: "ko", crit: s.crit, oneHitBy, pots, crits, buffs, t, ot };
+      if (s.reflectKo) return { winner: 1 - turn, how: "ko", crit: false, reflect: true, oneHitBy, pots, crits, buffs, t, ot };
       if (s.drink) { drinkPot(foe); pots++; t += POTION; }
       if (s.drinkMe) { drinkPot(me); pots++; t += POTION; }
     }
@@ -316,7 +334,7 @@ export function quickFight(fa, fb, seed, opts = {}) {
   }
   if (opts.draws) return { winner: -1, how: "draw", crit: false, oneHitBy, pots, crits, buffs, t };
   const pa = F[0].hp / F[0].s.hp, pb = F[1].hp / F[1].s.hp;
-  return { winner: pa >= pb ? 0 : 1, how: "time", crit: false, oneHitBy, pots, crits, buffs, t };
+  return { winner: pa > pb ? 0 : pb > pa ? 1 : toss, how: "time", crit: false, oneHitBy, pots, crits, buffs, t, ot };
 }
 
 // ---------- prices ----------

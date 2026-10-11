@@ -289,7 +289,7 @@ function SignUp({ data, t, sn, balance, member, setBalance, onChanged, onBought,
   const spec = useMemo(() => {
     if (!pair) return null;
     if (myFighter) return { key: labKey, setup: true, a: myFighter, b: pair[1], values, fight: true };
-    return { key: `signup-${pair[0].look}-${pair[1].look}`, a: pair[0], b: pair[1], values, fight: simulate(pair[0], pair[1], 1, { draws: false, limit: 0.2, values }) };
+    return { key: `signup-${pair[0].look}-${pair[1].look}`, a: pair[0], b: pair[1], values, fight: simulate(pair[0], pair[1], 1, { draws: false, ot: false, limit: 0.2, values }) };
   }, [pair, labKey, JSON.stringify(values)]);  
   const stageClock = useCallback(() => ({ idle: true, banner: me ? "" : "Buy an entry to get your own fighter" }), [me]);
   const crowd = useArenaCrowd(`tour:${t.id}`);
@@ -454,7 +454,7 @@ function Running({ data, t, sn, serverNow, balance, member, setBalance, changedA
   const seed = cur ? cur.seed : null;
   const fight = useMemo(() => {
     if (!fa || !fb) return null;
-    return seed != null ? simulate(fa, fb, seed, { draws: false, values }) : simulate(fa, fb, 1, { draws: false, limit: 0.2, values });
+    return seed != null ? simulate(fa, fb, seed, { draws: false, values }) : simulate(fa, fb, 1, { draws: false, ot: false, limit: 0.2, values });
   }, [cur && cur.no, seed, fa, fb]);  
   const spec = useMemo(() => (fight ? { key: `tour-${t.id}-${cur.no}-${seed != null ? "f" : "s"}`, a: fa, b: fb, fight, values } : null), [fight]);  
   const curRef = useRef(cur); curRef.current = cur;
@@ -548,7 +548,7 @@ function Running({ data, t, sn, serverNow, balance, member, setBalance, changedA
               {status === "waiting" && (cur.open_at ? `Betting opens in ${countdown(Date.parse(cur.open_at) - sn)}` : "Betting opens after the match before it")}
               {status === "betting" && `Betting closes in ${Math.max(0, Math.ceil((Date.parse(cur.close_at) - sn) / 1000))} s`}
               {status === "fighting" && "Fight in progress"}
-              {status === "done" && `${nameOf(cur.winner)} wins ${outcome.how === "ko" ? "by KO" : "on time (more HP left)"} in ${outcome.length.toFixed(1)} s`}
+              {status === "done" && `${nameOf(cur.winner)} wins ${outcome.how === "ko" ? (outcome.ot ? "by KO in overtime" : "by KO") : "on HP left after overtime"} in ${outcome.length.toFixed(1)} s`}
             </p>
           </div>
         )}
@@ -612,7 +612,7 @@ function Bracket({ t, field, sn, curNo, memberId, watching, onWatch }) {
                     <div className="flex items-center justify-between gap-2 bg-black/40 px-2.5 py-1 text-[11px] uppercase tracking-wider text-mist">
                       <span>{m.bronze ? "Third place" : `Match ${m.no}`}</span>
                       <span className="flex items-center gap-2">
-                        <span className={cn(st === "betting" && "text-gold", st === "fighting" && "text-crimson")}>{st === "waiting" ? (m.open_at ? new Date(Date.parse(m.open_at)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Later") : st === "betting" ? "Bets open" : st === "fighting" ? "Live" : m.outcome.how === "ko" ? "KO" : "Time"}</span>
+                        <span className={cn(st === "betting" && "text-gold", st === "fighting" && "text-crimson")}>{st === "waiting" ? (m.open_at ? new Date(Date.parse(m.open_at)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Later") : st === "betting" ? "Bets open" : st === "fighting" ? "Live" : m.outcome.how === "ko" ? (m.outcome.ot ? "KO · OT" : "KO") : "OT · HP"}</span>
                         {st === "done" && m.seed != null && onWatch && (
                           <button type="button" onClick={() => onWatch(m)} className="flex items-center gap-1 rounded border border-bronze/45 px-1.5 py-0.5 normal-case tracking-normal text-mist hover:border-gold hover:text-gold"><History className="h-3 w-3" /> Watch</button>
                         )}

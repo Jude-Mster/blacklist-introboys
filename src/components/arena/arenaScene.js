@@ -15,7 +15,7 @@
 /* eslint-disable */
 import * as THREE from "three";
 import {
-  SKILLS, WEAPON, MOUNT, PET, petGrowth, CHARGE, BUFF_STACK, BUFF_CAST, CAST, SPIN, RECOVER, POTION, DT, LIMIT, mulberry32, speedNow, paceOf, statsOf as engineStats
+  SKILLS, WEAPON, MOUNT, PET, petGrowth, CHARGE, BUFF_STACK, BUFF_CAST, CAST, SPIN, RECOVER, POTION, DT, LIMIT, OT, mulberry32, speedNow, paceOf, statsOf as engineStats
 } from "@/lib/arenaEngine";
 
 const A = "/arena/";
@@ -1992,7 +1992,12 @@ export function createArenaScene(opts) {
     // timer
     { const tS = narrow ? 1 : S, tw = 48 * tS, th = 26 * tS;
       hctx.fillStyle = "rgba(0,0,0,.7)"; hctx.fillRect(w / 2 - tw / 2, 8, tw, th); hctx.strokeStyle = "rgba(201,163,90,.7)"; hctx.strokeRect(w / 2 - tw / 2 + 0.5, 8.5, tw - 1, th - 1);
-      hctx.fillStyle = "#fff"; hctx.font = `700 ${Math.round(17 * tS)}px 'Barlow Condensed', sans-serif`; hctx.textAlign = "center"; hctx.textBaseline = "middle"; hctx.fillText(String(Math.max(0, Math.ceil(LIMIT - fr.t))), w / 2, 8 + th / 2 + 0.5); }
+      hctx.fillStyle = "#fff"; hctx.font = `700 ${Math.round(17 * tS)}px 'Barlow Condensed', sans-serif`; hctx.textAlign = "center"; hctx.textBaseline = "middle";
+      if (fr.ot) {
+        // overtime: a wider crimson box with the damage it is at now
+        const ow = narrow ? 64 : 92 * tS; hctx.fillStyle = "rgba(120,8,14,.85)"; hctx.fillRect(w / 2 - ow / 2, 8, ow, th); hctx.strokeStyle = "rgba(255,90,90,.9)"; hctx.strokeRect(w / 2 - ow / 2 + 0.5, 8.5, ow - 1, th - 1);
+        hctx.fillStyle = "#fff"; hctx.fillText(narrow ? `OT ×${fr.ot}` : `OT · ×${fr.ot}`, w / 2, 8 + th / 2 + 0.5);
+      } else hctx.fillText(String(Math.max(0, Math.ceil(LIMIT - fr.t))), w / 2, 8 + th / 2 + 0.5); }
     // floating numbers
     for (let k = pops.length - 1; k >= 0; k--) {
       const p = pops[k], age = clockT - p.born;
@@ -2014,9 +2019,16 @@ export function createArenaScene(opts) {
       const sub = left ? `Bets close in ${left} s` : "Place your bets · this fight starts when its turn comes";
       hctx.lineWidth = 4; hctx.strokeText(sub, w / 2, h * 0.68 + 34); hctx.fillText(sub, w / 2, h * 0.68 + 34);
     }
+    else if (cur.fight.length > LIMIT && t >= LIMIT && t < LIMIT + 2.2 && t < cur.fight.length) {
+      hctx.font = `900 ${Math.min(58, w * 0.085)}px Cinzel, Georgia, serif`; hctx.fillStyle = "#ff3b3b"; hctx.strokeStyle = "rgba(0,0,0,.75)"; hctx.lineWidth = 5; hctx.textAlign = "center"; hctx.textBaseline = "middle";
+      hctx.strokeText("OVERTIME", w / 2, h * 0.42); hctx.fillText("OVERTIME", w / 2, h * 0.42);
+      hctx.font = `600 ${Math.min(18, w * 0.035)}px 'Barlow Condensed', sans-serif`; hctx.fillStyle = "#fff"; hctx.lineWidth = 4;
+      const sub = `Sudden death · no potions · damage ×${OT.start} and rising`;
+      hctx.strokeText(sub, w / 2, h * 0.42 + 34); hctx.fillText(sub, w / 2, h * 0.42 + 34);
+    }
     else if (t < 0) { hctx.font = `900 ${Math.min(58, w * 0.085)}px Cinzel, Georgia, serif`; hctx.fillStyle = "#ca1622"; hctx.strokeStyle = "rgba(0,0,0,.7)"; hctx.lineWidth = 5; hctx.textAlign = "center"; hctx.strokeText("FIGHT!", w / 2, h * 0.42); hctx.fillText("FIGHT!", w / 2, h * 0.42); }
     if (t >= cur.fight.length) {
-      const W = cur.fight.winner === 1 ? cur.b : cur.a; const txt = cur.fight.winner === -1 ? `DRAW · NO KO IN ${LIMIT} SECONDS` : `${W.name.toUpperCase()} WINS${cur.fight.how === "time" ? " ON TIME" : " BY KO"}`;
+      const W = cur.fight.winner === 1 ? cur.b : cur.a; const txt = cur.fight.winner === -1 ? `DRAW · NO KO IN ${LIMIT} SECONDS` : `${W.name.toUpperCase()} WINS${cur.fight.how === "time" ? " ON HP AFTER OVERTIME" : cur.fight.length > LIMIT ? " BY KO IN OVERTIME" : " BY KO"}`;
       // no box behind it: gold letters with a dark edge, so the arena shows through
       hctx.font = `800 ${Math.round(Math.min(34, Math.max(20, w * 0.036)))}px 'Barlow Condensed', sans-serif`; hctx.textAlign = "center"; hctx.textBaseline = "middle";
       hctx.lineJoin = "round"; hctx.lineWidth = 5; hctx.strokeStyle = "rgba(0,0,0,.8)"; hctx.strokeText(txt, w / 2, h * 0.3 + 18);
@@ -2092,7 +2104,7 @@ export function createArenaScene(opts) {
       const S = (i) => (i ? cur.b : cur.a).name;
       const tgt = e.type === "hit" || e.type === "miss" ? 1 - e.who : e.who;
       if (e.type === "first") { /* logged below */ }
-      const tx = worldX(fr.x[tgt]);
+      const tx = tgt >= 0 ? worldX(fr.x[tgt]) : worldX((fr.x[0] + fr.x[1]) / 2);
       let txt = "", col = "#fff", big = false, line = "", off = 0;
       if (e.type === "first") { line = e.toss ? `<b>${S(e.who)}</b> wins the toss and strikes first` : `<b>${S(e.who)}</b> is faster and strikes first`; }
       else if (e.type === "buff" && live && (SFX.play("powerUp", { side: e.who, short: F.events.some((x) => x !== e && x.type === "buff" && x.who === e.who && e.t - x.t > 0 && e.t - x.t < 0.7) }), false)) {}
@@ -2111,7 +2123,7 @@ export function createArenaScene(opts) {
         const kill = F.events.some((x) => x.type === "ko" && Math.abs(x.t - e.t) < 0.01);
         if (!seekPaused && !quiet) { hitStopUntil = performance.now() + (kill ? 90 : e.crit ? 90 : 60); shakeAmp = kill ? 0.03 : e.crit ? 0.1 : 0.03; shakeAt = performance.now(); }
         if (e.crit) { spawnFx("shock", tx, 0xffd34d); flashUntil = clockT + (kill ? 0.08 : 0.14); }
-        line = `<b>${S(e.who)}</b> Skyfall hits ${S(1 - e.who)} for <span class="${e.crit ? "crit" : ""}">${fmt(e.dmg)}${e.crit ? ` (critical ×${e.mult})` : ""}</span> <span class="t">×${e.power} charge</span>${e.oneHit ? ' <span class="crit">ONE HIT</span>' : ""}`;
+        line = `<b>${S(e.who)}</b> Skyfall hits ${S(1 - e.who)} for <span class="${e.crit ? "crit" : ""}">${fmt(e.dmg)}${e.crit ? ` (critical ×${e.mult})` : ""}</span> <span class="t">×${e.power} charge</span>${e.ot ? ` <span class="crit">×${e.ot} overtime</span>` : ""}${e.oneHit ? ' <span class="crit">ONE HIT</span>' : ""}`;
         if (e.oneHit) pushPop({ x: tx, txt: "ONE HIT KO!", col: "#ff5a3a", big: true, born: clockT + 0.25, off: 0.9 });
         if (e.shielded) { pushPop({ x: tx, txt: "SHIELD ½", col: "#9fd4ff", big: false, born: clockT + 0.1, off: 0.45 }); spawnFx("burst", tx, 0x5aa8ff); spawnFx("shock", tx, 0x5aa8ff); line += ` <span class="buff">· Heavenly Shield takes half (${fmt(e.shielded)} → ${fmt(e.dmg)})</span>`; }
         const boosted = [e.blow && "Heavenly Blow", e.spirits && "Spirits Within", e.blood && "Blood Lust"].filter(Boolean);
@@ -2130,7 +2142,9 @@ export function createArenaScene(opts) {
       else if (e.type === "ko" && (crowd(e.who, ["💀", "👋", "😂", "🤡"], 4), crowd(1 - e.who, ["👑", "🔥"], 2), snd("ko"), false)) {}
       else if (e.type === "ko") { if (!e.oneHit) pushPop({ x: worldX(fr.x[e.who]), txt: "K.O.", col: "#ff3b2a", big: true, born: clockT + 0.35, off: 0.9 }); spawnFx("dust", worldX(fr.x[e.who]) - (e.who ? -1 : 1) * 0.9, 0x8a7f70, 0.75); line = `<b>${S(e.who)}</b> is knocked out${e.reflect ? " by their own blow, sent back by Extreme Bullet Proof" : ""}`; }
       else if (e.type === "again") { txt = "AGAIN!"; col = "#ffe08a"; off = 1.1; line = `<span class="skill"><b>${S(e.who)}</b> is faster and attacks again</span>`; }
-      else if (e.type === "time") line = `Time. <b>${S(e.who)}</b> wins on HP`;
+      else if (e.type === "overtime") { snd("koStinger"); line = `<span class="crit">Time! No knockout in ${LIMIT} seconds: <b>OVERTIME</b>.</span> Sudden death: no more potions, every hit does ×${e.mult} damage, rising by one every ${OT.every} seconds`; }
+      else if (e.type === "otup") { txt = `×${e.mult} DAMAGE`; col = "#ff8a6a"; off = -0.9; line = `<span class="crit">Overtime: every hit now does ×${e.mult} damage</span>`; }
+      else if (e.type === "time") line = `Overtime is over. <b>${S(e.who)}</b> wins on HP left`;
       else if (e.type === "draw") line = `Time. No knockout in ${LIMIT} seconds: a <b>Draw</b>`;
       if (txt) pushPop({ x: tx, txt, col, big, born: clockT, off });
       quiet = false;

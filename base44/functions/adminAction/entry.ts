@@ -7,7 +7,7 @@ import {
 import { pointsWebhookUrl, announceRankings } from '../../shared/discordPost.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
 import { postSystem, GUILD_CHANNEL } from '../../shared/chat.ts';
-import { resilient } from '../../shared/points.ts';
+import { resilient, rankedMembers } from '../../shared/points.ts';
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const isSnowflake = (s: string) => /^\d{15,21}$/.test(s);
@@ -105,10 +105,7 @@ export default async function(req) {
 
     if (action === 'postRankings') {
       if (!pointsWebhookUrl()) throw new UserError('The points channel is not connected yet. Add the DISCORD_POINTS_WEBHOOK_URL secret first.');
-      const { items } = await b.asServiceRole.entities.Member.filter(
-        { banned: false },
-        { sort: '-points', limit: 15, fields: ['discord_name', 'discord_id', 'points'] }
-      );
+      const items = await rankedMembers(b, 15, ['discord_name', 'discord_id', 'points']);
       const sent = await announceRankings(items);
       if (!sent) throw new UserError('Discord did not accept the message. Check the webhook URL.');
       return Response.json({ ok: true });
