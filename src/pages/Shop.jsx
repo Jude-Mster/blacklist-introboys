@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { Loader2, PackageOpen } from "lucide-react";
+import { Check, Copy, ExternalLink, Loader2, PackageOpen, Ticket } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import LanternSpinner from "@/components/LanternSpinner";
@@ -8,6 +8,7 @@ import { Points } from "@/components/SealLogo";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useGuild, errorText } from "@/lib/GuildContext";
 import ShopAdmin from "@/components/shop/ShopAdmin";
+import { REDEEM_URL, groupCode } from "@/lib/prizes";
 import { cn } from "@/lib/utils";
 
 const CHAR_KEY = "bi.shop.character";
@@ -29,6 +30,37 @@ export const STATUS = {
   rejected: { label: "Rejected", cls: "border-ember/60 text-ember" },
   cancelled: { label: "Cancelled", cls: "border-bronze/60 text-mist/70" }
 };
+
+// One GP code the member bought: shown in full only to them, with Copy and the redeem page.
+export function BoughtCode({ code }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    let done = false;
+    try { await navigator.clipboard.writeText(code.code); done = true; } catch {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = code.code; ta.setAttribute("readonly", ""); ta.style.position = "absolute"; ta.style.left = "-9999px";
+        document.body.appendChild(ta); ta.select(); done = document.execCommand("copy"); document.body.removeChild(ta);
+      } catch { done = false; }
+    }
+    setCopied(done);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  if (!code.code) return <p className="text-xs text-ember">This code can't be shown right now. Ask the Guild Leader.</p>;
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-gold/60 bg-black/50 px-2.5 py-2">
+      <span className="min-w-0 flex-1 font-mono text-[15px] font-bold tracking-wider text-gold">
+        {groupCode(code.code).split(" ").map((g, i) => <span key={i} className="mr-[0.45em] inline-block">{g}</span>)}
+      </span>
+      <button type="button" onClick={copy} className="btn-bronze h-8 px-2.5 text-xs" aria-label={`Copy the code ending in ${code.last4}`}>
+        {copied ? <><Check className="h-3.5 w-3.5" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy</>}
+      </button>
+      <a href={code.redeem_url || REDEEM_URL} target="_blank" rel="noreferrer" className="btn-bronze h-8 px-2.5 text-xs">
+        Redeem <ExternalLink className="h-3.5 w-3.5" />
+      </a>
+    </div>
+  );
+}
 
 export function ItemPicture({ src, name, className }) {
   const [broken, setBroken] = useState(false);
@@ -95,7 +127,7 @@ export default function Shop() {
       <header className="text-center">
         <h1 className="font-heading text-3xl font-extrabold gilt-text">Guild shop</h1>
         <p className="mt-1 text-sm text-mist">
-          Spend points on in-game items. The Guild Leader delivers every order by hand in-game.
+          Spend points on in-game items. The Guild Leader delivers items by hand in-game; GP codes show up right here.
         </p>
         <p className="mt-2 text-sm">
           Your balance: <Points value={account.member.points} className="font-bold text-gold" />
@@ -137,6 +169,12 @@ export default function Shop() {
                     <ItemPicture src={it.image_url} name={it.name} className="h-16 w-16" />
                     <div className="flex min-w-0 flex-1 flex-col">
                       <p className="font-heading text-[15px] font-bold leading-tight text-gold">{it.name}</p>
+                      {it.gp_code && (
+                        <p className="mt-0.5 flex items-center gap-1 text-xs text-white/90">
+                          <Ticket className="h-3.5 w-3.5 text-gold" aria-hidden="true" />
+                          {fmt(it.gp_worth)} GP code · {it.code_source === "manual" ? "the Guild Leader sends it" : "shown the moment you buy"}
+                        </p>
+                      )}
                       {it.description && <p className="mt-0.5 text-xs text-mist">{it.description}</p>}
                       <p className="mt-1 text-sm">
                         <Points value={it.total} className="font-bold text-gold" />
@@ -171,7 +209,11 @@ export default function Shop() {
           rates={rates}
           balance={account.member.points || 0}
           onClose={() => setBuying(null)}
-          onBought={(balance) => { setBalance(balance); setBuying(null); load(); setTab("orders"); }}
+          onBought={(balance, order) => {
+            setBalance(balance); load();
+            // A code from stock is shown in the dialog right away; anything else goes to My orders.
+            if (!(order && order.codes && order.codes.length)) { setBuying(null); setTab("orders"); }
+          }}
         />
       )}
     </div>
@@ -195,7 +237,10 @@ function BuyDialog({ item, rates, balance, onClose, onBought }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [bought, setBought] = useState(null); // the finished order when codes were handed over
 
+  const isCode = !!item.gp_code;
+  const instant = isCode && item.code_source !== "manual";
   const n = Math.max(0, Math.floor(Number(qty) || 0));
   const subtotal = item.price * n;
   const tax = Math.ceil((subtotal * ((rates && rates.tax_pct) || 0)) / 100 - 1e-9);
@@ -210,7 +255,9 @@ function BuyDialog({ item, rates, balance, onClose, onBought }) {
       const res = await base44.functions.invoke("shopAction", {
         action: "buy", itemId: item.id, qty: n, character, note, expectTotal: total
       });
-      onBought(res.data.balance);
+      const order = res.data.order;
+      if (order && order.codes && order.codes.length) { setBought(order); setBusy(false); }
+      onBought(res.data.balance, order);
     } catch (err) {
       setError(errorText(err, "Couldn't place the order."));
       setBusy(false);
@@ -220,10 +267,29 @@ function BuyDialog({ item, rates, balance, onClose, onBought }) {
   return (
     <Dialog open onOpenChange={(o) => { if (!o && !busy) onClose(); }}>
       <DialogContent className="max-w-sm border-bronze bg-panel">
+        {bought ? (
+          <>
+            <DialogHeader>
+              <DialogTitle className="font-heading text-gold">{bought.codes.length > 1 ? "Your codes" : "Your code"}</DialogTitle>
+              <DialogDescription className="text-mist">
+                {fmt(bought.qty)} x {bought.item_name}. Only you can see {bought.codes.length > 1 ? "these" : "this"}: keep {bought.codes.length > 1 ? "them" : "it"} private, anyone who has a code can redeem it. {bought.codes.length > 1 ? "They are" : "It is"} also saved under My orders and Profile, My prizes, and sent to you by Discord DM.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              {bought.codes.map((c) => <BoughtCode key={c.id} code={c} />)}
+            </div>
+            <button type="button" onClick={onClose} className="btn-seal h-11 w-full text-base">Done</button>
+          </>
+        ) : (
+        <>
         <DialogHeader>
           <DialogTitle className="font-heading text-gold">Buy {item.name}</DialogTitle>
           <DialogDescription className="text-mist">
-            Points are taken now. The Guild Leader delivers it to your character in-game. If the order is rejected you get everything back, tax included.
+            {instant
+              ? "Points are taken now and your code is shown straight away. It is also sent to you by Discord DM and kept under My prizes."
+              : isCode
+                ? "Points are taken now. The Guild Leader adds your code, and you'll see it under My orders (and get it by Discord DM). If the order is rejected you get everything back, tax included."
+                : "Points are taken now. The Guild Leader delivers it to your character in-game. If the order is rejected you get everything back, tax included."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-3">
@@ -235,12 +301,14 @@ function BuyDialog({ item, rates, balance, onClose, onBought }) {
           </div>
           <div>
             <label htmlFor="shop-qty" className="label">How many</label>
-            <input id="shop-qty" type="number" inputMode="numeric" min={1} max={item.stock} value={qty} onChange={(e) => setQty(e.target.value)} className="field" required />
+            <input id="shop-qty" type="number" inputMode="numeric" min={1} max={isCode ? Math.min(20, item.stock) : item.stock} value={qty} onChange={(e) => setQty(e.target.value)} className="field" required />
           </div>
-          <div>
-            <label htmlFor="shop-char" className="label">In-game character name</label>
-            <input id="shop-char" value={character} onChange={(e) => setCharacter(e.target.value)} maxLength={40} className="field" required />
-          </div>
+          {!isCode && (
+            <div>
+              <label htmlFor="shop-char" className="label">In-game character name</label>
+              <input id="shop-char" value={character} onChange={(e) => setCharacter(e.target.value)} maxLength={40} className="field" required />
+            </div>
+          )}
           <div>
             <label htmlFor="shop-note" className="label">{item.require_note ? "Which one do you want? (required)" : "Note for the Guild Leader (optional)"}</label>
             <input id="shop-note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} className="field" required={item.require_note} />
@@ -252,10 +320,12 @@ function BuyDialog({ item, rates, balance, onClose, onBought }) {
           </dl>
           {short && <p className="text-sm text-ember">You need {fmt(total - balance)} more points.</p>}
           {error && <p role="alert" className="text-sm text-ember">{error}</p>}
-          <button type="submit" disabled={busy || n < 1 || n > item.stock || short} className="btn-seal h-11 w-full text-base">
-            {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Placing order</> : "Confirm purchase"}
+          <button type="submit" disabled={busy || n < 1 || n > item.stock || (isCode && n > 20) || short} className="btn-seal h-11 w-full text-base">
+            {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Placing order</> : instant ? "Buy and show my code" : "Confirm purchase"}
           </button>
         </form>
+        </>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -296,10 +366,13 @@ function MyOrders({ orders, rates, onChange }) {
                   </p>
                   <p className="text-mist">
                     {o.kind === "item"
-                      ? <>Paid <Points value={o.total} iconSize={13} /> · deliver to {o.character_name}</>
+                      ? <>Paid <Points value={o.total} iconSize={13} />{o.gp_code ? <> · {fmt(o.gp_worth)} GP code{o.qty > 1 ? "s" : ""}{o.status === "pending" ? " · the Guild Leader will add your code here" : ""}</> : <> · deliver to {o.character_name}</>}</>
                       : <>Pay {payText(o.pay_cp, o.pay_currency, rates)} in-game to the Guild Leader from {o.character_name}</>}
                   </p>
                   {o.note && <p className="text-mist/80">Note: {o.note}</p>}
+                  {o.codes && o.codes.length > 0 && (
+                    <div className="mt-1.5 space-y-1.5">{o.codes.map((c) => <BoughtCode key={c.id} code={c} />)}</div>
+                  )}
                   {o.delivery_code && (
                     <p className="mt-1 break-all rounded border border-white/50 bg-black/40 px-2 py-1 font-mono text-gold">Your code: {o.delivery_code}</p>
                   )}

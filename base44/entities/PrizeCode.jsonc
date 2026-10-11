@@ -30,7 +30,7 @@
     },
     "source": {
       "type": "string",
-      "description": "admin or raffle once given; stock or typed while set aside for a raffle"
+      "description": "admin, tournament, raffle or shop once given; stock or typed while set aside for a prize"
     },
     "member_id": {
       "type": "string"
@@ -90,5 +90,6 @@
     "create": false,
     "update": false,
     "delete": false
-  }
+  },
+  "required": []
 }

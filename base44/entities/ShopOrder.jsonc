@@ -94,6 +94,34 @@
       "type": "string",
       "format": "date-time"
     },
+    "gp_code": {
+      "type": "boolean",
+      "default": false
+    },
+    "gp_worth": {
+      "type": "integer",
+      "description": "GP one code is worth"
+    },
+    "code_source": {
+      "type": "string"
+    },
+    "code_label": {
+      "type": "string"
+    },
+    "code_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "PrizeCode rows handed to the buyer (the codes are stored encrypted there)"
+    },
+    "code_last4": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Last four characters of each code, for the Guild Leader"
+    },
     "lock_token": {
       "type": "string"
     },

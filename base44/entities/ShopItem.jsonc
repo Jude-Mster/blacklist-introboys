@@ -38,6 +38,23 @@
       "type": "integer",
       "default": 0
     },
+    "gp_code": {
+      "type": "boolean",
+      "default": false,
+      "description": "A GP code: the buyer gets a code shown on the site (and by Discord DM)"
+    },
+    "gp_worth": {
+      "type": "integer",
+      "description": "What one code is worth, in GP. The item's value is this x 2 CP."
+    },
+    "code_source": {
+      "type": "string",
+      "description": "Empty for ordinary items. stock: taken from the prize-code stock the moment it is bought. manual: the Guild Leader types the code when completing the order."
+    },
+    "code_label": {
+      "type": "string",
+      "description": "The prize-code name the codes are kept under, e.g. 500 GP Code"
+    },
     "lock_token": {
       "type": "string"
     },

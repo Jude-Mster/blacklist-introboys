@@ -10,7 +10,7 @@ import { ItemPicture, payText, STATUS } from "@/pages/Shop";
 import { cn } from "@/lib/utils";
 
 const fmt = (n) => Number(n || 0).toLocaleString();
-const BLANK = { name: "", category: "", description: "", image_url: "", value_cp: "", stock: 0, active: true, require_note: false, sort: 0 };
+const BLANK = { name: "", category: "", description: "", image_url: "", value_cp: "", stock: 0, active: true, require_note: false, sort: 0, gp_code: false, gp_worth: "", code_source: "stock", code_label: "", add_codes: "" };
 
 // Guild Leader only: settle orders, change the rates, and edit the catalog.
 export default function ShopAdmin({ onChange }) {
@@ -57,7 +57,7 @@ function Orders({ data, onChange }) {
     setBusy(o.id + action);
     setError("");
     try {
-      await base44.functions.invoke("shopAction", { action, orderId: o.id, code: inp.code || "", adminNote: inp.note || "" });
+      await base44.functions.invoke("shopAction", { action, orderId: o.id, code: inp.code || "", codes: o.gp_code ? inp.code || "" : undefined, adminNote: inp.note || "" });
       await onChange();
     } catch (e) {
       setError(errorText(e, "Couldn't update that order."));
@@ -80,8 +80,10 @@ function Orders({ data, onChange }) {
                 <div className="flex items-start gap-3">
                   <Avatar url={o.member_avatar} name={o.member_name} size={36} />
                   <div className="min-w-0 flex-1">
-                    <p className="font-bold text-gold">{o.member_name} <span className="font-normal text-mist">· character {o.character_name}</span></p>
-                    {o.kind === "item" ? (
+                    <p className="font-bold text-gold">{o.member_name}{o.character_name && <span className="font-normal text-mist"> · character {o.character_name}</span>}</p>
+                    {o.kind === "item" && o.gp_code ? (
+                      <p className="text-mist">Type <b className="text-white">{fmt(o.qty)} code{o.qty > 1 ? "s" : ""} worth {fmt(o.gp_worth)} GP each</b> ({o.item_name}) · paid <Points value={o.total} iconSize={13} /> ({fmt(o.subtotal)} + {fmt(o.tax)} tax)</p>
+                    ) : o.kind === "item" ? (
                       <p className="text-mist">Deliver <b className="text-white">{fmt(o.qty)} x {o.item_name}</b> · paid <Points value={o.total} iconSize={13} /> ({fmt(o.subtotal)} + {fmt(o.tax)} tax)</p>
                     ) : (
                       <p className="text-mist">
@@ -93,14 +95,22 @@ function Orders({ data, onChange }) {
                   </div>
                 </div>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                  {o.kind === "item" && (
-                    <input aria-label="Code for the buyer" placeholder="Code for the buyer (GP codes only)" value={inp.code || ""} onChange={(e) => set(o.id, "code", e.target.value)} maxLength={200} className="field" />
+                  {o.kind === "item" && o.gp_code ? (
+                    <textarea
+                      aria-label={`The ${o.qty > 1 ? `${o.qty} codes, one per line` : "code"} for the buyer`}
+                      placeholder={o.qty > 1 ? `${o.qty} codes, one per line` : "The code for the buyer"}
+                      value={inp.code || ""} onChange={(e) => set(o.id, "code", e.target.value)}
+                      rows={Math.min(6, Math.max(1, o.qty))} autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
+                      className="field min-h-[2.5rem] font-mono"
+                    />
+                  ) : o.kind === "item" && (
+                    <input aria-label="Code for the buyer" placeholder="Code or note for the buyer (optional)" value={inp.code || ""} onChange={(e) => set(o.id, "code", e.target.value)} maxLength={200} className="field" />
                   )}
                   <input aria-label="Message to the member" placeholder="Message to the member (optional)" value={inp.note || ""} onChange={(e) => set(o.id, "note", e.target.value)} maxLength={300} className="field" />
                 </div>
                 <div className="mt-2 flex gap-2">
                   {o.kind === "item" && <button onClick={() => settle(o, "complete")} disabled={!!busy} className="btn-seal h-9 flex-1 text-sm">
-                    {busy === o.id + "complete" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delivered"}
+                    {busy === o.id + "complete" ? <Loader2 className="h-4 w-4 animate-spin" /> : o.gp_code ? "Send the code" + (o.qty > 1 ? "s" : "") : "Delivered"}
                   </button>}
                   <button onClick={() => settle(o, "reject")} disabled={!!busy} className="btn-bronze h-9 flex-1 text-sm">
                     {busy === o.id + "reject" ? <Loader2 className="h-4 w-4 animate-spin" /> : o.kind === "item" ? "Reject and refund" : "Reject"}
@@ -119,6 +129,7 @@ function Orders({ data, onChange }) {
               <li key={o.id} className="py-2 text-mist">
                 <span className={cn("mr-2 rounded-[3px] border px-1.5 py-px text-[11px] font-bold uppercase", (STATUS[o.status] || STATUS.pending).cls)}>{o.status}</span>
                 {o.member_name}: {o.kind === "item" ? `${fmt(o.qty)} x ${o.item_name} (${fmt(o.total)} points)` : `${fmt(o.points)} points for ${payText(o.pay_cp, o.pay_currency, data.rates)}`}
+                {o.code_last4 && o.code_last4.length > 0 && <span className="ml-1 text-xs text-mist/80">· code{o.code_last4.length > 1 ? "s" : ""} ending {o.code_last4.join(", ")}{o.code_source === "stock" ? " (from stock)" : ""}</span>}
               </li>
             ))}
           </ul>
@@ -187,6 +198,7 @@ function Catalog({ data, onChange }) {
   const [editing, setEditing] = useState(null); // item being edited, or BLANK for a new one
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const set = (k, v) => setEditing((f) => ({ ...f, [k]: v }));
   const mult = data.rates.price_multiplier;
   const tax = data.rates.tax_pct;
@@ -196,7 +208,14 @@ function Catalog({ data, onChange }) {
     setBusy(true);
     setError("");
     try {
-      await base44.functions.invoke("shopAction", { action: "saveItem", item: { ...editing, value_cp: Number(editing.value_cp), stock: Number(editing.stock), sort: Number(editing.sort) || 0 } });
+      const res = await base44.functions.invoke("shopAction", { action: "saveItem", item: {
+        ...editing, value_cp: Number(editing.value_cp), stock: Number(editing.stock), sort: Number(editing.sort) || 0,
+        gp_worth: editing.gp_code ? Number(editing.gp_worth) : 0
+      } });
+      const d = res.data || {};
+      setNotice(d.added || (d.skipped && d.skipped.length)
+        ? `Saved. ${fmt(d.added)} code${d.added === 1 ? "" : "s"} added to stock${d.skipped && d.skipped.length ? `; ${d.skipped.length} skipped (already added before: ending ${d.skipped.join(", ")})` : ""}.`
+        : "");
       setEditing(null);
       await onChange();
     } catch (err) {
@@ -220,14 +239,18 @@ function Catalog({ data, onChange }) {
     }
   };
 
-  const price = editing ? Math.max(1, Math.ceil((Number(editing.value_cp) || 0) * mult - 1e-9)) : 0;
+  const gp = !!(editing && editing.gp_code);
+  const fromStock = gp && editing.code_source !== "manual";
+  const value = gp ? (Number(editing.gp_worth) || 0) * 2 : editing ? Number(editing.value_cp) || 0 : 0;
+  const price = editing ? Math.max(1, Math.ceil(value * mult - 1e-9)) : 0;
+  const pasted = editing && editing.add_codes ? editing.add_codes.split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean).length : 0;
   const priceTax = Math.ceil((price * tax) / 100 - 1e-9);
 
   return (
     <Panel
       title="Catalog"
       action={!editing && (
-        <button onClick={() => { setError(""); setEditing({ ...BLANK, sort: (data.items.length + 1) * 10 }); }} className="btn-bronze h-7 px-2 text-xs">
+        <button onClick={() => { setError(""); setNotice(""); setEditing({ ...BLANK, sort: (data.items.length + 1) * 10 }); }} className="btn-bronze h-7 px-2 text-xs">
           <Plus className="h-3.5 w-3.5" /> Add
         </button>
       )}
@@ -243,15 +266,61 @@ function Catalog({ data, onChange }) {
             <label htmlFor="it-cat" className="label">Category heading</label>
             <input id="it-cat" value={editing.category} onChange={(e) => set("category", e.target.value)} maxLength={40} className="field" placeholder="Materials, Gear, Currency" />
           </div>
-          <div>
-            <label htmlFor="it-value" className="label">In-game value of one piece, in CP</label>
-            <input id="it-value" type="number" step="any" min="0" value={editing.value_cp} onChange={(e) => set("value_cp", e.target.value)} className="field" required />
-            <p className="mt-1 text-xs text-mist">1 GP = 2 CP. 1M silver = 1 CP. Shop price: {fmt(price)} + {fmt(priceTax)} tax = {fmt(price + priceTax)} points.</p>
-          </div>
-          <div>
-            <label htmlFor="it-stock" className="label">Stock</label>
-            <input id="it-stock" type="number" inputMode="numeric" min="0" value={editing.stock} onChange={(e) => set("stock", e.target.value)} className="field" required />
-          </div>
+          <label className="flex items-center gap-2 rounded-md border border-bronze/50 bg-black/30 px-3 py-2 text-sm text-white sm:col-span-2">
+            <input type="checkbox" checked={gp} onChange={(e) => set("gp_code", e.target.checked)} className="h-4 w-4 accent-[hsl(var(--crimson))]" />
+            This is a GP code (the buyer sees the code on the site)
+          </label>
+          {gp ? (
+            <>
+              <div>
+                <label htmlFor="it-worth" className="label">What one code is worth (GP)</label>
+                <input id="it-worth" type="number" inputMode="numeric" min="1" step="1" value={editing.gp_worth} onChange={(e) => set("gp_worth", e.target.value)} className="field" required />
+                <p className="mt-1 text-xs text-mist">Value {fmt(value)} CP (1 GP = 2 CP). Shop price: {fmt(price)} + {fmt(priceTax)} tax = {fmt(price + priceTax)} points.</p>
+              </div>
+              <fieldset className="text-sm text-mist">
+                <legend className="label">Where the codes come from</legend>
+                <label className="flex items-start gap-2 py-0.5">
+                  <input type="radio" name="it-src" checked={fromStock} onChange={() => set("code_source", "stock")} className="mt-1 h-4 w-4 accent-[hsl(var(--crimson))]" />
+                  <span><b className="text-white">From stock</b>: the buyer gets a code the moment they pay</span>
+                </label>
+                <label className="flex items-start gap-2 py-0.5">
+                  <input type="radio" name="it-src" checked={!fromStock} onChange={() => set("code_source", "manual")} className="mt-1 h-4 w-4 accent-[hsl(var(--crimson))]" />
+                  <span><b className="text-white">I type it</b>: the order waits until you enter the code</span>
+                </label>
+              </fieldset>
+              {fromStock ? (
+                <>
+                  <div>
+                    <label htmlFor="it-label" className="label">Stock name the codes are kept under</label>
+                    <input id="it-label" value={editing.code_label} onChange={(e) => set("code_label", e.target.value)} maxLength={80} className="field" placeholder={`${fmt(Number(editing.gp_worth) || 0)} GP Code`} />
+                    <p className="mt-1 text-xs text-mist">{editing.id && editing.gp_code && editing.code_source !== "manual" && editing.codes_waiting != null ? `${fmt(editing.codes_waiting)} code${editing.codes_waiting === 1 ? "" : "s"} waiting. ` : ""}Codes added on the Prizes page under this name count too.</p>
+                  </div>
+                  <div>
+                    <label htmlFor="it-codes" className="label">Add codes to stock (one per line, optional)</label>
+                    <textarea id="it-codes" rows={3} value={editing.add_codes} onChange={(e) => set("add_codes", e.target.value)} autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} className="field min-h-[4.5rem] font-mono text-sm" />
+                    <p className="mt-1 text-xs text-mist">{pasted ? `${pasted} code${pasted === 1 ? "" : "s"} will be added. ` : ""}Saved encrypted; only the buyer ever sees one in full.</p>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <label htmlFor="it-stock" className="label">How many you can sell</label>
+                  <input id="it-stock" type="number" inputMode="numeric" min="0" step="1" value={editing.own_stock ?? editing.stock} onChange={(e) => { set("stock", e.target.value); set("own_stock", e.target.value); }} className="field" required />
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div>
+                <label htmlFor="it-value" className="label">In-game value of one piece, in CP</label>
+                <input id="it-value" type="number" step="any" min="0" value={editing.value_cp} onChange={(e) => set("value_cp", e.target.value)} className="field" required />
+                <p className="mt-1 text-xs text-mist">1 GP = 2 CP. 1M silver = 1 CP. Shop price: {fmt(price)} + {fmt(priceTax)} tax = {fmt(price + priceTax)} points.</p>
+              </div>
+              <div>
+                <label htmlFor="it-stock" className="label">Stock</label>
+                <input id="it-stock" type="number" inputMode="numeric" min="0" step="1" value={editing.own_stock ?? editing.stock} onChange={(e) => { set("stock", e.target.value); set("own_stock", e.target.value); }} className="field" required />
+              </div>
+            </>
+          )}
           <div className="sm:col-span-2">
             <label htmlFor="it-img" className="label">Picture (a site path like /shop/tin-3.png, or an https link)</label>
             <div className="flex items-center gap-2">
@@ -289,20 +358,25 @@ function Catalog({ data, onChange }) {
           </div>
         </form>
       ) : (
+        <>
+        {notice && <p role="status" className="mb-2 text-sm text-gold">{notice}</p>}
         <ul className="divide-y divide-bronze/25">
           {data.items.map((it) => (
             <li key={it.id} className="flex items-center gap-3 py-2.5 text-sm">
               <ItemPicture src={it.image_url} name={it.name} className="h-10 w-10" />
               <div className="min-w-0 flex-1">
                 <p className={cn("truncate font-bold", it.active ? "text-gold" : "text-mist")}>{it.name}{!it.active && " (hidden)"}</p>
-                <p className="text-xs text-mist">{fmt(it.value_cp)} CP value · {fmt(it.total)} points with tax · {fmt(it.stock)} in stock</p>
+                <p className="text-xs text-mist">
+                  {it.gp_code ? `${fmt(it.gp_worth)} GP code · ${it.code_source === "manual" ? "you type it" : `from stock "${it.code_label}"`}` : `${fmt(it.value_cp)} CP value`} · {fmt(it.total)} points with tax · {fmt(it.stock)} {it.gp_code && it.code_source !== "manual" ? "codes waiting" : "in stock"}
+                </p>
               </div>
-              <button onClick={() => { setError(""); setEditing({ ...BLANK, ...it }); }} className="btn-bronze h-8 px-2.5 text-xs" aria-label={`Edit ${it.name}`}>
+              <button onClick={() => { setError(""); setNotice(""); setEditing({ ...BLANK, ...it, gp_worth: it.gp_code ? it.gp_worth : "", code_source: it.code_source || "stock", stock: it.own_stock ?? it.stock, codes_waiting: it.gp_code && it.code_source !== "manual" ? it.stock : null, add_codes: "" }); }} className="btn-bronze h-8 px-2.5 text-xs" aria-label={`Edit ${it.name}`}>
                 <Pencil className="h-3.5 w-3.5" /> Edit
               </button>
             </li>
           ))}
         </ul>
+        </>
       )}
     </Panel>
   );
