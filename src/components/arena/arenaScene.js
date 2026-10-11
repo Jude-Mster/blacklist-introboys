@@ -49,6 +49,8 @@ export const LOOKS = {
       LOOKS["m" + n] = { set: "juts", hue: 0, aura: hsl(ah, 0.85, 0.6), title, dye: { wing, aura: { h: ah }, glow: { h: gh }, armor: { h: arh, s: 0.5 + G() * 0.6, v: 0.85 + G() * 0.3 } } };
     }
   }
+// Which outfit a look wears: Juts's own look the winged armour, the rest split between the armour and the robe.
+export const lookModel = (key) => { if (key === "juts") return "armor"; let h = 7; for (const ch of String(key || "")) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h % 2 ? "armor" : "robe"; };
 export const lookTitle = (key) => (LOOKS[key] ? LOOKS[key].title : "Fighter");
 export const lookColor = (key) => (LOOKS[key] ? hexStr(LOOKS[key].aura) : "#c9a35a");
 
@@ -261,24 +263,31 @@ export function createArenaScene(opts) {
     out.aspect = w / h;
     return out;
   }
-  // Juts's real animation, taken frame by frame from the game recording (15 frames a second).
-  // Each frame is 1000 x 800 video pixels around the feet; 480 pixels is the height from feet to the buff orb.
-  const FLIP = { src: { idle: A + "flip-idle.webp", cast: A + "flip-cast.webp", spin: A + "flip-spin.webp", dash: A + "flip-dash.webp" }, meta: {"idle":{"n":8,"cols":6,"rows":2},"cast":{"n":15,"cols":6,"rows":3},"spin":{"n":12,"cols":6,"rows":2},"dash":{"n":14,"cols":6,"rows":3}} };
-  const FLIP_M = 2.3 / 480, FLIP_W = 1000 * FLIP_M, FLIP_H = 800 * FLIP_M, FLIP_FEET = 100 * FLIP_M, FLIP_FPS = 15;
-  const FLIP_SHEETS = {};
+  // The fighters, cut frame by frame from Juts's own game recordings: two outfits, the orange robe and the
+  // winged armour. Each sheet holds one move; every cell is 544 x 480 pixels with the feet at (272, 440), and
+  // MODEL_META.mPerPx turns pixels into metres. head: where the head is in each cell (fractions, from the top
+  // left), for the halo, the pet and the name plate. The Iron Condor pet is its own sheet (pet.webp), shown
+  // only for fighters who have one. Moves an outfit was not recorded doing borrow another of its moves
+  // (MODEL_BORROW). Rebuilt with the scripts kept outside the site (v6/seg).
+  const MODEL_META = {"cell":[544,480],"feet":[272,440],"mPerPx":0.008348,"models":{"robe":{"idle":{"n":11,"cols":6,"rows":2,"head":[[0.447,0.421],[0.447,0.421],[0.447,0.419],[0.447,0.426],[0.447,0.426],[0.447,0.424],[0.447,0.424],[0.447,0.423],[0.447,0.421],[0.447,0.421],[0.446,0.419]]},"cast":{"n":1,"cols":1,"rows":1,"head":[[0.5,0.505]]},"spin":{"n":14,"cols":6,"rows":3,"head":[[0.455,0.518],[0.473,0.522],[0.431,0.312],[0.442,0.29],[0.509,0.204],[0.501,0.235],[0.497,0.416],[0.484,0.464],[0.453,0.599],[0.456,0.597],[0.402,0.57],[0.389,0.54],[0.47,0.525],[0.466,0.491]]},"dash":{"n":5,"cols":5,"rows":1,"head":[[0.568,0.566],[0.564,0.569],[0.56,0.565],[0.559,0.581],[0.557,0.578]]}},"armor":{"idle":{"n":17,"cols":6,"rows":3,"head":[[0.298,0.44],[0.325,0.436],[0.355,0.444],[0.334,0.44],[0.291,0.438],[0.355,0.438],[0.364,0.455],[0.371,0.45],[0.344,0.444],[0.333,0.438],[0.333,0.438],[0.296,0.44],[0.292,0.44],[0.272,0.432],[0.29,0.44],[0.378,0.452],[0.265,0.424]]},"spin":{"n":9,"cols":6,"rows":2,"head":[[0.325,0.436],[0.327,0.43],[0.474,0.463],[0.454,0.44],[0.486,0.434],[0.516,0.413],[0.525,0.415],[0.519,0.426],[0.524,0.428]]}}},"pet":{"n":14,"cols":7,"rows":2,"cell":[240,210],"anchor":[120,200]}};
+  const MODEL_BORROW = { armor: { cast: "idle", dash: "idle" } };
+  const MODEL_FPS = { robe: { idle: 5, dash: 15 }, armor: { idle: 10, dash: 10 } };
+  const MPX = MODEL_META.mPerPx;
+  const FLIP_W = MODEL_META.cell[0] * MPX, FLIP_H = MODEL_META.cell[1] * MPX, FLIP_FEET = (MODEL_META.cell[1] - MODEL_META.feet[1]) * MPX, FLIP_FPS = 15;
+  const PET_W = MODEL_META.pet.cell[0] * MPX, PET_H = MODEL_META.pet.cell[1] * MPX;
+  const clipOf = (model, clip) => ((MODEL_BORROW[model] || {})[clip]) || clip;
+  const clipMeta = (model, clip) => MODEL_META.models[model][clipOf(model, clip)];
+  const MTEX = {};   // MTEX[model][clip]
+  let PET_TEX = null;
+  const sheetTex = (img) => { const t = new THREE.Texture(img); t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.anisotropy = 4; t.needsUpdate = true; return t; };
   async function prepareSkins() {
-    await Promise.all(Object.entries(FLIP.src).map(async ([k, src]) => {
-      FLIP_SHEETS[k] = await loadImage(src);
-      const t = new THREE.Texture(FLIP_SHEETS[k]); const mip = true;
-      t.generateMipmaps = mip; t.minFilter = mip ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter; t.anisotropy = 4; t.needsUpdate = true; FLIP_TEX[k] = t;
-    }));
-    for (const [key, lk] of Object.entries(LOOKS)) {
-      if (lk.set === "juts") continue; // dyed when the fighter first steps on stage
-      const rig = RIGS[lk.set]; SKIN[key] = {};
-      for (const vk of ["front", "back", "run"]) if (rig[vk]) SKIN[key][vk] = cutView(hueCanvas(IMAGES[rig[vk].src], lk.hue), rig[vk]);
-      if (rig.pet) { const c = hueCanvas(IMAGES[rig.pet], lk.hue); SKIN[key].pet = toTex(c); SKIN[key].pet.aspectRatio = c.width / c.height; }
-
+    const jobs = [];
+    for (const [model, clips] of Object.entries(MODEL_META.models)) {
+      MTEX[model] = {};
+      for (const clip of Object.keys(clips)) jobs.push(loadImage(A + "m/" + model + "-" + clip + ".webp").then((img) => { MTEX[model][clip] = sheetTex(img); }));
     }
+    jobs.push(loadImage(A + "m/pet.webp").then((img) => { PET_TEX = sheetTex(img); }));
+    await Promise.all(jobs);
   }
   const blobTex = texCanvas(64, 64, (x, w) => { const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, "rgba(0,0,0,.6)"); g.addColorStop(1, "rgba(0,0,0,0)"); x.fillStyle = g; x.fillRect(0, 0, w, w); });
   const runeTex = texCanvas(256, 256, (x, w) => {
@@ -586,12 +595,11 @@ export function createArenaScene(opts) {
   // follow the head: the halo's place in the frame on screen, eased so the jumps of the spin are smooth
   const _hp = new THREE.Vector3();
   function placeHalo(f, clock, ko) {
-    const h = f.haloFx, cf = f.flip.frame, tbl = HALO_TRACK[cf.clip], a = tbl && tbl[cf.k0], b = (tbl && tbl[cf.k1]) || a, u = f.flip.mat.uniforms;
-    h.g.visible = !!a && !(ko >= 0);
+    const h = f.haloFx, u = f.flip.mat.uniforms;
+    h.g.visible = !(ko >= 0);
     if (!h.g.visible) { h.placed = false; return; }
-    const m = cf.mix || 0, hu = a[0] + (b[0] - a[0]) * m, hv = a[1] + (b[1] - a[1]) * m;
-    const y = (1 - hv) * FLIP_H - FLIP_FEET, hh = Math.max(0, Math.min(1, y / 2.6));
-    _hp.set((hu - 0.5) * FLIP_W + u.swayAmp.value * Math.sin(u.swayT.value) * hh * hh, y + 0.04, 0.09);
+    const [hx, hy] = headAt(f), hh = Math.max(0, Math.min(1, hy / 2.6));
+    _hp.set(hx + u.swayAmp.value * Math.sin(u.swayT.value) * hh * hh, hy + 0.34, 0.09);
     if (!h.placed) { h.pos.copy(_hp); h.placed = true; } else h.pos.lerp(_hp, 0.45);
     h.g.position.copy(h.pos);
     const pulse = 1 + Math.sin(clock * 2.2) * 0.035, s = HALO.size * pulse;
@@ -766,8 +774,9 @@ export function createArenaScene(opts) {
     const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.95), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false }));
     shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.02; root.add(shadow);
     const aura = glow(lk.aura, 3.2, 0); aura.position.y = 1.2; root.add(aura);
+    const model = lookModel(key);
     const geo = new THREE.PlaneGeometry(FLIP_W, FLIP_H); geo.translate(0, FLIP_H / 2 - FLIP_FEET, 0);
-    const mat = dyeMaterial(lk.dye);
+    const mat = dyeMaterial({});   // the recording's own colours, exactly as in the game
     const mesh = new THREE.Mesh(geo, mat); mesh.renderOrder = 2; fall.add(mesh);
     // a bloom-like glow layer drawn from a blurred copy of the same frame; it shares every setting with
     // the sprite itself (frame, colours, flash), so it needs mipmaps, which WebGL 2 gives non-square sheets
@@ -799,9 +808,17 @@ export function createArenaScene(opts) {
     const contact = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.42), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, opacity: 0.9, depthWrite: false }));
     contact.rotation.x = -Math.PI / 2; contact.position.y = 0.025; root.add(contact);
     const blade = makeBlade(fall), swing = makeSwingTrail(root), haloFx = makeHalo(fall);
+    blade.g.visible = false;
+    // the Iron Condor, hovering over the head (its own little flip book), and the red orb the game shows over a
+    // fighter while a buff is up
+    const petTex = PET_TEX.clone(); petTex.needsUpdate = true; petTex.repeat.set(1 / MODEL_META.pet.cols, 1 / MODEL_META.pet.rows);
+    const petMesh = new THREE.Mesh(new THREE.PlaneGeometry(PET_W, PET_H), new THREE.MeshBasicMaterial({ map: petTex, transparent: true, depthWrite: false, alphaTest: 0.02, side: THREE.DoubleSide }));
+    petMesh.renderOrder = 3; petMesh.visible = false; bill.add(petMesh);
+    const orb = new THREE.Group(); orb.visible = false; bill.add(orb);
+    { const o1 = glow(0xff1a10, 0.62, 0.95), o2 = glow(0xff6a50, 0.3, 1), o3 = glow(0xfff0e0, 0.12, 1); for (const o of [o1, o2, o3]) { o.renderOrder = 5; orb.add(o); } }
     root.scale.setScalar(FIGHTER_SCALE);
     scene.add(root);
-    const f = { root, bill, fall, shadow, contact, blade, swing, haloFx, aura, key, lk, flip: { mesh, mat, ghost, halo, frame: { clip: "idle", k0: 0, k1: 0, mix: 0 } }, shield: { g: shield, bubble, lattice, star }, trails, ring, motes, hasPet: false, koFall: 0, views: {} };
+    const f = { root, bill, fall, shadow, contact, blade, swing, haloFx, aura, key, lk, model, pet: { mesh: petMesh, tex: petTex, pos: null }, orb, headY: 2, plateY: 2.4, flip: { mesh, mat, ghost, halo, frame: { clip: "idle", k0: 0, k1: 0, mix: 0 } }, shield: { g: shield, bubble, lattice, star }, trails, ring, motes, hasPet: false, koFall: 0, views: {}, wasWalking: false, dashSndAt: -9 };
     f.buffFx = makeBuffFx(f);   // the buff skills' auras
     setWeaponAura(f, 0);
     return f;
@@ -848,7 +865,6 @@ export function createArenaScene(opts) {
 
   // Every fighter shares the same four sprite sheets. The colours are changed on the graphics card as each
   // pixel is drawn (the same hue regions as dyeCanvas), so a new fighter is ready at once.
-  const FLIP_TEX = {};
   // the vertex shader leans the upper body a little from side to side in the idle pose (a slow weight shift)
   const DYE_VERT = `uniform float swayAmp; uniform float swayT; varying vec2 vUv;
     void main() { vUv = uv; vec3 p = position; float hh = clamp(p.y / 2.6, 0.0, 1.0); p.x += swayAmp * sin(swayT) * hh * hh; gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0); }`;
@@ -981,51 +997,56 @@ export function createArenaScene(opts) {
     const R4 = ["glow", "wing", "aura", "armor"], v4 = (fn) => new THREE.Vector4(...R4.map((k) => fn(dye[k] || null)));
     return new THREE.ShaderMaterial({
       uniforms: {
-        map: { value: FLIP_TEX.idle }, uOff: { value: new THREE.Vector2() }, uOff2: { value: new THREE.Vector2() }, mixF: { value: 0 }, flash: { value: 0 }, uRep: { value: new THREE.Vector2(1, 1) },
+        map: { value: null }, uOff: { value: new THREE.Vector2() }, uOff2: { value: new THREE.Vector2() }, mixF: { value: 0 }, flash: { value: 0 }, uRep: { value: new THREE.Vector2(1, 1) },
         dH: { value: v4((d) => (d && d.h != null ? d.h : -1)) }, dS: { value: v4((d) => (d && d.s) || 1) }, dV: { value: v4((d) => (d && d.v) || 1) },
         dL: { value: v4((d) => (d && d.light) || 0) }, dOn: { value: v4((d) => (d ? 1 : 0)) },
         tint: { value: new THREE.Color(1, 1, 1) }, alpha: { value: 1 }, grey: { value: 0 }, cutY: { value: 0 }, keepX: { value: 0 }, erase: { value: new THREE.Vector4() },
-        halo: { value: 0 }, rim: { value: 0 }, rimColor: { value: new THREE.Color(0x3f8cff) }, texel: { value: new THREE.Vector2(1 / 600, 1 / 480) },
+        halo: { value: 0 }, rim: { value: 0 }, rimColor: { value: new THREE.Color(0x3f8cff) }, texel: { value: new THREE.Vector2(1 / MODEL_META.cell[0], 1 / MODEL_META.cell[1]) },
         hideAura: { value: 0 }, lightAmt: { value: 0 }, solid: { value: 0 }, mirror: { value: 1 }, swayAmp: { value: 0 }, swayT: { value: 0 },
         headBox: { value: new THREE.Vector4() }, headOn: { value: 0 }, headCut: { value: new THREE.Vector3() }
       },
       vertexShader: DYE_VERT, fragmentShader: DYE_FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide, ...extra
     });
   }
-  // Where the condor sits in each clip (fraction of the frame from the top). In the charge the spear points
-  // straight up through it, so a thin strip down the middle is kept.
-  const PET_CUT = { idle: { y: 0.215 }, cast: { y: 0.19, keep: 0.028 }, spin: { y: 0.19 }, dash: { y: 0.19 } };
-  // Show frame kf of a clip (fractions blend into the next frame). Also used for the after-images.
+  // Show frame kf of a move (fractions blend into the next frame). Also used for the after-images.
   function setFlipFrame(f, clip, kf, loop = false, mat = f.flip.mat) {
-    const m = FLIP.meta[clip], u = mat.uniforms;
+    const cl = clipOf(f.model, clip), m = clipMeta(f.model, clip), u = mat.uniforms;
     kf = loop ? ((kf % m.n) + m.n) % m.n : Math.max(0, Math.min(m.n - 1, kf));
     const k0 = Math.floor(kf), k1 = loop ? (k0 + 1) % m.n : Math.min(m.n - 1, k0 + 1);
     const cell = (k, v) => v.set((k % m.cols) / m.cols, 1 - (Math.floor(k / m.cols) + 1) / m.rows);
-    u.map.value = FLIP_TEX[clip]; u.uRep.value.set(1 / m.cols, 1 / m.rows);
-    cell(k0, u.uOff.value); cell(k1, u.uOff2.value); u.mixF.value = k1 === k0 || clip === "spin" ? 0 : kf - k0;   // the spin's poses are too far apart to blend
-    if (mat === f.flip.mat) { const fr = f.flip.frame; fr.clip = clip; fr.k0 = k0; fr.k1 = k1; fr.mix = u.mixF.value; }
-    const pc = PET_CUT[clip]; u.cutY.value = f.hasPet ? 0 : pc.y; u.keepX.value = pc.keep || 0;
-    if (clip === "idle") u.erase.value.set(0.72, 0.79, 0.59, 0.67); else u.erase.value.set(0, 0, 0, 0);
+    u.map.value = MTEX[f.model][cl]; u.uRep.value.set(1 / m.cols, 1 / m.rows);
+    cell(k0, u.uOff.value); cell(k1, u.uOff2.value); u.mixF.value = k1 === k0 || cl === "spin" || cl === "dash" ? 0 : kf - k0;   // fast moves: whole frames only
+    if (mat === f.flip.mat) { const fr = f.flip.frame; fr.clip = cl; fr.k0 = k0; fr.k1 = k1; fr.mix = u.mixF.value; }
+    u.cutY.value = 0; u.keepX.value = 0; u.erase.value.set(0, 0, 0, 0);
+  }
+  // where the head is in the frame on screen, in metres from the feet
+  function headAt(f) {
+    const fr = f.flip.frame, tb = MODEL_META.models[f.model][fr.clip].head, a = tb[fr.k0], b = tb[fr.k1] || a, m = fr.mix || 0;
+    const u = a[0] + (b[0] - a[0]) * m, v = a[1] + (b[1] - a[1]) * m;
+    return [(u - 0.5) * FLIP_W, (1 - v) * FLIP_H - FLIP_FEET];
   }
   const ramp = (v, a, b) => Math.max(0, Math.min(1, (v - a) / (b - a)));
   function poseFlip(f, p, clock) {
     const ping = (n, fps) => { const c = (clock * fps) % (n * 2 - 2); return c <= n - 1 ? c : n * 2 - 2 - c; };
     const ko = p.koT == null ? -1 : p.koT;
+    const M = MODEL_META.models[f.model], fps = MODEL_FPS[f.model] || {};
+    const robe = f.model === "robe";
+    f.spinBlur = -1;
     if (ko >= 0 || p.hurt > 0) setFlipFrame(f, "idle", 0);
-    else if (p.buffK > 0) setFlipFrame(f, "cast", Math.min(3, p.buffK * 4));   // casting a buff: hands up, before the charge's seals appear
-    else if (p.spin > 0) {
-      // The middle of the recording's spin (frames 3 to 8) is motion-blurred: the body is a see-through smear
-      // there. Hold a crisp pose for the body instead, and lay the blurred frame over it as a glowing swirl.
-      const kf = p.spin * (FLIP.meta.spin.n - 1), k = Math.round(kf), blurred = k >= 3 && k <= 8;
-      setFlipFrame(f, "spin", blurred ? (k <= 6 ? 2 : 9) : kf);
-      f.spinBlur = blurred ? kf : -1;
-    }
-    else if (p.cast > 0) setFlipFrame(f, "cast", p.cast * (FLIP.meta.cast.n - 1));
-    else if (p.walk) setFlipFrame(f, "dash", clock * FLIP_FPS, true);
-    else setFlipFrame(f, "idle", ping(FLIP.meta.idle.n, 8));
-    // Skyfall: spring forward into the spin with a small hop, stay in at the strike, step back after it
+    // a buff: the robe kneels behind its upright glaive as the seals light up (as in the game); the armour
+    // stands its ground
+    else if (p.buffK > 0) { if (robe) setFlipFrame(f, "cast", 0); else setFlipFrame(f, "idle", ping(M.idle.n, fps.idle || 8)); }
+    // Skyfall, as recorded: the leap, the spin and the landing
+    else if (p.spin > 0) setFlipFrame(f, "spin", robe ? p.spin * (M.spin.n - 1) : M.spin.n - 1);
+    // the charge before it: the robe crouches ready (the first pose of the leap); the armour turns side-on
+    // and levels its spear
+    else if (p.cast > 0) { if (robe) setFlipFrame(f, "spin", 0); else setFlipFrame(f, "spin", Math.min(1, p.cast / 0.6) * (M.spin.n - 1)); }
+    else if (p.walk) setFlipFrame(f, "dash", clock * (fps.dash || FLIP_FPS), true);
+    else setFlipFrame(f, "idle", ping(clipMeta(f.model, "idle").n, fps.idle || 8));
+    // Skyfall: spring forward into the spin, stay in at the strike, step back after it (the robe's own leap is
+    // in the frames, so it gets no extra hop)
     const lunge = p.spin ? ease(Math.min(1, p.spin / 0.4)) * 1.1 : ease(p.follow) * 1.1;
-    const hop = p.spin ? Math.sin(Math.min(1, p.spin / 0.75) * Math.PI) * 0.28 : 0;
+    const hop = p.spin && !robe ? Math.sin(Math.min(1, p.spin / 0.75) * Math.PI) * 0.35 : 0;
     const kick = p.hurt > 0 ? Math.sin(clock * 80) * 0.06 * p.hurt : 0;
     // Knockout: thrown back and staggering (0-0.3 s), then toppling backwards onto the floor under gravity
     // with a small bounce, fading to grey, while a pale spirit rises out of the body.
@@ -1037,7 +1058,7 @@ export function createArenaScene(opts) {
     f.root.position.set(p.x + p.dir * lunge - p.dir * ease(p.hurt) * 0.45 + kick - p.dir * thrown + sway, FLOOR, 0);
     f.fall.position.x = 0;
     f.bill.rotation.set(0, Math.atan2(camera.position.x - f.root.position.x, camera.position.z - f.root.position.z), 0);
-    f.bill.scale.set(p.dir > 0 ? -1 : 1, 1, 1);   // in the recording the spear points to the left
+    f.bill.scale.set(p.dir > 0 ? -1 : 1, 1, 1);   // in the recordings the weapon and the moves go to the left
     // collapse: the body folds forward onto the spear side (the spear goes under the floor), comes to rest
     // lying across the screen and tipped back onto the floor, with a small bounce
     f.fall.rotation.set(ko >= 0 ? -0.12 * ramp(ko, 0, 0.22) * (1 - tip) - 0.45 * tip : -0.14 * p.hurt, 0, ko >= 0 ? (Math.PI / 2 - 0.08) * tip - bounce * 0.6 : 0);
@@ -1045,11 +1066,11 @@ export function createArenaScene(opts) {
     const u = f.flip.mat.uniforms, dark = ko >= 0 ? ramp(ko, 0.3, 1.2) : 0;
     const red = ko >= 0 ? Math.max(0, 1 - ko / 0.35) : p.hurt;
     u.tint.value.setRGB(1 - dark * 0.12, (1 - red * 0.55) * (1 - dark * 0.15), (1 - red * 0.55) * (1 - dark * 0.1));
-    u.grey.value = dark * 0.6; u.alpha.value = 1; u.solid.value = 1;   // a solid body in every frame, attacks included
+    u.grey.value = dark * 0.6; u.alpha.value = 1; u.solid.value = 0;   // a solid body in every frame, attacks included
     u.flash.value = ko < 0 && p.hurt > 0.8 ? (p.hurt - 0.8) / 0.2 * 0.55 : 0;   // white flash on the frame of impact
     // after-images that follow the spear round the spin
-    const trailOn = p.spin > 0.04 && p.spin < 0.97 && ko < 0;
-    const swirl = trailOn && p.spin > 0 && f.spinBlur >= 0;
+    const trailOn = false;
+    const swirl = false;
     f.trails.forEach((tm, j) => {
       tm.visible = trailOn; if (!trailOn) return;
       if (j === 0 && swirl) {
@@ -1060,7 +1081,7 @@ export function createArenaScene(opts) {
         tm.material.uniforms.alpha.value = 0.5;
         return;
       }
-      setFlipFrame(f, "spin", p.spin * (FLIP.meta.spin.n - 1) - (j + 1) * 1.3, false, tm.material);
+      setFlipFrame(f, "spin", p.spin * (clipMeta(f.model, "spin").n - 1) - (j + 1) * 1.3, false, tm.material);
       tm.material.uniforms.cutY.value = 0.19;
       tm.position.set((j + 1) * 0.3, f.fall.position.y, -0.02 * (j + 1));
       tm.material.uniforms.alpha.value = Math.sin(p.spin * Math.PI) * (j ? 0.07 : 0.15);
@@ -1078,15 +1099,32 @@ export function createArenaScene(opts) {
     }
     f.aura.material.opacity = 0;
     // the steel blade, the swing trail, the contact shadow and the idle weight shift
-    placeBlade(f);
-    if (ko >= 0 && tip > 0.2) { f.blade.g.visible = false; u.headOn.value = 0; }   // once the body is down the blade goes with the picture
+    f.blade.g.visible = false; u.headOn.value = 0; u.hideAura.value = 0;
+    // the head, the pet over it, the buff orb and the name plate's height follow the frame on screen (eased)
+    { const [hx, hy] = headAt(f), sm = f.headPos || (f.headPos = [hx, hy]);
+      sm[0] += (hx - sm[0]) * 0.25; sm[1] += (hy - sm[1]) * 0.25;
+      f.headY = sm[1] + f.fall.position.y;
+      const petOn = f.hasPet && ko < 0;
+      f.pet.mesh.visible = petOn;
+      if (petOn) {
+        const pm = MODEL_META.pet, k = Math.floor(clock * 12) % (pm.n * 2 - 2), j = k < pm.n ? k : pm.n * 2 - 2 - k;
+        f.pet.tex.offset.set((j % pm.cols) / pm.cols, 1 - (Math.floor(j / pm.cols) + 1) / pm.rows);
+        const tx = sm[0] * 0.6, ty = Math.max(1.6, sm[1]) - 0.12 + Math.sin(clock * 2.2) * 0.06, pp = f.pet.pos || (f.pet.pos = [tx, ty]);
+        pp[0] += (tx - pp[0]) * 0.08; pp[1] += (ty - pp[1]) * 0.08;
+        f.pet.mesh.position.set(pp[0], pp[1] + (MODEL_META.pet.anchor[1] - MODEL_META.pet.cell[1] / 2) * MPX, -0.05);   // the pet's frame keeps the head at its anchor
+      }
+      const anyBuff = p.buffs && Object.values(p.buffs).some((v) => v > 0);
+      f.orb.visible = ko < 0 && !!anyBuff;
+      if (f.orb.visible) { f.orb.position.set(sm[0] * 0.5 - 0.12, f.headY + 0.42 + Math.sin(clock * 3) * 0.03, 0.08); f.orb.children[0].material.opacity = 0.75 + Math.sin(clock * 9) * 0.2; }
+      f.plateY = (petOn ? Math.max(f.headY, f.pet.pos ? f.pet.pos[1] : 0) + MODEL_META.pet.anchor[1] * MPX * 0.95 : f.headY + 0.3) + 0.06;
+    }
     const tr = f.swing, swinging = p.spin > 0.08 && p.spin < 0.95 && ko < 0;
     tr.visible = swinging;
     if (swinging) { tr.rotation.z = (p.dir > 0 ? -1 : 1) * (p.spin * Math.PI * 2 - 0.4); tr.material.uniforms.opacity.value = BLADE.trail * Math.sin(p.spin * Math.PI); }
     f.contact.visible = ko < 0;
     const idle = ko < 0 && !p.walk && !(p.spin > 0) && !(p.cast > 0) && !(p.hurt > 0) && !(p.buffK > 0);
     u.swayAmp.value += ((idle ? 0.05 : 0) - u.swayAmp.value) * 0.1; u.swayT.value = clock * 1.25;
-    u.mirror.value = p.dir > 0 ? -1 : 1; u.lightAmt.value = 1;
+    u.mirror.value = p.dir > 0 ? -1 : 1; u.lightAmt.value = 0.45;
     placeHalo(f, clock, ko);   // after the weight shift is set, so the halo sways with the head
     poseBuffFx(f, p, clock, ko);
     // the glow layer and the rim light
@@ -1254,6 +1292,46 @@ export function createArenaScene(opts) {
     x.translate(w / 2, w / 2);
     for (const [r, lw, a] of [[96, 26, 0.25], [96, 12, 0.6], [96, 4, 1]]) { x.strokeStyle = `rgba(255,255,255,${a})`; x.lineWidth = lw; x.lineCap = "round"; x.beginPath(); x.arc(0, 0, r, -2.4, 0.5); x.stroke(); }
   });
+  // The game's buff seals: eight-pointed stars drawn on the floor round the caster, white line art first, then
+  // filling with red light one after another (as in the recordings)
+  const drawSeal = (x, w, red) => {
+    x.translate(w / 2, w / 2);
+    if (red) { const g = x.createRadialGradient(0, 0, 6, 0, 0, 112); g.addColorStop(0, "rgba(255,90,80,1)"); g.addColorStop(0.55, "rgba(235,20,25,.95)"); g.addColorStop(0.9, "rgba(200,0,10,.75)"); g.addColorStop(1, "rgba(160,0,0,0)"); x.fillStyle = g; x.beginPath(); for (let k = 0; k <= 16; k++) { const a = (k / 16) * Math.PI * 2 - Math.PI / 2, r = k % 2 ? 78 : 118; k ? x.lineTo(Math.cos(a) * r, Math.sin(a) * r) : x.moveTo(Math.cos(a) * r, Math.sin(a) * r); } x.fill(); }
+    x.strokeStyle = red ? "rgba(255,215,215,.95)" : "rgba(255,255,255,.95)"; x.lineWidth = 3.2; x.lineJoin = "miter";
+    for (const rot of [0, Math.PI / 4]) { x.save(); x.rotate(rot); x.strokeRect(-80, -80, 160, 160); x.restore(); }
+    x.lineWidth = 2; x.beginPath(); x.arc(0, 0, 62, 0, 7); x.stroke();
+    // the beast inside the seal: a few strokes
+    const rr = mulberry32(red ? 41 : 42); x.lineWidth = 3; x.lineCap = "round";
+    for (let k = 0; k < 9; k++) { x.beginPath(); const a = rr() * 6.28, r0 = rr() * 30; x.moveTo(Math.cos(a) * r0, Math.sin(a) * r0); x.quadraticCurveTo((rr() - 0.5) * 70, (rr() - 0.5) * 70, (rr() - 0.5) * 80, (rr() - 0.5) * 60); x.stroke(); }
+  };
+  const sealWhiteTex = texCanvas(256, 256, (x, w) => drawSeal(x, w, false));
+  const sealRedTex = texCanvas(256, 256, (x, w) => drawSeal(x, w, true));
+  // Skyfall's sweep, as in the recording: a fan of light trailing the glaive, red at the root, then orange,
+  // gold and green at the tip, streaked with fine rings
+  const fanTex = texCanvas(512, 512, (x, w) => {
+    const C = w / 2; x.translate(C, C);
+    const span = Math.PI * 0.75;
+    for (let r = 60; r < 250; r += 1) {
+      const u = (r - 60) / 190;
+      const col = u < 0.35 ? [255, 40 + u * 330, 30] : u < 0.7 ? [255 - (u - 0.35) * 330, 155 + (u - 0.35) * 200, 30] : [140 - (u - 0.7) * 300, 225, 50];
+      const streak = (Math.sin(r * 0.9) * 0.5 + 0.5) * 0.35 + 0.65;
+      const a = Math.min(1, Math.sin(Math.min(1, u * 1.15) * Math.PI) * 1.15) * streak;
+      const cs = col.map(Math.round).join(",");
+      let g = `rgba(${cs},${a * 0.6})`;   // older browsers without conic gradients get an even fan
+      if (x.createConicGradient) { g = x.createConicGradient(-span, 0, 0); g.addColorStop(0, `rgba(${cs},0)`); g.addColorStop(span / (Math.PI * 2) * 0.75, `rgba(${cs},${a * 0.6})`); g.addColorStop(span / (Math.PI * 2), `rgba(${cs},${a})`); g.addColorStop(span / (Math.PI * 2) + 0.001, "rgba(0,0,0,0)"); g.addColorStop(1, "rgba(0,0,0,0)"); }
+      x.strokeStyle = g; x.lineWidth = 1.6; x.beginPath(); x.arc(0, 0, r, -span, 0); x.stroke();
+    }
+    // the bright leading edge
+    const e = x.createLinearGradient(60, 0, 250, 0); e.addColorStop(0, "rgba(255,240,200,.9)"); e.addColorStop(1, "rgba(220,255,200,.2)");
+    x.strokeStyle = e; x.lineWidth = 4; x.beginPath(); x.moveTo(60, 0); x.lineTo(250, 0); x.stroke();
+  });
+  // a white-gold crescent streak, and the orange glow on the floor under the spin
+  const streakTex = texCanvas(256, 256, (x, w) => {
+    x.translate(w / 2, w / 2);
+    for (const [lw, a] of [[14, 0.18], [6, 0.5], [2.5, 1]]) { let g = `rgba(255,248,215,${a * 0.6})`; if (x.createConicGradient) { g = x.createConicGradient(-2.6, 0, 0); g.addColorStop(0, "rgba(255,240,190,0)"); g.addColorStop(0.35, `rgba(255,248,215,${a})`); g.addColorStop(0.42, "rgba(255,248,215,0)"); g.addColorStop(1, "rgba(255,240,190,0)"); } x.strokeStyle = g; x.lineWidth = lw; x.lineCap = "round"; x.beginPath(); x.arc(0, 0, 110, -2.6, 0); x.stroke(); }
+  });
+  const floorGlowTex = texCanvas(256, 256, (x, w) => { const g = x.createRadialGradient(128, 128, 0, 128, 128, 128); g.addColorStop(0, "rgba(255,240,160,1)"); g.addColorStop(0.35, "rgba(255,170,60,.85)"); g.addColorStop(0.7, "rgba(230,70,40,.45)"); g.addColorStop(1, "rgba(200,40,30,0)"); x.fillStyle = g; x.fillRect(0, 0, w, w); });
+  const redFlashTex = texCanvas(256, 256, (x, w) => { const g = x.createRadialGradient(128, 128, 10, 128, 128, 140); g.addColorStop(0, "rgba(255,150,120,1)"); g.addColorStop(0.45, "rgba(255,70,60,.8)"); g.addColorStop(0.88, "rgba(230,40,40,.0)"); g.addColorStop(1, "rgba(230,40,40,0)"); x.fillStyle = g; x.fillRect(0, 0, w, w); });
   function spawnFx(kind, x, color, delay = 0) {
     if (quiet) return;
     const add = (m, k, life, delay = 0) => { scene.add(m); fx.push({ m, kind: k, born: clockT + delay, life }); };
@@ -1263,6 +1341,34 @@ export function createArenaScene(opts) {
       const c = new THREE.Mesh(sealGeo, mat({ map: sealTex })); c.rotation.x = -Math.PI / 2; c.position.set(x, FLOOR + 0.03, 0); c.scale.setScalar(1.3); add(c, "seal", CAST + 0.2);
       const col = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.32, 5, 16, 1, true), mat({ color: 0x35e8f0 })); col.position.set(x, FLOOR + 2.6, 0); add(col, "column", CAST + 0.15);
       const core = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 5, 8, 1, true), mat({ color: 0xc8ffff })); core.position.set(x, FLOOR + 2.6, 0); add(core, "column", CAST + 0.15);
+    }
+    if (kind === "seals") {
+      // seven seals in a ring round the caster: white, then each fills with red in turn
+      for (let k = 0; k < 7; k++) {
+        const a = Math.PI / 2 + (k / 7) * Math.PI * 2, px = x + Math.cos(a) * 1.5, pz = Math.sin(a) * 1.1;
+        for (const red of [false, true]) {
+          const m = new THREE.Mesh(sealGeo, mat({ map: red ? sealRedTex : sealWhiteTex, blending: THREE.NormalBlending }));
+          m.rotation.x = -Math.PI / 2; m.position.set(px, FLOOR + 0.03 + (red ? 0.004 : 0), pz); m.scale.setScalar(1.05);
+          m.userData.red = red; m.userData.turn = 0.12 + k * 0.07; m.renderOrder = 1;
+          add(m, "seal2", 1.55);
+        }
+      }
+    }
+    if (kind === "skyfall") {
+      // fans of light sweeping round the leap, a white streak and the glow on the floor (color = facing: 1 or -1)
+      const dir = color || 1;
+      [[1.35, 0.25, 0, 2.3], [1.0, -0.35, 0.06, 2.0], [1.7, 0.55, 0.14, 2.6]].forEach(([y, tilt, d, sc], j) => {
+        const m = new THREE.Mesh(sealGeo, mat({ map: fanTex, blending: j === 1 ? THREE.AdditiveBlending : THREE.NormalBlending }));
+        m.rotation.order = "YXZ"; m.rotation.x = -Math.PI / 2 + tilt; m.position.set(x, FLOOR + y, 0.1);
+        m.scale.setScalar(sc * 2); m.userData.dir = dir; m.userData.z0 = j * 2.1; m.userData.peak = j === 2 ? 0.6 : 0.9;
+        add(m, "fan", SPIN * 0.95, d);
+      });
+      for (let k = 0; k < 2; k++) { const m = new THREE.Mesh(sealGeo, mat({ map: streakTex })); m.position.set(x, FLOOR + 1.2 + k * 0.4, 0.4); m.quaternion.copy(camera.quaternion); m.scale.setScalar(3.6 - k * 0.8); m.userData.dir = dir; m.userData.z0 = k * 2.4; add(m, "streak", 0.42, 0.18 + k * 0.16); }
+      const g = new THREE.Mesh(sealGeo, mat({ map: floorGlowTex })); g.rotation.x = -Math.PI / 2; g.position.set(x, FLOOR + 0.04, 0.1); add(g, "floorglow", SPIN, 0.1);
+    }
+    if (kind === "redflash") {
+      // the red flash that fills the view as Skyfall lands
+      const m = new THREE.Mesh(sealGeo, mat({ map: redFlashTex })); m.position.set(x, FLOOR + 1.6, 0.6); m.quaternion.copy(camera.quaternion); m.scale.set(9, 7, 1); add(m, "redflash", 0.32);
     }
     if (kind === "arc") {
       // the big slash: a wide crescent of red and gold light sweeping round the spinner
@@ -1331,6 +1437,12 @@ export function createArenaScene(opts) {
       if (a >= 1) { scene.remove(f.m); if (f.m.geometry && f.m.geometry !== ringGeo && f.m.geometry !== sealGeo) f.m.geometry.dispose(); if (f.m.material) f.m.material.dispose(); fx.splice(k, 1); continue; }
       f.m.material.opacity = 1 - a;
       if (f.kind === "shock") f.m.scale.setScalar(1 + a * 4);
+      if (f.kind === "seal2") { const tt = clockT - f.born, ud = f.m.userData, fadeIn = Math.min(1, tt / 0.12), out = a > 0.8 ? 1 - (a - 0.8) / 0.2 : 1;
+        f.m.material.opacity = ud.red ? Math.min(1, Math.max(0, (tt - ud.turn) / 0.1)) * out : fadeIn * out * (tt > ud.turn + 0.1 ? 0.35 : 1); }
+      if (f.kind === "fan") { const ud = f.m.userData; f.m.rotation.z = ud.z0 - ud.dir * ease(a) * Math.PI * 3.2; f.m.material.opacity = Math.sin(a * Math.PI) * ud.peak; }
+      if (f.kind === "streak") { const ud = f.m.userData; f.m.quaternion.copy(camera.quaternion); f.m.rotateZ(ud.z0 - ud.dir * a * 3); f.m.material.opacity = Math.sin(a * Math.PI) * 0.6; f.m.scale.setScalar(3.2 + a * 0.8); }
+      if (f.kind === "floorglow") { f.m.material.opacity = Math.sin(a * Math.PI) * 0.8; f.m.scale.setScalar(1.6 + a * 1.4); }
+      if (f.kind === "redflash") { f.m.material.opacity = 0.55 * Math.pow(1 - a, 1.6); f.m.quaternion.copy(camera.quaternion); }
       if (f.kind === "seal") { f.m.material.opacity = Math.min(1, a * 5) * (1 - a * a); f.m.rotation.z = a * 1.5; }
       if (f.kind === "column") { f.m.material.opacity = Math.min(1, a * 6) * (1 - a) * 0.8; f.m.scale.set(1 + a * 0.4, Math.min(1, a * 3), 1 + a * 0.4); }
       if (f.kind === "arc") { f.m.rotation.z = a * 3.2; f.m.scale.setScalar(0.7 + a * 0.5); }
@@ -1368,7 +1480,7 @@ export function createArenaScene(opts) {
   const INTRO = opts.intro || 3; // "FIGHT!" on screen before the first move (the server allows for it)
   let hitStopUntil = 0, shakeAmp = 0, shakeAt = 0;
   let clockT = 0, lastNow = 0, speed = 1, shownEvents = 0, flashUntil = 0;   // one camera only: the game's own, fixed overhead (as agreed for the preview)
-  const camPos = new THREE.Vector3(0, 4.1, 6.9), camLook = new THREE.Vector3(0, 1.9, 0);
+  const camPos = new THREE.Vector3(0, 4.1, 6.9), camLook = new THREE.Vector3(0, 2.45, 0);
   camera.position.copy(camPos); camera.lookAt(camLook);   // already in place on the first frame (sprites face the camera)
 
   const worldX = (x) => (x - 6) * 1.3;
@@ -1386,7 +1498,7 @@ export function createArenaScene(opts) {
     const orbit = Math.sin(clock * 0.12) * 0.12;
     // tall phone screens pull further back so both fighters stay in the picture
     const back = narrow ? Math.min(13.5, 9.6 * Math.max(1, 0.95 / (w / h))) : 6.9;
-    return [new THREE.Vector3(mid + Math.sin(orbit) * 7, narrow ? 1.2 + back * 0.42 : 4.1, Math.cos(orbit) * back), new THREE.Vector3(mid, narrow ? 1.8 : 1.9, 0), narrow ? 68 : 62];
+    return [new THREE.Vector3(mid + Math.sin(orbit) * 7, narrow ? 1.2 + back * 0.42 : 4.1, Math.cos(orbit) * back), new THREE.Vector3(mid, narrow ? 3.1 : 2.45, 0), narrow ? 64 : 62];
   }
   function project(v, w, h) { const p = v.clone().project(camera); return [(p.x + 1) / 2 * w, (1 - p.y) / 2 * h, p.z]; }
 
@@ -1560,9 +1672,14 @@ export function createArenaScene(opts) {
   // Sound effects, synthesised with the Web Audio API, so there is nothing to license or download.
   // Tunables: master is the overall level (0.7 is about -3 dB, with a limiter after it so nothing clips);
   // hit, crit, swing and koStinger scale each sound; pitchJitter is the random pitch spread (±5%).
-  const SOUND = { master: 0.7, hit: 1, crit: 1, swing: 0.6, koStinger: 1, powerUp: 0.9, pitchJitter: 0.05 };
+  const SOUND = { master: 0.7, hit: 0.55, crit: 0.75, swing: 0.6, koStinger: 1, powerUp: 0.9, attack: 1, buff: 1, dash: 0.7, pitchJitter: 0.05 };
+  // The game's own sounds, cut from the recordings: the buff skill's charge, Skyfall's sweep and blast, the leap
+  const SAMPLE_SRC = { buff: A + "sfx/buff.mp3", attack: A + "sfx/attack.mp3", dash: A + "sfx/dash.mp3" };
   const SFX = (() => {
     let ctx = null, out = null, noiseBuf = null, on = true;
+    const samples = {};
+    // one of the game's sounds; false when it has not loaded (the made-up sound plays instead)
+    function sample(k, vol, at = 0, rate = 1) { const b = samples[k]; if (!b) return false; const src = ctx.createBufferSource(), g = ctx.createGain(); src.buffer = b; src.playbackRate.value = rate; g.gain.value = vol; src.connect(g); g.connect(out); src.start(ctx.currentTime + at); return true; }
     const irs = [];   // room tails for the reverb, short to long
     function makeIR(sec) {
       const n = Math.floor(ctx.sampleRate * sec), b = ctx.createBuffer(2, n, ctx.sampleRate);
@@ -1579,6 +1696,7 @@ export function createArenaScene(opts) {
         out = ctx.createGain(); out.connect(limiter); limiter.connect(master); master.connect(ctx.destination);
         noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate); const d = noiseBuf.getChannelData(0); for (let k = 0; k < d.length; k++) d[k] = Math.random() * 2 - 1;
         for (const sec of [0.22, 0.35, 0.5, 0.7, 0.95, 1.6]) irs.push(makeIR(sec));
+        for (const [k, url] of Object.entries(SAMPLE_SRC)) fetch(url).then((r) => r.arrayBuffer()).then((b) => new Promise((ok, no) => ctx.decodeAudioData(b, ok, no))).then((buf) => { samples[k] = buf; }).catch(() => {});
         // warm the audio path up with a silent buffer so the first real hit has no start-up lag
         const w = ctx.createBufferSource(); w.buffer = ctx.createBuffer(1, 1, ctx.sampleRate); w.connect(ctx.destination); w.start();
       }
@@ -1603,7 +1721,10 @@ export function createArenaScene(opts) {
     const quiet = () => {};
     const S = {
       // the swing: a soft whoosh that peaks just before Skyfall connects
-      spin() { const v = SOUND.swing; noise("bandpass", 600 * jitter(), 3000, 0.32, 0.2 * v, 0.42, 1.2, 0.2); },
+      // Skyfall: the game's sweep and blast, started so the blast lands as the blow does (0.74 s into the sound)
+      spin() { if (sample("attack", 0.9 * SOUND.attack, Math.max(0, SPIN - 0.74))) return; const v = SOUND.swing; noise("bandpass", 600 * jitter(), 3000, 0.32, 0.2 * v, 0.42, 1.2, 0.2); },
+      // the leap in: the game's jump sound
+      dash() { sample("dash", 0.75 * SOUND.dash, 0, jitter()); },
       // an ordinary hit: a short "shk" of the edge, a little ring, and the thump of the blow, all at the moment of contact
       hit() {
         const p = jitter(), v = SOUND.hit, r = room(0, 0.18), both = [out, r];
@@ -1638,6 +1759,8 @@ export function createArenaScene(opts) {
       // sparks). arg.side picks the voice (the two fighters sound different); arg.short = another buff
       // cast straight after the first in the same turn: just the aura surge, no second yell.
       powerUp(arg = {}) {
+        // the game's own buff sound; a second buff straight after the first plays it softer
+        if (sample("buff", (arg.short ? 0.55 : 0.95) * SOUND.buff)) return;
         const v = SOUND.powerUp, t = ctx.currentTime, p = jitter(), r = room(2, 0.28), both = [out, r];
         const voice = arg.side ? 1.18 : 1, dur = arg.short ? 0.55 : 1.15;
         // the aura: wind rushing up, a low rumble that swells, sparks crackling
@@ -1729,7 +1852,7 @@ export function createArenaScene(opts) {
       const f = floaters[k], age = now - f.born;
       if (age < 0) continue;
       if (age > 2.6) { floaters.splice(k, 1); continue; }
-      const head = project(new THREE.Vector3(worldX(fr.x[f.side]), FLOOR + 3.0 * FIGHTER_SCALE, 0), w, h);
+      const head = project(new THREE.Vector3(worldX(fr.x[f.side]), FLOOR + ((cur.models[f.side] && cur.models[f.side].plateY) || 2.4) * FIGHTER_SCALE, 0), w, h);
       const pop = age < 0.18 ? age / 0.18 * 1.25 : age < 0.3 ? 1.25 - (age - 0.18) / 0.12 * 0.25 : 1;
       const x = head[0] + f.dx + Math.sin(age * 4 + f.wob) * 10, y = head[1] - (narrow ? 14 : 20) - age * (narrow ? 26 : 34);
       hctx.globalAlpha = age > 2 ? 1 - (age - 2) / 0.6 : 1;
@@ -1754,7 +1877,7 @@ export function createArenaScene(opts) {
     // name plates over heads and the red/blue bars at the feet
     [0, 1].forEach((i) => {
       const f = i ? cur.b : cur.a;
-      const top = project(new THREE.Vector3(worldX(fr.x[i]), FLOOR + ((cur.models[i].hasPet ? 3.55 : 3.0) - (cur.models[i].koFall || 0) * 1.5) * FIGHTER_SCALE, 0), w, h);
+      const top = project(new THREE.Vector3(worldX(fr.x[i]), FLOOR + ((cur.models[i].plateY || 2.4) - (cur.models[i].koFall || 0) * 1.5) * FIGHTER_SCALE, 0), w, h);
       const feet = project(new THREE.Vector3(worldX(fr.x[i]), FLOOR, 1.0), w, h);
       hctx.textAlign = "center"; hctx.textBaseline = "middle"; hctx.lineWidth = 3; hctx.strokeStyle = "rgba(0,0,0,.8)";
       const fs = narrow ? 10 : Math.round(12 * S); hctx.font = `500 ${fs}px Barlow, sans-serif`;
@@ -1836,6 +1959,7 @@ export function createArenaScene(opts) {
       const shieldHit = hurt && hurt.shielded && tc - hurt.t < 0.8 ? (tc - hurt.t) / 0.8 : -1;
       const prev = F.frames[Math.max(0, Math.round(tc / DT) - 2)];
       const moving = Math.abs(prev.x[i] - fr.x[i]) > 0.02 && !dead && !spinK && !castK && !hurtK && !buffK;
+      { const mm = cur.models[i]; if (moving && !mm.wasWalking && !seekPaused && clockT - mm.dashSndAt > 1.2 && t < F.length) { mm.dashSndAt = clockT; SFX.play("dash", i); } mm.wasWalking = moving; }
       const done = lastEv(i, ["hit", "miss"], tc), followK = done && tc - done.t < RECOVER ? 1 - (tc - done.t) / RECOVER : 0;
       pose(cur.models[i], { x: worldX(fr.x[i]), dir: i ? -1 : 1, walk: moving ? tc * 9 : 0, cast: castK, charged: !!fr.charged[i] && !spinK, spin: spinK, follow: spinK ? 0 : followK, hurt: hurtK, dead, koT, shield: (debugBuffs[i] || fr.sk[i]).shield > 0, shieldK, shieldHit, buffK, buffs: debugBuffs[i] || fr.sk[i], reflectK: debugBuffs[i] && debugBuffs[i].reflectK != null ? debugBuffs[i].reflectK : reflectK, buff: fr.buff[i] }, clock);
     });
@@ -1866,16 +1990,16 @@ export function createArenaScene(opts) {
       let txt = "", col = "#fff", big = false, line = "", off = 0;
       if (e.type === "first") { line = e.toss ? `<b>${S(e.who)}</b> wins the toss and strikes first` : `<b>${S(e.who)}</b> is faster and strikes first`; }
       else if (e.type === "buff" && live && (SFX.play("powerUp", { side: e.who, short: F.events.some((x) => x !== e && x.type === "buff" && x.who === e.who && e.t - x.t > 0 && e.t - x.t < 0.7) }), false)) {}
-      else if (e.type === "buff") { const k = SKILLS[e.skill]; txt = k.name; col = hexStr(k.color); off = 1.4; spawnFx("shock", worldX(fr.x[e.who]), k.color); line = `<span class="buff"><b>${S(e.who)}</b> casts ${k.name}${e.stacked ? " again, stacking it" : ""}: ${k.text}</span>`; if (e.stacked) txt += " ×2"; }
+      else if (e.type === "buff") { const k = SKILLS[e.skill]; txt = k.name; col = hexStr(k.color); off = 1.4; spawnFx("shock", worldX(fr.x[e.who]), k.color); if (!e.stacked || true) spawnFx("seals", worldX(fr.x[e.who])); line = `<span class="buff"><b>${S(e.who)}</b> casts ${k.name}${e.stacked ? " again, stacking it" : ""}: ${k.text}</span>`; if (e.stacked) txt += " ×2"; }
       else if (e.type === "potion" && (crowd(e.who, ["🍼", "🧂", "😭"], 1), snd("potion"), false)) {}
       else if (e.type === "potion") { txt = "+" + fmt(e.heal); col = "#6fd39b"; big = false; spawnFx("burst", tx, 0x40ff80); line = `<span class="heal"><b>${S(e.who)}</b> drinks an HP potion: +${fmt(e.heal)} HP (${e.left} left)</span>`; }
       else if (e.type === "cast" && (snd("cast"), false)) {}
       else if (e.type === "cast") { txt = "Crimson LightningCharger"; col = "#7ff0f0"; off = 0.9; if (!cur.models[e.who].flip) spawnFx("charge", worldX(fr.x[e.who])); line = `<span class="buff"><b>${S(e.who)}</b> charges Crimson LightningCharger</span>`; }
-      else if (e.type === "spin") { const m = cur.models[e.who]; spawnFx("dust", worldX(fr.x[e.who]), 0x8a7f70); snd("spin"); }
+      else if (e.type === "spin") { const m = cur.models[e.who], dir = e.who ? -1 : 1; spawnFx("dust", worldX(fr.x[e.who]), 0x8a7f70); spawnFx("skyfall", worldX(fr.x[e.who]) + dir * 0.9, dir); snd("spin"); }
       else if (e.type === "hit") {
         txt = (e.crit ? `CRITICAL ×${e.mult} ` : "") + fmt(e.dmg); col = e.crit ? "#ffd34d" : "#ffffff"; big = e.crit;
         const hue = e.crit ? 0xffc040 : cur.models[e.who].tierColor;
-        spawnFx("slash", tx, hue, e.crit ? -1 : 0); spawnFx("sparks", tx, hue);
+        spawnFx("slash", tx, hue, e.crit ? -1 : 0); spawnFx("sparks", tx, hue); spawnFx("redflash", tx);
         if (e.crit) spawnFx("explosion", tx, 0xff8a30);
         if (live) { if (e.crit) SFX.play("crit", e.mult); else SFX.play("hit"); if (e.oneHit) SFX.play("koStinger"); }
         const kill = F.events.some((x) => x.type === "ko" && Math.abs(x.t - e.t) < 0.01);
@@ -1952,7 +2076,8 @@ export function createArenaScene(opts) {
         const ms = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
         for (const m of ms) { for (const k in m) { const v = m[k]; if (v && v.isTexture) v.dispose(); } if (m.uniforms) for (const k in m.uniforms) { const u = m.uniforms[k].value; if (u && u.isTexture) u.dispose(); } m.dispose(); }
       });
-      for (const t of Object.values(FLIP_TEX)) t.dispose();
+      for (const m of Object.values(MTEX)) for (const t of Object.values(m)) t.dispose();
+      if (PET_TEX) PET_TEX.dispose();
       renderer.dispose();
       THREE.ColorManagement.enabled = cmWas;
     }
