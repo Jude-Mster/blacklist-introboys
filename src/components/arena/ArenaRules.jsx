@@ -56,20 +56,20 @@ export default function ArenaRules({ mode = "live", values, costs = COSTS, betSe
           <p>Each entry after the first rolls one: {UPGRADES.map((u) => `${u.name} +${fmt(V.ups[u.id])}${u.unit}`).join(" · ")}. Crit defense comes up 1 roll in 5, the others about 1 in 11 each. Up to {PER_STAT} per stat and {TOTAL_CAP} in all; entries after that still raise the halo.</p>
         </Rule>
         <Rule title="Weapon upgrade">
-          <p>{fmt(costs.weaponTry)} points per try, {Math.round(V.weapon.chance * 100)}% success rate. Each level adds {Math.round(V.weapon.atk * 100)}% ATK and {V.weapon.crit}% Crit rate and lights the weapon: {WEAPON.looks.map((l) => l.name.toLowerCase()).join(", ")}. Up to +{WEAPON.max}.</p>
+          <p>{fmt(costs.weaponTry)} points per try, {Math.round(V.weapon.chance * 100)}% success rate. A failed try is not credited as an entry, but its points count toward the fighter's total spent. Each level adds {Math.round(V.weapon.atk * 100)}% ATK and {V.weapon.crit}% Crit rate and lights the weapon: {WEAPON.looks.map((l) => l.name.toLowerCase()).join(", ")}. Up to +{WEAPON.max}.</p>
         </Rule>
         <Rule title="Buff skills">
-          <p>Add skill ({fmt(costs.skill)} points) teaches one at random that the fighter doesn't have, up to {MAX_SKILLS}. Every skill off cooldown rolls its chance each turn; all that come up are cast and stack.</p>
+          <p>Add skill ({fmt(costs.skill)} points) teaches one at random that the fighter doesn't have, up to {MAX_SKILLS}. Every skill off cooldown rolls its chance before each of the fighter's attacks; all that come up are cast and stack.</p>
           <ul className="list-disc space-y-0.5 pl-4">
             {Object.entries(SKILLS).map(([id, k]) => <li key={id}><B>{k.name}</B> · {k.passive ? "passive" : `${Math.round(k.chance * 100)}% chance to cast`} · {k.text} · {AURA[id]}</li>)}
           </ul>
         </Rule>
         <Rule title="Pet and mount">
           <p>{PET.name}: {fmt(costs.pet)} points per 25% of growth, up to {petGrowth(PET.levels)}%. At 200%: HP +{fmt(PET.full.hp)}, ATK +{fmt(PET.full.atk)}, DEF +{fmt(PET.full.def)}.</p>
-          <p>Mount: {fmt(costs.mountLevel)} points per level, up to {MOUNT.levels}. The first level draws one pair ({MOUNT.pairs.map((p) => p.map((id) => STAT_NAME[id]).join(" & ")).join(", ")}); each level adds {MOUNT.per}% to both. A reset ({fmt(costs.mountReset)} points) draws a new pair and keeps the level.</p>
+          <p>Mount: {fmt(costs.mountLevel)} points per level, up to {MOUNT.levels}. The first level draws one pair ({MOUNT.pairs.map((p) => p.map((id) => STAT_NAME[id]).join(" & ")).join(", ")}); each level adds {MOUNT.per}% to both. A reset ({fmt(costs.mountReset)} points) draws a new pair and keeps the level; it is not credited as an entry, but its points count toward the total spent. The site asks you to confirm first.</p>
         </Rule>
         <Rule title="Combat">
-          <p><B>Skyfall</B> (the 360° slash) lands with Accuracy − the target's Evasion. <B>Crimson LightningCharger</B>, the buff every fighter casts before each Skyfall, charges it for 1× to 2× damage (it costs MP but isn't counted in the buff side bets). MP only goes down when a skill or buff is cast. A <B>critical</B> (Crit rate − the target's Crit defense, at most 60%) does 3× to 7×. An <B>HP potion</B> is drunk after any hit that leaves the fighter at 70% HP or less. <B>Speed</B> sets the turn order and how quickly a fighter moves: a faster fighter charges and swings quicker and sometimes attacks twice in a row. Spirits Within adds {Math.round(SKILLS.spirits.spd * 100)}% Speed from the moment it is cast.</p>
+          <p><B>Skyfall</B> (the 360° slash) lands with Accuracy − the target's Evasion. <B>Crimson LightningCharger</B>, the buff every fighter casts before each Skyfall, charges it for 1× to 2× damage (it costs MP but isn't counted in the buff side bets). MP only goes down when a skill or buff is cast. A <B>critical</B> (Crit rate − the target's Crit defense, at most 60%) does 3× to 7×. An <B>HP potion</B> is drunk at the start of the fighter's next attack after a hit leaves them at 70% HP or less. Both fighters attack at the same time, each at their own pace: nobody waits for a turn. <B>Speed</B> sets that pace: a faster fighter casts, charges and swings quicker, so it attacks more often (up to about twice as often at 182% Speed). Spirits Within adds {Math.round(SKILLS.spirits.spd * 100)}% Speed from the moment it is cast.</p>
         </Rule>
         <Rule title="Halo">
           <p>The ring of light over a fighter's head: one level per entry, and its look changes every 8 levels. It is for show only.</p>

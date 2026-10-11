@@ -58,9 +58,10 @@ for (let i = 0; i < 1500; i++) {
       const perPower = base / e.power, tol = perPower * 0.005 + 1;
       if (Math.abs(ref - full) > tol || (e.shielded && e.dmg !== want)) { dmgBad++; if (!worstDmg || Math.abs(ref - full) > worstDmg.d) worstDmg = { d: Math.abs(ref - full), ref, full, e }; }
       // HP: the target loses exactly the damage, never below 0
-      const tgt = 1 - e.who, hpAfter = fr(e.t).hp[tgt];
+      // (both fighters can strike in the same instant, so the frame is checked once every event of that
+      // instant has been counted: see the end of this loop)
+      const tgt = 1 - e.who;
       const expAfter = Math.max(0, hp[tgt] - e.dmg);
-      if (hpAfter !== expAfter && !f.events.some((x) => x.type === "potion" && Math.abs(x.t - e.t) < 1e-9)) hpBad++;
       hp[tgt] = expAfter;
       if (hp[tgt] === 0 && !f.events.some((x) => x.type === "ko" && x.who === tgt)) koBad++;
       if (hp[tgt] < 0) overkill++;
@@ -73,6 +74,8 @@ for (let i = 0; i < 1500; i++) {
       hp[e.who] += heal;
     }
     if (e.type === "ko" && hp[e.who] !== 0) koBad++;
+    const nx = f.events[f.events.indexOf(e) + 1];
+    if ((!nx || nx.t !== e.t) && (e.type === "hit" || e.type === "potion")) { const x = fr(e.t); if (x.hp[0] !== hp[0] || x.hp[1] !== hp[1]) hpBad++; }
   }
   // bars: HP and MP in every frame between 0 and max; MP never goes up
   for (let k = 0; k < f.frames.length; k++) {
@@ -111,6 +114,7 @@ check("Overtime damage", "every overtime hit x(2 + 1 per 5 s of overtime)", `${o
 check("Overtime potions", "no potions in overtime", `${otFights} fights`, "0 potions", `${otPot}`, otPot === 0);
 check("Overtime ends", "always a winner; at most 90 s of overtime", "300 fights", "0 without a winner, 0 too long", `${otNoWinner} without a winner, ${otLong} too long, ${otHpEnd} decided on HP after 90 s`, otNoWinner === 0 && otLong === 0);
 
+// ---- 6.10: upgrade cap 50, weapon 20%, both fighters attack at the same time ----
 {
   const ru = E.mulberry32(3); let capBad = 0;
   for (let k = 0; k < 300; k++) {

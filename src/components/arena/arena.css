@@ -151,6 +151,7 @@
 .bk-head .st.betting { color: #e8c15a; }
 .bk-head .st.fighting { color: #ff5a5f; display: inline-flex; align-items: center; gap: 4px; }
 .bk-head .pulse { width: 6px; height: 6px; border-radius: 50%; background: #ff3b3b; animation: bkPulse 1s ease-in-out infinite; }
+@keyframes bkPulse { 50% { opacity: .25; transform: scale(.7); } }
 .bk-watch { display: inline-flex; align-items: center; gap: 3px; border: 1px solid rgba(201,163,90,.45); border-radius: 3px; padding: 0 5px; text-transform: none; letter-spacing: 0; color: #c9c4ba; }
 .bk-watch:hover { border-color: #e8c15a; color: #e8c15a; }
 .bk-side { display: flex; align-items: center; gap: 7px; height: 22px; padding: 0 8px; color: #eee; }
