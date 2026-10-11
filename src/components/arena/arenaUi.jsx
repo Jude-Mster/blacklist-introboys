@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Volume2, VolumeX, X, Users, Eye, RotateCcw, FastForward, SkipForward } from "lucide-react";
+import fixWebmDuration from "fix-webm-duration";
+import { Loader2, Volume2, VolumeX, X, Users, Eye, RotateCcw, FastForward, SkipForward, Download } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import Avatar from "@/components/Avatar";
@@ -32,7 +33,7 @@ export const asFighter = (x, extra = {}) => ({ ...(x.build || x), name: x.name, 
 // One camera only, the game's own view (the preview's camera buttons were taken out on purpose).
 export const EMOJIS = [["😂", "LOL"], ["🤡", "Clown"], ["💀", "Dead"], ["🔥", "Fire"], ["😤", "Angry"], ["🐔", "Chicken"], ["🧂", "Salty"], ["🍼", "Baby"], ["😭", "Crying"], ["🫵", "You"], ["💩", "Trash"], ["👑", "King"]];
 // overlay: things laid over the stage (the Character Lab's upgrade rails down both sides)
-export function ArenaStage({ spec, clock, className, showLog = true, logTitle = "Fight log", chip, crowd, controls, overlay }) {
+export function ArenaStage({ spec, clock, className, showLog = true, logTitle = "Fight log", chip, crowd, controls, overlay, apiRef }) {
   const stageRef = useRef(null), glRef = useRef(null), hudRef = useRef(null), tipRef = useRef(null), fxRef = useRef(null);
   const sceneRef = useRef(null);
   const clockRef = useRef(clock);
@@ -58,9 +59,10 @@ export function ArenaStage({ spec, clock, className, showLog = true, logTitle = 
     } catch (e) { console.error("arena scene failed", e); }
     if (!sc) { setFailed(true); return undefined; }
     sceneRef.current = sc;
+    if (apiRef) apiRef.current = sc;
     let alive = true;
     sc.ready.then(() => { if (alive) setReady(true); }).catch((e) => { console.error("arena pictures failed", e); if (alive) setFailed(true); });
-    return () => { alive = false; sceneRef.current = null; sc.dispose(); };
+    return () => { alive = false; sceneRef.current = null; if (apiRef) apiRef.current = null; sc.dispose(); };
   }, []);
 
   useEffect(() => { if (sceneRef.current) sceneRef.current.setSound(sound); try { localStorage.setItem(SOUND_KEY, sound ? "on" : "off"); } catch { /* private mode */ } }, [sound, ready]);
@@ -190,11 +192,11 @@ export function useReplayClock(length, intro = 3) {
   const now = () => run.base + ((Date.now() - run.started) / 1000) * run.speed;
   const setSpeed = (speed) => setRun({ started: Date.now(), speed, base: now() });
   const skip = () => setRun({ started: Date.now(), speed: run.speed, base: intro + (length || 0) + 0.2 });
-  const restart = () => setRun({ started: Date.now(), speed: run.speed, base: 0 });
+  const restart = (speed) => setRun({ started: Date.now(), speed: typeof speed === "number" ? speed : run.speed, base: 0 });
   const btn = "flex h-8 items-center gap-1.5 rounded border border-[#2b2a33] px-2.5 text-xs uppercase tracking-wider text-[#ece6dc] arena-label hover:border-[#5a4724]";
   const controls = (
     <>
-      <button type="button" onClick={restart} className={btn}><RotateCcw className="h-3.5 w-3.5" /> Replay</button>
+      <button type="button" onClick={() => restart()} className={btn}><RotateCcw className="h-3.5 w-3.5" /> Replay</button>
       <button type="button" onClick={() => setSpeed(run.speed === 1 ? 2 : 1)} aria-pressed={run.speed === 2} className={cn(btn, run.speed === 2 && "border-[#d6ad52] text-[#f1d38c]")}><FastForward className="h-3.5 w-3.5" /> 2× speed</button>
       <button type="button" onClick={skip} className={btn}><SkipForward className="h-3.5 w-3.5" /> Skip to result</button>
     </>
@@ -204,8 +206,56 @@ export function useReplayClock(length, intro = 3) {
 
 // A past fight watched again on this page's own clock (2× speed, skip, replay). Give it key={spec.key}.
 export function ReplayStage({ spec, crowd }) {
-  const { clock, controls } = useReplayClock(spec.fight.length);
-  return <ArenaStage spec={spec} clock={clock} chip={{ text: "Replay" }} crowd={crowd} controls={controls} logTitle="Fight log (replay)" />;
+  const { clock, controls, restart } = useReplayClock(spec.fight.length);
+  const api = useRef(null);
+  const [rec, setRec] = useState(null);   // { at, length } while recording
+  const [recError, setRecError] = useState("");
+  const job = useRef(null);
+  useEffect(() => () => { if (job.current) { job.current.cancel(); job.current = null; } }, []);
+  // Download: plays the fight again from the start at normal speed and records the stage, then saves the file.
+  const download = async () => {
+    const sc = api.current;
+    setRecError("");
+    if (!sc || !sc.canRecord || !sc.canRecord()) { setRecError("This browser can't record the replay. Try Chrome, Edge, Firefox or a recent Safari."); return; }
+    const length = spec.fight.length;
+    restart(1);   // always recorded at normal speed
+    await new Promise((ok) => setTimeout(ok, 120));
+    let r;
+    const began = performance.now();
+    try { r = sc.startRecording({ label: spec.label || "BLACKLIST INTROBOYS · Arena replay" }); } catch (e) { setRecError(String((e && e.message) || e)); return; }
+    job.current = r;
+    setRec({ at: 0, length });
+    // the intro (3 s), the fight, then 2.5 s of the result
+    while (job.current === r && r.time() < length + 2.5) {
+      await new Promise((ok) => setTimeout(ok, 250));
+      if (job.current === r) setRec({ at: Math.max(0, r.time()), length });
+    }
+    if (job.current !== r) return;   // cancelled
+    job.current = null;
+    let blob = await r.stop();
+    setRec(null);
+    // browsers save recorded WebM without its length, so players can't seek it: write the length in
+    if (r.ext === "webm") { try { blob = await fixWebmDuration(blob, Math.round(performance.now() - began), { logger: false }); } catch { /* the video still plays */ } }
+    const url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = url; a.download = `${(spec.fileName || "blacklist-arena-replay").replace(/[^A-Za-z0-9_-]+/g, "-")}.${r.ext}`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  };
+  const cancel = () => { if (job.current) { job.current.cancel(); job.current = null; } setRec(null); };
+  const btn = "flex h-8 items-center gap-1.5 rounded border border-[#2b2a33] px-2.5 text-xs uppercase tracking-wider text-[#ece6dc] arena-label hover:border-[#5a4724]";
+  const all = rec ? (
+    <>
+      <span className="flex items-center gap-1.5 text-xs text-[#ff8a8a] arena-label" role="status"><span className="h-2 w-2 animate-pulse rounded-full bg-[#ff3b3b]" aria-hidden="true" /> Recording {Math.min(Math.ceil(rec.at), Math.ceil(rec.length))} / {Math.ceil(rec.length)} s</span>
+      <button type="button" onClick={cancel} className={btn}>Cancel</button>
+    </>
+  ) : (
+    <>
+      {recError && <span className="mr-auto text-xs text-ember">{recError}</span>}
+      {controls}
+      <button type="button" onClick={download} className={btn} title="Plays the fight again and saves it as a video"><Download className="h-3.5 w-3.5" /> Download</button>
+    </>
+  );
+  return <ArenaStage spec={spec} clock={clock} chip={{ text: rec ? "● Recording" : "Replay", live: !!rec }} crowd={crowd} controls={all} logTitle="Fight log (replay)" apiRef={api} />;
 }
 
 // ---------- skills ----------

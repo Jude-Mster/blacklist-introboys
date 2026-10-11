@@ -191,7 +191,7 @@ export default function TourLeader({ data, onChanged }) {
               ))}
               <label className="text-xs text-mist">Weapon ATK per level (0.10 = 10%)<input type="number" min={0} max={1} step="0.01" className="field mt-1 h-9 w-full" value={form.values.weapon.atk} onChange={(e) => setW("atk", e.target.value)} /></label>
               <label className="text-xs text-mist">Weapon Crit rate per level (%)<input type="number" min={0} max={20} step="any" className="field mt-1 h-9 w-full" value={form.values.weapon.crit} onChange={(e) => setW("crit", e.target.value)} /></label>
-              <label className="text-xs text-mist">Weapon success rate (0.30 = 30%)<input type="number" min={0.01} max={1} step="0.01" className="field mt-1 h-9 w-full" value={form.values.weapon.chance} onChange={(e) => setW("chance", e.target.value)} /></label>
+              <label className="text-xs text-mist">Weapon success rate (0.20 = 20%)<input type="number" min={0.01} max={1} step="0.01" className="field mt-1 h-9 w-full" value={form.values.weapon.chance} onChange={(e) => setW("chance", e.target.value)} /></label>
             </div>
             <button type="button" onClick={() => set("values", normValues(DEFAULT_VALUES))} className="btn-bronze mt-3 h-9 px-3 text-sm">Back to the defaults</button>
             <p className="mt-2 text-xs text-mist">Changes apply to every fighter at once, including upgrades already bought.</p>

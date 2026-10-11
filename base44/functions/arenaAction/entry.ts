@@ -91,7 +91,8 @@ const pastOf = (t) => ({
   f: t.fighters.map((f) => ({ name: f.name, avatar: f.avatar, look: f.look })),
   winner: t.outcome.winner, how: t.outcome.how, length: t.outcome.length, o: t.outcome,
   odds: { a: t.odds.a, b: t.odds.b, draw: t.odds.draw },
-  seed: t.seed, builds: t.fighters.map((f) => f.build)
+  seed: t.seed, builds: t.fighters.map((f) => f.build),
+  e: t.engine || 0   // a replay is only offered when it was fought by the engine the page runs
 });
 
 async function getTable(b, settings) {

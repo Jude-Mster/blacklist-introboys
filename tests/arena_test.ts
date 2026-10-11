@@ -50,8 +50,8 @@ r = await call(arena, C, { action: 'bet', round, lines: [{ k: fk, amount: 300 },
 r = await call(arena, C, { action: 'remove', round, k: cu });
 ok(r.ok && r.balance === 100000 - 300, 'take one bet back');
 
-// after close
-advance(35000);
+// just after close (fights are short since 6.10, so don't wait long or it may already be over)
+advance(Date.parse(s.table.bets_close_at) - Date.now() + 500);
 s = await call(arena, A, { action: 'state' });
 ok(s.table.status === 'fighting' && s.table.fight && Number.isInteger(s.table.fight.seed), 'seed revealed after close');
 ok(s.table.outcome === null, 'result hidden while fighting');

@@ -77,11 +77,13 @@ s = await call(tour, ms[5], { action: 'state' });
 const m1 = s.tournament.matches[0];
 ok(m1.status === 'betting' && m1.odds, 'match 1 open for bets');
 r = await call(tour, ms[5], { action: 'bet', match: 1, lines: [{ k: 'a', amount: 500 }, { k: 'b', amount: 100 }] });
-ok(r.status === 400 && /both/.test(r.error), 'no bet on both fighters in a match');
-r = await call(tour, ms[5], { action: 'bet', match: 1, lines: [{ k: 'a', amount: 500 }] });
-ok(r.ok, 'bet on match');
+// (when one fighter isn't offered at all, e.g. a heavy favourite, it is refused for that reason instead)
+ok(r.status === 400 && (/both/.test(r.error) || !(m1.odds.a > 1 && m1.odds.b > 1)), 'no bet on both fighters in a match: ' + r.error);
+const side1 = m1.odds.a > 1 ? 'a' : 'b';   // a heavy favourite isn't offered
+r = await call(tour, ms[5], { action: 'bet', match: 1, lines: [{ k: side1, amount: 500 }] });
+ok(r.ok, 'bet on match ' + (r.error || ''));
 const fa = s.tournament.field[m1.a];
-r = await call(tour, ms.find((x) => x.id === fa.member_id) || ms[0], { action: 'bet', match: 1, lines: [{ k: 'a', amount: 50 }] });
+r = await call(tour, ms.find((x) => x.id === fa.member_id) || ms[0], { action: 'bet', match: 1, lines: [{ k: side1, amount: 50 }] });
 ok(r.ok, 'entrant can bet on own match');
 r = await call(tour, ms[5], { action: 'bet', match: 2, lines: [{ k: 'a', amount: 10 }] });
 ok(r.status === 400, 'later match not open');

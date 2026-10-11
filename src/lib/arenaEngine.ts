@@ -10,7 +10,7 @@
 // Plain JavaScript on purpose: the backend functions (Deno) and the page (Vite) both import this
 // one file, so the rules can never drift apart. Change ENGINE_VERSION whenever a rule changes.
 
-export const ENGINE_VERSION = 6;   // 6: tournament matches go to overtime at the time limit
+export const ENGINE_VERSION = 7;   // 7: both fighters attack at the same time; weapon 20%; 50 upgrades
 export const ENGINE_VERSION_NOTES = 5;   // 2: tighter prices, no near-certain or long-shot side bets
                                    // 4: Speed sets the pace of every move, MP only spent by skills, the Draw always offered
                                    // 5: new upgrade values (see DEFAULT_VALUES), stronger weapon levels, pet and mount, Spirits Within +20% Speed
@@ -35,11 +35,11 @@ export const UPGRADES = [
   { id: "potheal", name: "Potion heal", unit: "%", w: 0.0889 },
   { id: "spd", name: "Speed", unit: "%", w: 0.0889 }
 ];
-export const PER_STAT = 9, TOTAL_CAP = 25;
+export const PER_STAT = 9, TOTAL_CAP = 50;
 // What each upgrade gives. The Guild Leader can change these for a tournament (saved on it).
 export const DEFAULT_VALUES = {
   ups: { hp: 7000, atk: 950, def: 900, crit: 1.5, critdef: 3, acc: 5, eva: 8, pots: 2, potheal: 3, spd: 10 },
-  weapon: { atk: 0.15, crit: 5, chance: 0.30 }
+  weapon: { atk: 0.15, crit: 5, chance: 0.20 }
 };
 // Keep only sane numbers; anything missing falls back to the default.
 export function normValues(v) {
@@ -91,7 +91,7 @@ export const LOOK_KEYS = ["juts", "judy", "bronze", "ivory", "ember", "jade", "v
 
 // ---------- the skills ----------
 // Buff skills: bought with Add skill (random, never one the fighter has, up to 2). Every one that is off
-// cooldown rolls its chance at the start of each turn; all that come up are cast (0.6 s each) and their
+// cooldown rolls its chance at the start of each of the fighter's rounds; all that come up are cast (0.6 s each) and their
 // effects add up. Cast again while up, its uses add on, up to stackCap casts' worth.
 //   attacks = the owner's own attacks; guards = the opponent's attacks (hits and misses); charges = hits
 //   that land. cd = the owner's attacks after casting before it can be cast again. MP never stops a cast.
@@ -123,7 +123,7 @@ export const LIMIT = 180;   // a fight lasts at most 3 minutes
 export const OT = { max: 90, start: 2, every: 5 };
 export const otMult = (sinceLimit) => OT.start + Math.floor(Math.max(0, sinceLimit) / OT.every);
 const DMG_K = 0.46, CRIT_MIN = 3, CRIT_MAX = 7, POT_AT = 0.7;
-// Speed is one stat: it sets the turn order (below) and the pace of the fighter's own moves. At 100% a buff
+// Speed is one stat: it sets the pace of the fighter's own moves, and so how often they attack. At 100% a buff
 // cast, the charge, Skyfall and the recovery take their full time; faster fighters do them quicker (down to
 // PACE_MIN of the time). Spirits Within adds its Speed the moment it is cast. MP only goes down when a skill
 // is cast; it does not come back during the fight.
@@ -220,12 +220,14 @@ function landStrike(me, foe, r, used) {
 }
 const drinkPot = (d) => { const heal = Math.min(d.s.hp - d.hp, Math.round(d.s.hp * d.s.potheal / 100)); d.hp += heal; d.pots--; return heal; };
 const mkSide = (f, x, dir, values) => { const s = statsOf(f, values); return { f, s, x, dir, hp: s.hp, mp: s.mp, pots: s.pots, charged: false, dead: false, ot: 0, sk: (f.skills || []).filter((id) => SKILLS[id]).slice(0, MAX_SKILLS), buf: noBuffs(), cd: noBuffs(), stepSpd: s.spd }; };
-// Turn order by attack speed: each fighter's place on the timeline moves on by 100 ÷ speed after each of
-// their attacks, and the one furthest behind attacks next. Equal speeds take turns.
-const nextActor = (nx, last) => (nx[0] < nx[1] - 1e-9 ? 0 : nx[1] < nx[0] - 1e-9 ? 1 : 1 - last);
 const round2 = (n) => Math.round(n * 100) / 100;
 
-// One fight, frame by frame.
+// One fight, frame by frame. Both fighters attack at the same time, each on their own clock: every
+// fighter runs its own round of buff casts, Crimson LightningCharger, Skyfall and recovery, and never
+// waits for the other. Speed sets how fast each round goes (pace = 100 / Speed, down to PACE_MIN), so a
+// faster fighter simply attacks more often. A hit that leaves the target low makes them drink an HP potion
+// at the start of their own next round. When both blows land in the same instant, the fight's coin toss
+// decides whose lands first.
 //   opts.draws   true (Live Arena): no knockout by the time limit is a Draw (winner -1).
 //                false (tournament): at the time limit the fight goes to overtime (see OT).
 //   opts.ot      false: stop at the limit with no overtime (only for the short still poses on the page).
@@ -236,49 +238,62 @@ export function simulate(fa, fb, seed, opts = {}) {
   const r = mulberry32(seed >>> 0);
   const F = [mkSide(fa, START[0], 1, opts.values), mkSide(fb, START[1], -1, opts.values)];
   const frames = [], events = [];
-  const toss = r() < 0.5 ? 0 : 1, nx = [100 / F[0].s.spd, 100 / F[1].s.spd];
-  let t = 0, winner = -1, how = "", turn = nextActor(nx, 1 - toss), phase = "walk", left = 0, done = false;
-  const drinks = [];
-  let casting = [], pace = 1;
+  const toss = r() < 0.5 ? 0 : 1, order = [toss, 1 - toss];
+  // each fighter's own round: phase, time left in it, buffs still to cast, its pace, a potion waiting
+  const A = [0, 1].map(() => ({ phase: "gap", left: GAP, casting: [], pace: 1, drink: false }));
+  let t = 0, winner = -1, how = "", walking = true, done = false;
   const ev = (who, type, extra) => events.push({ t: round2(t), who, type, ...extra });
-  const nextTurn = () => { nx[turn] += 100 / F[turn].stepSpd; const prev = turn; turn = nextActor(nx, prev); if (turn === prev) ev(turn, "again", {}); phase = "gap"; left = GAP; };
-  ev(turn, "first", { toss: toss === turn });
+  const ko = (loser, extra) => { F[loser].dead = true; winner = 1 - loser; how = "ko"; done = true; ev(loser, "ko", extra); };
+  // the start of a fighter's round: a waiting potion first, then the buff rolls
+  const begin = (i) => {
+    const me = F[i], a = A[i];
+    if (a.drink && !me.ot && me.pots > 0) { a.drink = false; const heal = drinkPot(me); ev(i, "potion", { heal, left: me.pots }); a.phase = "potion"; a.left = POTION; return; }
+    a.drink = false;
+    a.casting = castBuffs(me, r).map((id) => ({ id, stacked: me.buf[id] > usesOf(id) }));
+    next(i);
+  };
+  // the next buff to cast, or the charge
+  const next = (i) => {
+    const me = F[i], a = A[i];
+    a.pace = paceOf(effSpd(me));   // a Spirits Within cast just now already counts
+    if (a.casting.length) { const c = a.casting.shift(); a.phase = "buff"; a.left = BUFF_CAST * a.pace; ev(i, "buff", { skill: c.id, stacked: c.stacked, k: a.pace }); }
+    else { me.mp = Math.max(0, me.mp - CHARGE.mp); a.phase = "cast"; a.left = CAST * a.pace; ev(i, "cast", { k: a.pace }); }
+  };
+  const blow = (i) => {
+    const me = F[i], foe = F[1 - i], a = A[i];
+    me.charged = false; a.phase = "recover"; a.left = RECOVER * a.pace;
+    const s = strike(me, foe, r), u = s.used;
+    if (s.miss) { ev(i, "miss", { dodge: u.garuda, k: a.pace }); return; }
+    foe.x = clamp(foe.x - foe.dir * (s.crit ? 0.9 : 0.35), 0.8, 11.2);
+    ev(i, "hit", { k: a.pace, ot: me.ot, dmg: s.dmg, shielded: s.shielded, crit: s.crit, mult: s.mult, power: s.power, oneHit: s.oneHit, reflect: s.reflect, reflectKo: s.reflectKo, blow: u.blow, spirits: u.spirits, blood: u.blood, nirvana: u.nirvana });
+    if (s.dead) ko(1 - i, { crit: s.crit, oneHit: s.oneHit });
+    else if (s.reflectKo) ko(i, { crit: false, oneHit: false, reflect: true });
+    else { if (s.drink) A[1 - i].drink = true; if (s.drinkMe) a.drink = true; }
+  };
   while (t < end - 1e-9 && !done) {
     if (t >= limit - 1e-9) {   // overtime (never in the Live Arena: its loop ends at the limit)
       const m = otMult(t - limit);
       if (!F[0].ot) ev(-1, "overtime", { mult: m });
       else if (m !== F[0].ot) ev(-1, "otup", { mult: m });
       F[0].ot = F[1].ot = m;
+      A[0].drink = A[1].drink = false;   // no potions in overtime
     }
-    const gap = Math.abs(F[1].x - F[0].x);
-    if (phase === "walk") {
+    if (walking) {
+      const gap = Math.abs(F[1].x - F[0].x);
       if (gap > RANGE + 1e-6) { const step = Math.min(WALK * DT, (gap - RANGE) / 2); F[0].x += step; F[1].x -= step; }
-      else { phase = "gap"; left = GAP; }
-    } else if (phase === "gap" && gap > RANGE + 1e-6) {
-      const me = F[turn]; me.x += me.dir * Math.min(WALK * DT, gap - RANGE);
-    } else if ((left -= DT) <= 0) {
-      const me = F[turn], foe = F[1 - turn];
-      if (phase === "gap") casting = castBuffs(me, r).map((id) => ({ id, stacked: me.buf[id] > usesOf(id) }));
-      if (phase === "gap" || phase === "buff") pace = paceOf(effSpd(me));   // a Spirits Within cast just now already counts
-      if ((phase === "gap" || phase === "buff") && casting.length) { const c = casting.shift(); phase = "buff"; left = BUFF_CAST * pace; ev(turn, "buff", { skill: c.id, stacked: c.stacked, k: pace }); }
-      else if (phase === "gap" || phase === "buff") { me.mp = Math.max(0, me.mp - CHARGE.mp); phase = "cast"; left = CAST * pace; ev(turn, "cast", { k: pace }); }
-      else if (phase === "cast") { me.charged = true; phase = "spin"; left = SPIN * pace; ev(turn, "spin", { k: pace }); }
-      else if (phase === "spin") {
-        me.charged = false; phase = "recover"; left = RECOVER * pace;
-        const s = strike(me, foe, r), u = s.used;
-        if (s.miss) ev(turn, "miss", { dodge: u.garuda, k: pace });
-        else {
-          foe.x = clamp(foe.x - foe.dir * (s.crit ? 0.9 : 0.35), 0.8, 11.2);
-          ev(turn, "hit", { k: pace, ot: me.ot, dmg: s.dmg, shielded: s.shielded, crit: s.crit, mult: s.mult, power: s.power, oneHit: s.oneHit, reflect: s.reflect, reflectKo: s.reflectKo, blow: u.blow, spirits: u.spirits, blood: u.blood, nirvana: u.nirvana });
-          if (s.dead) { foe.dead = true; winner = turn; how = "ko"; done = true; ev(1 - turn, "ko", { crit: s.crit, oneHit: s.oneHit }); }
-          else if (s.reflectKo) { me.dead = true; winner = 1 - turn; how = "ko"; done = true; ev(turn, "ko", { crit: false, oneHit: false, reflect: true }); }
-          else { if (s.drink) drinks.push(1 - turn); if (s.drinkMe) drinks.push(turn); }
-        }
-      }
-      else if (phase === "recover" || phase === "potion") {
-        if (F[0].ot) drinks.length = 0;   // a potion still waiting when overtime starts is not drunk
-        if (drinks.length) { const d = drinks.shift(), heal = drinkPot(F[d]); ev(d, "potion", { heal, left: F[d].pots }); phase = "potion"; left = POTION; }
-        else nextTurn();
+      else walking = false;
+    } else {
+      for (const i of order) {
+        if (done) break;
+        const me = F[i], a = A[i], gap = Math.abs(F[1].x - F[0].x);
+        // knocked back: step in again before the next round
+        if (a.phase === "gap" && gap > RANGE + 1e-6) { me.x += me.dir * Math.min(WALK * DT, gap - RANGE); continue; }
+        if ((a.left -= DT) > 1e-9) continue;
+        if (a.phase === "gap") begin(i);
+        else if (a.phase === "potion" || a.phase === "buff") next(i);
+        else if (a.phase === "cast") { me.charged = true; a.phase = "spin"; a.left = SPIN * a.pace; ev(i, "spin", { k: a.pace }); }
+        else if (a.phase === "spin") blow(i);
+        else if (a.phase === "recover") { a.phase = "gap"; a.left = GAP; }
       }
     }
     if (keepFrames) frames.push({ t: round2(t), x: [F[0].x, F[1].x], hp: [F[0].hp, F[1].hp], mp: [F[0].mp, F[1].mp], pots: [F[0].pots, F[1].pots], charged: [F[0].charged, F[1].charged], spd: [effSpd(F[0]), effSpd(F[1])], sk: [{ ...F[0].buf }, { ...F[1].buf }], cd: [{ ...F[0].cd }, { ...F[1].cd }], ot: F[0].ot, buff: F.map((m) => (m.charged ? { lightning: 1 } : {})) });
@@ -307,31 +322,44 @@ export function outcomeOf(fight) {
 }
 
 // The same fight without the walking, about 100 times faster: used for the practice fights that set
-// the prices. (The time it keeps is close to the real fight's, not exact.)
-const MOVE_T = CAST + SPIN + RECOVER + 0.15;
+// the prices. Each fighter keeps its own clock, as in simulate(); whichever has the next move goes.
+// (The time it keeps is close to the real fight's, not exact.)
+const STEP_IN = 0.15;   // about what stepping back in after a knock-back takes
 export function quickFight(fa, fb, seed, opts = {}) {
   const limit = opts.limit || LIMIT, end = opts.draws || opts.ot === false ? limit : limit + OT.max;
   const r = mulberry32(seed >>> 0);
   const F = [mkSide(fa, 0, 1, opts.values), mkSide(fb, 0, -1, opts.values)];
-  const toss = r() < 0.5 ? 0 : 1, nx = [100 / F[0].s.spd, 100 / F[1].s.spd], oneHitBy = [false, false];
-  let t = 0.6, turn = nextActor(nx, 1 - toss), pots = 0, crits = 0, buffs = 0;
-  let ot = false;
-  while (t < end) {
-    if (t >= limit) { ot = true; F[0].ot = F[1].ot = otMult(t - limit); }
-    const me = F[turn], foe = F[1 - turn];
-    const cast = castBuffs(me, r).length, pace = paceOf(effSpd(me));
-    buffs += cast; t += GAP + (MOVE_T + cast * BUFF_CAST) * pace;
-    const s = strike(me, foe, r);
-    if (!s.miss) {
-      if (s.crit) crits++;
-      if (s.oneHit) oneHitBy[turn] = true;
-      if (s.dead) return { winner: turn, how: "ko", crit: s.crit, oneHitBy, pots, crits, buffs, t, ot };
-      if (s.reflectKo) return { winner: 1 - turn, how: "ko", crit: false, reflect: true, oneHitBy, pots, crits, buffs, t, ot };
-      if (s.drink) { drinkPot(foe); pots++; t += POTION; }
-      if (s.drinkMe) { drinkPot(me); pots++; t += POTION; }
+  const toss = r() < 0.5 ? 0 : 1, oneHitBy = [false, false];
+  const W = 0.6 + GAP;   // walking in, then the first pause
+  const C = [{ at: W, strike: false, pace: 1, drink: false }, { at: W, strike: false, pace: 1, drink: false }];
+  let pots = 0, crits = 0, buffs = 0, ot = false, t = W;
+  while (true) {
+    const i = C[0].at < C[1].at - 1e-9 ? 0 : C[1].at < C[0].at - 1e-9 ? 1 : toss;
+    const me = F[i], foe = F[1 - i], c = C[i];
+    t = c.at;
+    if (t >= end) break;
+    if (t >= limit) { ot = true; F[0].ot = F[1].ot = otMult(t - limit); C[0].drink = C[1].drink = false; }
+    if (!c.strike) {
+      // the start of a round: a waiting potion, then the buffs and the charge
+      if (c.drink && !me.ot && me.pots > 0) { c.drink = false; drinkPot(me); pots++; c.at += POTION; continue; }
+      c.drink = false;
+      const cast = castBuffs(me, r).length; buffs += cast;
+      c.pace = paceOf(effSpd(me));
+      c.at += (cast * BUFF_CAST + CAST + SPIN) * c.pace; c.strike = true;
+      continue;
     }
-    nx[turn] += 100 / me.stepSpd; turn = nextActor(nx, turn);
+    const s = strike(me, foe, r);
+    c.strike = false; c.at += RECOVER * c.pace + GAP;
+    if (s.miss) continue;
+    c.at += STEP_IN / 2; C[1 - i].at += STEP_IN / 2;
+    if (s.crit) crits++;
+    if (s.oneHit) oneHitBy[i] = true;
+    if (s.dead) return { winner: i, how: "ko", crit: s.crit, oneHitBy, pots, crits, buffs, t, ot };
+    if (s.reflectKo) return { winner: 1 - i, how: "ko", crit: false, reflect: true, oneHitBy, pots, crits, buffs, t, ot };
+    if (s.drink) C[1 - i].drink = true;
+    if (s.drinkMe) c.drink = true;
   }
+  t = Math.min(t, end);
   if (opts.draws) return { winner: -1, how: "draw", crit: false, oneHitBy, pots, crits, buffs, t };
   const pa = F[0].hp / F[0].s.hp, pb = F[1].hp / F[1].s.hp;
   return { winner: pa > pb ? 0 : pb > pa ? 1 : toss, how: "time", crit: false, oneHitBy, pots, crits, buffs, t, ot };

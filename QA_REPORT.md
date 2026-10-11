@@ -117,3 +117,16 @@ Automated tests added in `tests/` (see tests/README.md): `npm run test:formulas`
 | Tournament scheduling with overtime | the next match is timed from each fight's real length, which includes overtime | Code-reviewed, not executed |
 
 Not verifiable here: the Discord DM with the code (needs the bot) and the live Base44 database.
+
+## 7. Version 6.10 additions (executed)
+
+| Check | Result |
+|---|---|
+| Both fighters attack at once: both mid-attack 42% of the time; a 180% Speed fighter attacks 1.57x as often as a 100% one (rule says 1.64x; knock-backs account for the rest) | Pass |
+| Every earlier formula (damage, crits, HP per instant when both blows land together, potions, MP, pace, overtime, prices) | Pass |
+| Practice fights vs real fights: win rate 47.4% vs 47.5% and 46.9% vs 48.8%; length and potions match; every bet type pays back under 100% (fighters 72-74%, side bets 54-93%) over 2 x 1,400 real fights | Pass |
+| Upgrade cap 50 (9 per stat); weapon default 20% | Pass |
+| Bracket layout for 2 to 16 fighters: every match placed, no overlaps, every fighter in round 1 once | Pass |
+| Browser: Re-roll gone from the stage; mount reset and re-roll ask first, Yes disabled until ticked, Cancel changes nothing, Yes does the change | Pass |
+| Browser: bracket on a computer and a phone (no sideways page scroll); Watch; Download saved a 46 s WebM (VP9 + Opus) with its length written in | Pass |
+| npm run test:backend (10 files) | Pass |

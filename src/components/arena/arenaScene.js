@@ -1686,7 +1686,7 @@ export function createArenaScene(opts) {
   // The game's own sounds, cut from the recordings: the buff skill's charge, Skyfall's sweep and blast, the leap
   const SAMPLE_SRC = { buff: A + "sfx/buff.mp3", attack: A + "sfx/attack.mp3", dash: A + "sfx/dash.mp3" };
   const SFX = (() => {
-    let ctx = null, out = null, noiseBuf = null, on = true;
+    let ctx = null, out = null, noiseBuf = null, on = true, masterNode = null;
     const samples = {};
     // one of the game's sounds; false when it has not loaded (the made-up sound plays instead)
     // at < 0 starts that far into the sound (so a faster move still has its blast land on the blow)
@@ -1704,7 +1704,7 @@ export function createArenaScene(opts) {
         const limiter = ctx.createDynamicsCompressor();
         limiter.threshold.value = -6; limiter.knee.value = 4; limiter.ratio.value = 16; limiter.attack.value = 0.002; limiter.release.value = 0.12;
         const master = ctx.createGain(); master.gain.value = SOUND.master;
-        out = ctx.createGain(); out.connect(limiter); limiter.connect(master); master.connect(ctx.destination);
+        out = ctx.createGain(); out.connect(limiter); limiter.connect(master); master.connect(ctx.destination); masterNode = master;
         noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate); const d = noiseBuf.getChannelData(0); for (let k = 0; k < d.length; k++) d[k] = Math.random() * 2 - 1;
         for (const sec of [0.22, 0.35, 0.5, 0.7, 0.95, 1.6]) irs.push(makeIR(sec));
         for (const [k, url] of Object.entries(SAMPLE_SRC)) fetch(url).then((r) => r.arrayBuffer()).then((b) => new Promise((ok, no) => ctx.decodeAudioData(b, ok, no))).then((buf) => { samples[k] = buf; }).catch(() => {});
@@ -1849,6 +1849,8 @@ export function createArenaScene(opts) {
       play(name, arg) { if (!on || !ctx) return; if (ctx.state === "suspended") ctx.resume(); try { S[name](arg); } catch (e) { /* ignore */ } },   // silent until the first tap or key
       unlock() { if (on) ensure(); },
       toggle() { on = !on; if (on) ensure(); return on; },
+      // the mixed sound as a stream, for recording a replay (null when sound is off or not allowed yet)
+      tap() { if (!on || !ensure() || !masterNode || !ctx.createMediaStreamDestination) return null; const d = ctx.createMediaStreamDestination(); masterNode.connect(d); return { stream: d.stream, done: () => { try { masterNode.disconnect(d); } catch { /* already gone */ } } }; },
       isOn: () => on,
       get on() { return on; }
     };
@@ -2106,7 +2108,7 @@ export function createArenaScene(opts) {
       if (e.type === "first") { /* logged below */ }
       const tx = tgt >= 0 ? worldX(fr.x[tgt]) : worldX((fr.x[0] + fr.x[1]) / 2);
       let txt = "", col = "#fff", big = false, line = "", off = 0;
-      if (e.type === "first") { line = e.toss ? `<b>${S(e.who)}</b> wins the toss and strikes first` : `<b>${S(e.who)}</b> is faster and strikes first`; }
+      if (e.type === "first") { line = e.toss ? `<b>${S(e.who)}</b> wins the toss and strikes first` : `<b>${S(e.who)}</b> is faster and strikes first`; }   // fights before engine 7
       else if (e.type === "buff" && live && (SFX.play("powerUp", { side: e.who, short: F.events.some((x) => x !== e && x.type === "buff" && x.who === e.who && e.t - x.t > 0 && e.t - x.t < 0.7) }), false)) {}
       else if (e.type === "buff") { const k = SKILLS[e.skill]; txt = k.name; col = hexStr(k.color); off = 1.4; spawnFx("shock", worldX(fr.x[e.who]), k.color); line = `<span class="buff"><b>${S(e.who)}</b> casts ${k.name}${e.stacked ? " again, stacking it" : ""}: ${k.text}</span>`; if (e.stacked) txt += " ×2"; }
       else if (e.type === "potion" && (crowd(e.who, ["🍼", "🧂", "😭"], 1), snd("potion"), false)) {}
@@ -2151,6 +2153,7 @@ export function createArenaScene(opts) {
       if (line && opts.onLog) opts.onLog({ key: cur.key, t: e.t, html: line });
     }
     drawHud(w, h, fr, t);
+    if (rec) recordFrame(t);
     if (!cur.setup && t >= F.length && !cur.ended) { cur.ended = true; if (opts.onEnd) opts.onEnd(cur.key); }
   }
 
@@ -2287,6 +2290,45 @@ export function createArenaScene(opts) {
     return { lab: true, frames, events, winner: 0, how: "lab", length: L, maxhp: [s.hp, s.hp], maxmp: [s.mp, s.mp], maxpots: [s.pots, s.pots], skills: [skills, []], stats: [s, s] };
   }
 
+  // ---------- recording a replay to a video file ----------
+  // The 3D picture and the HUD are copied, right after they are drawn, onto one canvas that a
+  // MediaRecorder turns into a video (WebM, or MP4 on Safari), with the fight's sound when it is on.
+  let rec = null;
+  const REC_TYPES = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4;codecs=avc1,mp4a", "video/mp4"];
+  const recType = () => { if (typeof MediaRecorder === "undefined" || !HTMLCanvasElement.prototype.captureStream) return ""; return REC_TYPES.find((m) => { try { return MediaRecorder.isTypeSupported(m); } catch { return false; } }) || ""; };
+  function recordFrame(t) {
+    const { c, x, label } = rec, W = c.width, H = c.height;
+    x.drawImage(glCanvas, 0, 0, W, H); x.drawImage(hud, 0, 0, W, H);
+    if (label) {
+      const fs = Math.max(12, Math.round(H * 0.026));
+      x.font = `600 ${fs}px 'Barlow Condensed', sans-serif`; x.textAlign = "left"; x.textBaseline = "bottom"; x.lineWidth = 3; x.strokeStyle = "rgba(0,0,0,.8)"; x.fillStyle = "rgba(241,211,140,.92)";
+      x.strokeText(label, fs * 0.7, H - fs * 0.5); x.fillText(label, fs * 0.7, H - fs * 0.5);
+    }
+    rec.t = t;
+  }
+  function startRecording({ label = "" } = {}) {
+    const type = recType();
+    if (!type) throw new Error("This browser can't record video.");
+    if (rec) throw new Error("Already recording.");
+    const scale = Math.min(1, 1280 / Math.max(1, glCanvas.width));
+    const c = document.createElement("canvas");
+    c.width = Math.round(glCanvas.width * scale / 2) * 2; c.height = Math.round(glCanvas.height * scale / 2) * 2;
+    const x = c.getContext("2d");
+    const stream = c.captureStream(30), audio = SFX.tap ? SFX.tap() : null;
+    if (audio) for (const tr of audio.stream.getAudioTracks()) stream.addTrack(tr);
+    const mr = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 6000000 }), chunks = [];
+    mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    rec = { c, x, label, t: 0, mr };
+    mr.start(500);
+    const end = () => { rec = null; if (audio) audio.done(); for (const tr of stream.getTracks()) tr.stop(); };
+    return {
+      type, ext: type.startsWith("video/mp4") ? "mp4" : "webm",
+      time: () => (rec ? rec.t : 0),
+      stop: () => new Promise((ok) => { mr.onstop = () => { end(); ok(new Blob(chunks, { type: type.split(";")[0] })); }; try { mr.stop(); } catch { end(); ok(new Blob(chunks, { type: type.split(";")[0] })); } }),
+      cancel: () => { mr.onstop = null; try { mr.stop(); } catch { /* stopped */ } end(); }
+    };
+  }
+
   // ---------- what the page uses ----------
   function show(spec) {
     const { a, b } = spec;
@@ -2315,6 +2357,8 @@ export function createArenaScene(opts) {
   return {
     ready,
     show,
+    canRecord: () => !!recType(),
+    startRecording,
     setSound: (want) => { if (SFX.isOn ? SFX.isOn() !== want : true) SFX.toggle(); },
     dispose() {
       alive = false;

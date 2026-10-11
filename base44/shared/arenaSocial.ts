@@ -28,7 +28,8 @@ export async function pulse(b, me, scope: string, here: boolean) {
   for (const x of seen.filter((x) => now - (x.seen || 0) > 10 * 60000).slice(0, 5)) E(b).ArenaPresence.delete(x.id).catch(() => {});
   for (const x of recent.filter((x) => now - (x.at || 0) > KEEP_MS).slice(0, 5)) E(b).ArenaReaction.delete(x.id).catch(() => {});
   return {
-    watching: seen.filter((x) => now - (x.seen || 0) < SEEN_MS).length,
+    // members, not rows: several tabs pulsing at the same moment can leave a duplicate row for a while
+    watching: new Set(seen.filter((x) => now - (x.seen || 0) < SEEN_MS).map((x) => x.member_id)).size,
     reactions: recent.filter((x) => now - (x.at || 0) < SHOW_MS).map((x) => ({ id: x.id, name: x.name, emoji: x.emoji, side: x.side ?? -1, at: x.at, mine: x.member_id === me.id })),
     server_now: new Date(now).toISOString()
   };

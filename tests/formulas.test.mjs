@@ -111,6 +111,32 @@ check("Overtime damage", "every overtime hit x(2 + 1 per 5 s of overtime)", `${o
 check("Overtime potions", "no potions in overtime", `${otFights} fights`, "0 potions", `${otPot}`, otPot === 0);
 check("Overtime ends", "always a winner; at most 90 s of overtime", "300 fights", "0 without a winner, 0 too long", `${otNoWinner} without a winner, ${otLong} too long, ${otHpEnd} decided on HP after 90 s`, otNoWinner === 0 && otLong === 0);
 
+{
+  const ru = E.mulberry32(3); let capBad = 0;
+  for (let k = 0; k < 300; k++) {
+    const ups = {}; let got = 0;
+    for (let e = 1; e < 80; e++) if (E.rollUpgrade(ups, ru)) got++;
+    if (got !== 50 || Object.values(ups).some((v) => v > 9)) capBad++;
+  }
+  check("Upgrade cap", "every entry after the first rolls one upgrade, at most 50 in all and 9 per stat", "300 fighters, 79 entries each", "50 upgrades each", `${capBad} wrong`, capBad === 0);
+  check("Weapon success rate", "default chance per try", "DEFAULT_VALUES", "20%", `${E.DEFAULT_VALUES.weapon.chance * 100}%`, E.DEFAULT_VALUES.weapon.chance === 0.2);
+  // simultaneous: how often is one fighter mid-attack while the other is too? and does Speed set how often each attacks?
+  const plain = (spdRolls) => ({ entries: 26, ups: { hp: 9, def: 9, spd: spdRolls }, weapon: 0, skills: [], pet: 0, mount: null });
+  let both = 0, frames = 0, nA = 0, nB = 0, tA = 0;
+  const rs = E.mulberry32(11);
+  for (let k = 0; k < 80; k++) {
+    const f = E.simulate(plain(0), plain(8), (rs() * 2 ** 32) >>> 0, { draws: false });
+    const busy = (i, t) => { const c = [...f.events].reverse().find((e) => e.who === i && e.type === "cast" && e.t <= t); return c && t - c.t < (E.CAST + E.SPIN) * c.k; };
+    for (const fr of f.frames) { frames++; if (busy(0, fr.t) && busy(1, fr.t)) both++; }
+    nA += f.events.filter((e) => e.who === 0 && (e.type === "hit" || e.type === "miss")).length;
+    nB += f.events.filter((e) => e.who === 1 && (e.type === "hit" || e.type === "miss")).length;
+    tA++;
+  }
+  const ratio = nB / nA, want = (E.CAST + E.SPIN + E.RECOVER + E.GAP) / ((E.CAST + E.SPIN + E.RECOVER) * E.paceOf(180) + E.GAP);
+  check("Both attack at once", "each fighter runs its own attacks; nobody waits for a turn", `${frames} frames`, "both charging or swinging at the same moment often", `${(both / frames * 100).toFixed(1)}% of the time`, both / frames > 0.2);
+  check("Speed sets attack rate", "a 180% Speed fighter attacks (round at 100%) / (round at 180%) times as often", `${tA} fights`, `${want.toFixed(2)}x`, `${ratio.toFixed(2)}x`, Math.abs(ratio - want) < 0.12);
+}
+
 check("Fighter stats", "base + rolls x per-roll + pet (full x lv/8) + mount (lv x 3%) + weapon (+15% ATK, +5 crit a level)", "1,500 fights, 3,000 builds", "0 differences", `${statBad} differences`, statBad === 0);
 check("Damage", "round(max(ATK x 0.2, ATK - DEF x 0.5) x 0.46 x charge x crit), ATK +15% Spirits, +25% Blood Lust", `${dmgN} hits`, "every hit within rounding", `${dmgBad} off${worstDmg ? ` (worst ${worstDmg.ref} vs ${worstDmg.full})` : ""}`, dmgBad === 0);
 check("Shield", "a shielded hit = round(full x 0.5), at least 1", "all shielded hits", "exact", dmgBad === 0 ? "exact" : "see damage", dmgBad === 0);

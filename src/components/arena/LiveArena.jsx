@@ -3,7 +3,7 @@ import { Loader2, History, Radio } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import { useGuild, errorText } from "@/lib/GuildContext";
-import { simulate, LIMIT } from "@/lib/arenaEngine";
+import { simulate, LIMIT, ENGINE_VERSION } from "@/lib/arenaEngine";
 import { cn } from "@/lib/utils";
 import ArenaRules from "./ArenaRules";
 import { ArenaStage, ReplayStage, FighterCard, BetSlip, MyBets, BetBoard, asFighter, fmt, fmtPrice, lookColor, useServerClock, useArenaCrowd, useWide } from "./arenaUi";
@@ -109,7 +109,7 @@ export default function LiveArena({ balance }) {
     if (!replay) return null;
     const a = { ...replay.builds[0], name: replay.f[0].name, look: replay.f[0].look, avatar: replay.f[0].avatar };
     const b = { ...replay.builds[1], name: replay.f[1].name, look: replay.f[1].look, avatar: replay.f[1].avatar };
-    return { key: `replay-${replay.r}-${replay.started}`, a, b, fight: simulate(a, b, replay.seed, { draws: true }) };
+    return { key: `replay-${replay.r}-${replay.started}`, a, b, fight: simulate(a, b, replay.seed, { draws: true }), label: `BLACKLIST INTROBOYS · Live Arena fight ${replay.r}: ${a.name} vs ${b.name}`, fileName: `live-arena-fight-${replay.r}-${a.name}-vs-${b.name}` };
   }, [replay]);
   const crowd = useArenaCrowd("live");
   const wide = useWide();
@@ -238,7 +238,7 @@ export default function LiveArena({ balance }) {
                     ))}
                   </span>
                   <span className="shrink-0 text-xs text-mist">{r.winner === -1 ? "Draw" : r.how === "ko" ? "KO" : "Time"} · {Number(r.length).toFixed(0)} s</span>
-                  {r.seed != null && r.builds && (
+                  {r.seed != null && r.builds && r.e === ENGINE_VERSION && (
                     <button type="button" onClick={() => { setReplay({ ...r, started: Date.now() }); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="flex h-8 shrink-0 items-center gap-1 rounded border border-bronze/45 px-2 text-xs text-mist hover:border-gold hover:text-gold">
                       <History className="h-3.5 w-3.5" /> Watch
                     </button>
