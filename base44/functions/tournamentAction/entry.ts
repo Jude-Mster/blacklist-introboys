@@ -4,8 +4,8 @@ import {
   getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, UserError, errorResponse, resilient
 } from '../../shared/points.ts';
 import {
-  ENGINE_VERSION, LOOK_KEYS, LIMIT, COSTS, WEAPON, PET, MOUNT, SKILLS, SKILL_IDS, MAX_SKILLS, UPGRADES,
-  DEFAULT_VALUES, normValues, rollUpgrade, simulate, outcomeOf, priceMatch
+  ENGINE_VERSION, LOOK_KEYS, LIMIT, WEAPON, PET, MOUNT, SKILLS, SKILL_IDS, MAX_SKILLS, UPGRADES,
+  DEFAULT_VALUES, normValues, normCosts, rollUpgrade, simulate, outcomeOf, priceMatch
 } from '../../shared/arenaEngine.ts';
 import { placeBets, removeBets, payMine, payOthers, betBoard, arenaLimit, arenaMin, type Resolve } from '../../shared/arenaBets.ts';
 import { postSystem, GUILD_CHANNEL } from '../../shared/chat.ts';
@@ -265,7 +265,7 @@ function matchStatus(m, now: number) {
 function publicTour(t, now: number, leader: boolean) {
   const base = {
     id: t.id, title: t.title, status: t.status, starts_at: t.starts_at || null, started_at: t.started_at || null, ends_at: t.ends_at || null,
-    values: normValues(t.values), prizes: (t.prizes || []).map((p) => ({ label: p.label, kind: p.kind, points: p.points || 0, from_bank: !!p.from_bank })),
+    values: normValues(t.values), costs: normCosts(t.costs), prizes: (t.prizes || []).map((p) => ({ label: p.label, kind: p.kind, points: p.points || 0, from_bank: !!p.from_bank })),
     entrant_count: t.entrant_count || 0, bank_in: t.bank_in || 0, results: t.results || [], cancel_reason: t.cancel_reason || '',
     finished_at: t.finished_at || null, announced_at: leader ? t.announced_at || null : undefined, engine: t.engine || ENGINE_VERSION,
     repeat: cleanRepeat(t.repeat)
@@ -314,13 +314,19 @@ async function refundAll(b, t, entrants, why: string) {
       total += x.spent;
     } catch (e) { console.error('tournament refund failed', t.id, x.member_id, x.spent, String(e && e.message || e)); }
   }
-  if (total) await bankMove(b, -total, `Refunds: ${t.title}`).catch((e) => console.error('bank refund note failed', e));
+  // held on the fighters (6.7 on): never went into the bank, so nothing comes out of it
+  if (total && !t.bank_deferred) await bankMove(b, -total, `Refunds: ${t.title}`).catch((e) => console.error('bank refund note failed', e));
+  else if (total) await bankMove(b, 0, `Refunded ${fmt(total)} points: ${t.title}`).catch(() => {});
   return total;
 }
 async function cancelTour(b, t, reason: string, refund: boolean, refundWhy: string, repeatNext = true) {
   const entrants = await entrantsOf(b, t.id);
   await E(b).Tournament.update(t.id, { status: 'cancelled', cancel_reason: reason, finished_at: iso(Date.now()) });
   if (refund) await refundAll(b, t, entrants, refundWhy);
+  else if (t.bank_deferred) {
+    const paid = entrants.reduce((a, x) => a + (x.spent || 0), 0);
+    if (paid) await bankMove(b, paid, `${t.title} (cancelled): ${fmt(paid)} points paid in, kept`).catch((e) => console.error('bank deposit failed', t.id, paid, e));
+  }
   await discardReserved(b, await reservedFor(b, t.id));
   await clearEntrants(b, t.id);
   await postEverywhere(b, `Tournament "${t.title}" cancelled. ${reason}`, () => announceTournamentCancelled(t.title, reason));
@@ -341,8 +347,8 @@ async function scheduleNext(b, t) {
     while (next < Date.now() + 60000) next += step;
     const prizes = (t.prizes || []).map((x) => ({ ...x }));
     const n = await E(b).Tournament.create({
-      title: t.title, status: 'signup', starts_at: iso(next), values: normValues(t.values), prizes, repeat: t.repeat,
-      entrant_count: 0, bank_in: 0, created_by: t.created_by || '', engine: ENGINE_VERSION
+      title: t.title, status: 'signup', starts_at: iso(next), values: normValues(t.values), costs: normCosts(t.costs), prizes, repeat: t.repeat,
+      entrant_count: 0, bank_in: 0, bank_deferred: true, created_by: t.created_by || '', engine: ENGINE_VERSION
     });
     await E(b).Tournament.update(t.id, { next_id: n.id }).catch(() => {});
     await runStockLocked(b, async () => {
@@ -352,8 +358,8 @@ async function scheduleNext(b, t) {
       }
     }).catch((e) => console.error('repeat: stock lock failed', e));
     const when = new Date(next).toISOString().replace('T', ' ').slice(0, 16);
-    await postSystem(b, GUILD_CHANNEL, `The next "${t.title}" is open for sign-up. It starts ${when} UTC. Entry ${fmt(COSTS.entry)} points.`);
-    try { await announceTournamentOpen(n, COSTS.entry, false); } catch (e) { console.error('repeat announce failed', e); }
+    await postSystem(b, GUILD_CHANNEL, `The next "${t.title}" is open for sign-up. It starts ${when} UTC. Entry ${fmt(normCosts(n.costs).entry)} points.`);
+    try { await announceTournamentOpen(n, normCosts(n.costs).entry, false); } catch (e) { console.error('repeat announce failed', e); }
     return n;
   } catch (e) {
     console.error('repeat: next tournament failed', t.id, String(e && e.message || e));
@@ -370,6 +376,7 @@ async function startTour(b, t) {
     return cancelTour(b, t, `Only 1 fighter signed up (${x.name}), so there is no one to fight. ${x.name}'s ${fmt(x.spent || 0)} points were refunded.`, true, 'only one fighter');
   }
   const list = entrants.slice(0, MAX_ENTRANTS);
+  const paid = entrants.reduce((a, x) => a + (x.spent || 0), 0);
   const field = list.map((x) => ({ member_id: x.member_id, name: x.name, avatar: x.avatar || '', role: x.role || 'member', look: x.look, build: buildOf(x) }));
   const values = normValues(t.values);
   const plan = drawBracket(field.length);
@@ -380,9 +387,11 @@ async function startTour(b, t) {
   const first = advance(begun, now);
   const matches = first ? first.matches : plan.matches;
   await E(b).Tournament.update(t.id, {
-    status: 'running', engine: ENGINE_VERSION, started_at: iso(now), field, matches, ends_at: '', entrant_count: field.length
+    status: 'running', engine: ENGINE_VERSION, started_at: iso(now), field, matches, ends_at: '', entrant_count: field.length, bank_in: paid
   });
-  if (t.bank_in) await bankMove(b, 0, `${t.title}: ${fmt(t.bank_in)} points paid in by ${field.length} fighters`).catch(() => {});
+  // every point the fighters paid goes into the bank now, in one move (older tournaments paid it on each purchase)
+  if (t.bank_deferred) { if (paid) await bankMove(b, paid, `${t.title}: ${fmt(paid)} points paid in by ${entrants.length} fighters`).catch((e) => console.error('bank deposit failed', t.id, paid, e)); }
+  else if (t.bank_in) await bankMove(b, 0, `${t.title}: ${fmt(t.bank_in)} points paid in by ${field.length} fighters`).catch(() => {});
   const firstOpen = new Date(now + LEAD_IN_SECONDS * 1000);
   await postEverywhere(b, `Tournament "${t.title}" has started: ${field.length} fighters, ${matches.length} matches. The first match opens for bets at ${firstOpen.toISOString().slice(11, 16)} UTC.`,
     () => announceTournamentStarted(t.title, field, matches.length, firstOpen.getTime()));
@@ -455,8 +464,9 @@ async function tick(b, t) {
         // "Starts in 10 minutes": once, in guild chat and on Discord
         await E(b).Tournament.update(cur.id, { reminded_at: iso(Date.now()) });
         const mins = Math.max(1, Math.round(left / 60000));
+        cur.entrant_count = (await entrantsOf(b, cur.id)).length;
         await postEverywhere(b, `Tournament "${cur.title}" starts in ${mins} minute${mins === 1 ? '' : 's'}! ${fmt(cur.entrant_count || 0)} fighters signed up. Last chance to sign up or upgrade.`,
-          () => announceTournamentSoon(cur, mins, COSTS.entry));
+          () => announceTournamentSoon(cur, mins, normCosts(cur.costs).entry));
       }
       if (cur.status === 'signup' && cur.starts_at && Date.now() >= tms(cur.starts_at)) await startTour(b, cur);
       else if (cur.status === 'running') {
@@ -494,17 +504,36 @@ function freeLook(taken: Set<string>, not: string) {
   return pool[Math.floor(rand() * pool.length)];
 }
 
-async function buy(b, t, me, item: string, count: number) {
+// Purchases only lock the member who is buying (their points and their fighter), never the whole
+// tournament: many members can buy at once without queueing behind each other, and each purchase is a
+// handful of quick calls. The tournament row isn't written either; its counts come from the fighters.
+// Points paid are held on each fighter (spent) and go into the Arena bank in one move when the
+// tournament starts (or is cancelled without refunds). Tournaments opened before 6.7 still pay the bank
+// on each purchase (bank_deferred is not set on them).
+async function stillSignup(b, tourId: string) {
+  const t = await E(b).Tournament.get(tourId).catch(() => null);
+  return !!t && t.status === 'signup';
+}
+async function buy(b, t, me, item: string, count: number, shown?: number) {
   const values = normValues(t.values);
-  return lockTour(b, t.id, async () => {
+  const COSTS = normCosts(t.costs);   // this tournament's prices, set by the Guild Leader
+  return lockMember(b, me.id, async () => {
     const cur = await E(b).Tournament.get(t.id);
     if (cur.status !== 'signup') throw new UserError('The tournament has started, so the shop is closed.');
-    const { items } = await E(b).TourEntrant.filter({ tour_id: cur.id, member_id: me.id }, { limit: 2 });
-    let x = items[0] || null;
+    const mineRows = (await E(b).TourEntrant.filter({ tour_id: cur.id, member_id: me.id }, { limit: 2 })).items;
+    let x = mineRows[0] || null;
     if (!x && item !== 'entry') throw new UserError('Buy your first entry to get your fighter first.');
-    if (!x && (cur.entrant_count || 0) >= MAX_ENTRANTS) throw new UserError(`The tournament is full (${MAX_ENTRANTS} fighters).`);
+    let all = null;
+    if (!x) {
+      all = (await E(b).TourEntrant.filter({ tour_id: cur.id }, { limit: 1000 })).items;
+      if (all.filter((y) => (y.entries || 0) > 0).length >= MAX_ENTRANTS) throw new UserError(`The tournament is full (${MAX_ENTRANTS} fighters).`);
+    }
     const ups = { ...(x && x.ups || {}) };
     const next = x ? { entries: x.entries || 0, ups, weapon: x.weapon || 0, weapon_tries: x.weapon_tries || 0, skills: [...(x.skills || [])], pet: x.pet || 0, mount: x.mount && x.mount.lv ? { ...x.mount } : null, mount_resets: x.mount_resets || 0 } : { entries: 0, ups, weapon: 0, weapon_tries: 0, skills: [], pet: 0, mount: null, mount_resets: 0 };
+    const KEY = { entry: 'entry', weapon: 'weaponTry', skill: 'skill', pet: 'pet', mount: 'mountLevel', mountReset: 'mountReset' };
+    if (!KEY[item]) throw new UserError('Unknown item.');
+    // the page sends the price it showed; if the Guild Leader has changed it since, say so instead of charging
+    if (shown != null && Number(shown) !== COSTS[KEY[item]]) throw new UserError(`The price just changed to ${fmt(COSTS[KEY[item]])} points. Check it and try again.`);
     let cost = 0, what = '';
     const rolled: any = { item };
     if (item === 'entry') {
@@ -548,45 +577,47 @@ async function buy(b, t, me, item: string, count: number) {
       next.mount.pair = p; next.mount_resets++;
       rolled.old = old; rolled.mount = { ...next.mount };
       cost = COSTS.mountReset; what = 'a mount stat reset';
-    } else throw new UserError('Unknown item.');
+    }
     if (me.banned) throw new UserError('You are banned from the games.', 403);
 
-    return lockMember(b, me.id, async () => {
-      let balance;
-      try { ({ balance } = await changePoints(b, me.id, -cost, 'tournament', `Tournament: ${what}: ${cur.title}`, null)); }
-      catch (e) { throw /not enough/i.test(String(e && e.message)) ? new UserError('Not enough points for that.') : e; }
-      try {
-        if (!x) {
-          const taken = new Set((await E(b).TourEntrant.filter({ tour_id: cur.id }, { limit: 1000 })).items.map((y) => y.look));
-          x = await E(b).TourEntrant.create({
-            tour_id: cur.id, member_id: me.id, name: String(me.discord_name || me.discord_id).slice(0, 32), avatar: me.avatar_url || '', role: me.role,
-            look: freeLook(taken, ''), rerolled: false, ...next, spent: cost
-          });
-          rolled.joined = true;
-          await E(b).Tournament.update(cur.id, { entrant_count: (cur.entrant_count || 0) + 1, bank_in: (cur.bank_in || 0) + cost });
-        } else {
-          x = await E(b).TourEntrant.update(x.id, { ...next, spent: (x.spent || 0) + cost });
-          await E(b).Tournament.update(cur.id, { bank_in: (cur.bank_in || 0) + cost });
-        }
-      } catch (e) {
-        await changePoints(b, me.id, cost, 'tournament', `Tournament refund, purchase not saved: ${cur.title}`, null).catch(() => {});
-        throw new UserError("That purchase couldn't be saved, so your points were returned. Try again.");
-      }
-      await bankMove(b, cost).catch((e) => console.error('bank deposit failed', cur.id, cost, e));
-      return { balance, me: x, rolled };
-    });
+    let balance;
+    try { ({ balance } = await changePoints(b, me.id, -cost, 'tournament', `Tournament: ${what}: ${cur.title}`, null)); }
+    catch (e) { throw /not enough/i.test(String(e && e.message)) ? new UserError('Not enough points for that.') : e; }
+    const before = x;
+    try {
+      if (!x) {
+        const taken = new Set(all.map((y) => y.look));
+        x = await E(b).TourEntrant.create({
+          tour_id: cur.id, member_id: me.id, name: String(me.discord_name || me.discord_id).slice(0, 32), avatar: me.avatar_url || '', role: me.role,
+          look: freeLook(taken, ''), rerolled: false, ...next, spent: cost
+        });
+        rolled.joined = true;
+      } else x = await E(b).TourEntrant.update(x.id, { ...next, spent: (x.spent || 0) + cost });
+    } catch (e) {
+      await changePoints(b, me.id, cost, 'tournament', `Tournament refund, purchase not saved: ${cur.title}`, null).catch(() => {});
+      throw new UserError("That purchase couldn't be saved, so your points were returned. Try again.");
+    }
+    // The tournament may have started while this was being bought. Then the purchase is undone and refunded.
+    if (!(await stillSignup(b, cur.id))) {
+      if (before) await E(b).TourEntrant.update(before.id, { entries: before.entries || 0, ups: before.ups || {}, weapon: before.weapon || 0, weapon_tries: before.weapon_tries || 0, skills: before.skills || [], pet: before.pet || 0, mount: before.mount || null, mount_resets: before.mount_resets || 0, spent: before.spent || 0 }).catch(() => {});
+      else await E(b).TourEntrant.delete(x.id).catch(() => {});
+      await changePoints(b, me.id, cost, 'tournament', `Tournament refund, it started during the purchase: ${cur.title}`, null).catch(() => {});
+      throw new UserError('The tournament started while you were buying, so that purchase was undone and refunded.');
+    }
+    if (!cur.bank_deferred) await bankMove(b, cost).catch((e) => console.error('bank deposit failed', cur.id, cost, e));
+    return { balance, me: x, rolled };
   });
 }
 
 async function reroll(b, t, me) {
-  return lockTour(b, t.id, async () => {
+  return lockMember(b, me.id, async () => {
     const cur = await E(b).Tournament.get(t.id);
     if (cur.status !== 'signup') throw new UserError('The tournament has started.');
-    const { items } = await E(b).TourEntrant.filter({ tour_id: cur.id, member_id: me.id }, { limit: 2 });
-    const x = items[0];
+    const all = (await E(b).TourEntrant.filter({ tour_id: cur.id }, { limit: 1000 })).items;
+    const x = all.find((y) => y.member_id === me.id);
     if (!x) throw new UserError('Buy your first entry to get your fighter first.');
     if (x.rerolled) throw new UserError('You have used your free re-roll.');
-    const taken = new Set((await E(b).TourEntrant.filter({ tour_id: cur.id }, { limit: 1000 })).items.filter((y) => y.id !== x.id).map((y) => y.look));
+    const taken = new Set(all.filter((y) => y.id !== x.id).map((y) => y.look));
     const look = freeLook(taken, x.look);
     const row = await E(b).TourEntrant.update(x.id, { look, rerolled: true });
     return { me: row, old: x.look };
@@ -621,7 +652,7 @@ export default async function(req) {
     // A quick look for the menu badge and the guild hall banner (no clock work).
     if (p.action === 'status') {
       const t = await activeTour(b);
-      return Response.json({ tournament: t ? { id: t.id, title: t.title, status: t.status, starts_at: t.starts_at || null, ends_at: t.ends_at || null, entrant_count: t.entrant_count || 0, prizes: (t.prizes || []).map((x) => x.label) } : null, server_now: iso(Date.now()), entry: COSTS.entry });
+      return Response.json({ tournament: t ? { id: t.id, title: t.title, status: t.status, starts_at: t.starts_at || null, ends_at: t.ends_at || null, entrant_count: t.entrant_count || 0, prizes: (t.prizes || []).map((x) => x.label) } : null, server_now: iso(Date.now()), entry: normCosts(t && t.costs).entry });
     }
 
     if (p.action === 'state') {
@@ -629,11 +660,15 @@ export default async function(req) {
       // it just ended: a repeating one may have opened the next
       if (t && !['signup', 'running', 'paying'].includes(t.status)) t = await activeTour(b);
       const now = Date.now();
-      const out: any = { server_now: iso(now), costs: COSTS, limit: arenaLimit(settings), min_bet: arenaMin(settings), bet_seconds: BET_SECONDS, intro: INTRO_SECONDS, result_seconds: RESULT_SECONDS, engine: ENGINE_VERSION };
+      const out: any = { server_now: iso(now), costs: normCosts(t && t.costs), limit: arenaLimit(settings), min_bet: arenaMin(settings), bet_seconds: BET_SECONDS, intro: INTRO_SECONDS, result_seconds: RESULT_SECONDS, engine: ENGINE_VERSION };
       out.tournament = t ? publicTour(t, now, leader) : null;
       if (!t) { const last = await lastTour(b); out.last = last ? publicTour(last, now, false) : null; }
       if (t && t.status === 'signup') {
         const list = await entrantsOf(b, t.id);
+        // the counts come from the fighters themselves (purchases don't write the tournament row)
+        const paid = list.reduce((a, x) => a + (x.spent || 0), 0);
+        out.tournament.entrant_count = list.length; out.tournament.bank_in = paid;
+        if (list.length !== (t.entrant_count || 0) || paid !== (t.bank_in || 0)) E(b).Tournament.update(t.id, { entrant_count: list.length, bank_in: paid }).catch(() => {});
         out.entrants = list.map(publicEntrant).sort((x, y) => y.entries - x.entries);
         const mine = list.find((x) => x.member_id === me.id);
         out.me = mine ? { ...publicEntrant(mine), rerolled: !!mine.rerolled, weapon_tries: mine.weapon_tries || 0, mount_resets: mine.mount_resets || 0 } : null;
@@ -664,10 +699,11 @@ export default async function(req) {
 
     // ---------- members ----------
     if (p.action === 'buy' || p.action === 'reroll') {
-      const t = await activeTour(b);
+      // the page says which tournament (one read instead of three searches)
+      const t = p.tour_id ? await E(b).Tournament.get(String(p.tour_id)).catch(() => null) : await activeTour(b);
       if (!t || t.status !== 'signup') throw new UserError('There is no tournament open for sign-up.');
       if (me.banned) throw new UserError('You are banned from the games.', 403);
-      const res = p.action === 'buy' ? await buy(b, t, me, String(p.item || ''), Number(p.count || 1)) : await reroll(b, t, me);
+      const res = p.action === 'buy' ? await buy(b, t, me, String(p.item || ''), Number(p.count || 1), p.price == null ? undefined : Number(p.price)) : await reroll(b, t, me);
       return Response.json({ ok: true, ...res, me: res.me ? { ...publicEntrant(res.me), rerolled: !!res.me.rerolled, weapon_tries: res.me.weapon_tries || 0, mount_resets: res.me.mount_resets || 0 } : null });
     }
 
@@ -719,8 +755,8 @@ export default async function(req) {
         await assertNewCode(b, sp.code);
       }
       const t = await E(b).Tournament.create({
-        title, status: 'signup', starts_at: starts ? iso(starts) : '', values: normValues(p.values), prizes, repeat,
-        entrant_count: 0, bank_in: 0, created_by: me.id, engine: ENGINE_VERSION
+        title, status: 'signup', starts_at: starts ? iso(starts) : '', values: normValues(p.values), costs: normCosts(p.costs), prizes, repeat,
+        entrant_count: 0, bank_in: 0, bank_deferred: true, created_by: me.id, engine: ENGINE_VERSION
       });
       try {
         await runStockLocked(b, async () => {
@@ -731,7 +767,7 @@ export default async function(req) {
         await E(b).Tournament.delete(t.id).catch(() => {});
         throw e;
       }
-      await postSystem(b, GUILD_CHANNEL, `Tournament "${title}" is open for sign-up! Entry ${fmt(COSTS.entry)} points. Top prize: ${prizes[0] ? prizes[0].label : 'glory'}.`);
+      await postSystem(b, GUILD_CHANNEL, `Tournament "${title}" is open for sign-up! Entry ${fmt(normCosts(t.costs).entry)} points. Top prize: ${prizes[0] ? prizes[0].label : 'glory'}.`);
       return Response.json({ ok: true, id: t.id });
     }
 
@@ -751,6 +787,7 @@ export default async function(req) {
           update.starts_at = starts ? iso(starts) : '';
         }
         if ('values' in p) update.values = normValues(p.values);
+        if ('costs' in p) update.costs = normCosts(p.costs);
         if ('repeat' in p) update.repeat = cleanRepeat(p.repeat);
         if ((update.repeat ?? cleanRepeat(cur.repeat)) !== 'none' && !('starts_at' in update ? update.starts_at : cur.starts_at)) throw new UserError('A repeating tournament needs a start time.');
         if ('prizes' in p) {
@@ -806,7 +843,7 @@ export default async function(req) {
       if (!announceWebhookUrl()) throw new UserError('Discord announcements are not connected yet. Add the DISCORD_ANNOUNCE_WEBHOOK_URL secret first.');
       if (t.status !== 'signup') throw new UserError('Only a tournament open for sign-up can be posted.');
       if (t.announced_at && Date.now() - tms(t.announced_at) < 60000) throw new UserError('It was just posted. Wait a minute before posting again.');
-      const okd = await announceTournamentOpen(t, COSTS.entry, p.ping === true);
+      const okd = await announceTournamentOpen(t, normCosts(t.costs).entry, p.ping === true);
       if (!okd) throw new UserError("Discord didn't accept the post. Check the announcements webhook and try again.");
       const at = iso(Date.now());
       await E(b).Tournament.update(t.id, { announced_at: at });

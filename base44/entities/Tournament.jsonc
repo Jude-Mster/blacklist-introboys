@@ -26,6 +26,10 @@
       "type": "object",
       "description": "What each upgrade gives in this tournament: ups and weapon (see arenaEngine DEFAULT_VALUES)"
     },
+    "costs": {
+      "type": "object",
+      "description": "This tournament's prices in points, set by the Guild Leader: entry, skill, weaponTry, pet, mountLevel, mountReset (see arenaEngine COSTS)"
+    },
     "prizes": {
       "type": "array",
       "items": {
@@ -41,6 +45,10 @@
       "type": "integer",
       "default": 0,
       "description": "Points members paid into the bank for this tournament"
+    },
+    "bank_deferred": {
+      "type": "boolean",
+      "description": "6.7 on: points paid by fighters are held on them (spent) and go into the Arena bank when the tournament starts"
     },
     "engine": {
       "type": "integer"

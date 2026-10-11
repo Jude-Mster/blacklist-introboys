@@ -15,7 +15,7 @@
 /* eslint-disable */
 import * as THREE from "three";
 import {
-  SKILLS, WEAPON, MOUNT, PET, petGrowth, CHARGE, BUFF_STACK, BUFF_CAST, CAST, SPIN, RECOVER, POTION, DT, LIMIT, mulberry32, statsOf as engineStats
+  SKILLS, WEAPON, MOUNT, PET, petGrowth, CHARGE, BUFF_STACK, BUFF_CAST, CAST, SPIN, RECOVER, POTION, DT, LIMIT, mulberry32, speedNow, paceOf, statsOf as engineStats
 } from "@/lib/arenaEngine";
 
 const A = "/arena/";
@@ -166,6 +166,78 @@ export function createArenaScene(opts) {
     const pl = new THREE.PointLight(0xff8a3a, 0.6, 9); pl.position.set(px, 2.2, -12.5); scene.add(pl);
   }
 
+  // ---------- the Character Lab ----------
+  // Where a member tries out their tournament fighter on their own: a dark test chamber with a lit grid floor,
+  // a turning rune platform, a scanner ring that sweeps up the body and beams of light from above. Shown
+  // instead of the arena (the arena's walls, ring, braziers and embers are hidden; the sky and moon light stay).
+  const ARENA_ENV = scene.children.filter((o) => !o.isHemisphereLight && !o.isDirectionalLight);
+  const lab = new THREE.Group(); lab.visible = false; scene.add(lab);
+  const LAB = { cyan: 0x46d8ff, crimson: 0xe0283a };
+  {
+    const gridTex = texCanvas(1024, 1024, (x, w, h) => {
+      x.fillStyle = "#0a0e15"; x.fillRect(0, 0, w, h);
+      for (let k = 0; k <= 16; k++) { const v = k * w / 16; x.strokeStyle = k % 4 ? "rgba(70,200,255,.13)" : "rgba(70,200,255,.32)"; x.lineWidth = k % 4 ? 1.5 : 3; x.beginPath(); x.moveTo(v, 0); x.lineTo(v, h); x.stroke(); x.beginPath(); x.moveTo(0, v); x.lineTo(w, v); x.stroke(); }
+      const g = x.createRadialGradient(w / 2, h / 2, w * 0.12, w / 2, h / 2, w * 0.5); g.addColorStop(0, "rgba(10,14,21,0)"); g.addColorStop(1, "rgba(4,6,10,1)"); x.fillStyle = g; x.fillRect(0, 0, w, h);
+    });
+    const lf = new THREE.Mesh(new THREE.PlaneGeometry(34, 34), new THREE.MeshStandardMaterial({ map: gridTex, roughness: 0.35, metalness: 0.6 }));
+    lf.rotation.x = -Math.PI / 2; lf.position.y = FLOOR - 0.32; lf.receiveShadow = true; lab.add(lf);
+    // the platform the fighter stands on
+    const ped = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.8, 0.32, 48), new THREE.MeshStandardMaterial({ color: 0x18202c, roughness: 0.75, metalness: 0.35 }));
+    ped.position.y = FLOOR - 0.16; ped.receiveShadow = true; lab.add(ped);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(2.62, 0.035, 8, 96), new THREE.MeshBasicMaterial({ color: LAB.cyan, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+    rim.rotation.x = -Math.PI / 2; rim.position.y = FLOOR - 0.04; lab.add(rim);
+    const runeTex = texCanvas(1024, 1024, (x, w, h) => {
+      x.translate(w / 2, h / 2); x.lineCap = "round";
+      const ring = (r, lw, col) => { x.strokeStyle = col; x.lineWidth = lw; x.beginPath(); x.arc(0, 0, r, 0, Math.PI * 2); x.stroke(); };
+      ring(490, 6, "rgba(70,216,255,.85)"); ring(455, 2, "rgba(70,216,255,.6)"); ring(300, 4, "rgba(224,40,58,.75)"); ring(270, 1.5, "rgba(224,40,58,.5)"); ring(120, 3, "rgba(70,216,255,.5)");
+      for (let k = 0; k < 72; k++) { const a = k / 72 * Math.PI * 2, l = k % 6 ? 14 : 30; x.strokeStyle = "rgba(70,216,255,.75)"; x.lineWidth = k % 6 ? 2 : 4; x.beginPath(); x.moveTo(Math.cos(a) * (455 - l), Math.sin(a) * (455 - l)); x.lineTo(Math.cos(a) * 455, Math.sin(a) * 455); x.stroke(); }
+      x.strokeStyle = "rgba(224,40,58,.7)"; x.lineWidth = 3; x.beginPath();
+      for (let k = 0; k <= 8; k++) { const a = k * 3 / 8 * Math.PI * 2; const px = Math.cos(a) * 300, py = Math.sin(a) * 300; if (k) x.lineTo(px, py); else x.moveTo(px, py); } x.stroke();
+      for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2; x.save(); x.rotate(a); x.fillStyle = "rgba(70,216,255,.55)"; x.fillRect(372, -10, 46, 20); x.fillStyle = "rgba(10,14,21,1)"; x.fillRect(380, -4, 30, 8); x.restore(); }
+    });
+    const rune = new THREE.Mesh(new THREE.PlaneGeometry(4.9, 4.9), new THREE.MeshBasicMaterial({ map: runeTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    rune.rotation.x = -Math.PI / 2; rune.position.y = FLOOR + 0.012; lab.add(rune); LAB.rune = rune;
+    // the scanner: a thin ring of light that sweeps up the body and fades
+    const scan = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.022, 6, 80), new THREE.MeshBasicMaterial({ color: LAB.cyan, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }));
+    scan.rotation.x = -Math.PI / 2; lab.add(scan); LAB.scan = scan;
+    const scanDisc = new THREE.Mesh(new THREE.CircleGeometry(1.25, 48), new THREE.MeshBasicMaterial({ color: LAB.cyan, transparent: true, opacity: 0.08, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    scanDisc.rotation.x = -Math.PI / 2; lab.add(scanDisc); LAB.scanDisc = scanDisc;
+    // beams of light from above and a soft column on the platform
+    const beamTex = texCanvas(64, 256, (x, w, h) => { const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, "rgba(255,255,255,0)"); g.addColorStop(0.35, "rgba(255,255,255,.55)"); g.addColorStop(1, "rgba(255,255,255,0)"); x.fillStyle = g; x.fillRect(0, 0, w, h); const g2 = x.createLinearGradient(0, 0, w, 0); g2.addColorStop(0, "rgba(0,0,0,1)"); g2.addColorStop(0.5, "rgba(0,0,0,0)"); g2.addColorStop(1, "rgba(0,0,0,1)"); x.globalCompositeOperation = "destination-out"; x.fillStyle = g2; x.fillRect(0, 0, w, h); });
+    LAB.beams = [];
+    for (const [bx, bz, col, wd] of [[0, -0.4, LAB.cyan, 4.2], [-3.4, -2.5, LAB.crimson, 1.4], [3.4, -2.5, LAB.cyan, 1.4]]) {
+      const bm = new THREE.Mesh(new THREE.PlaneGeometry(wd, 9), new THREE.MeshBasicMaterial({ map: beamTex, color: col, transparent: true, opacity: bx ? 0.35 : 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+      bm.position.set(bx, FLOOR + 4.2, bz); lab.add(bm); LAB.beams.push(bm);
+    }
+    // the chamber wall: dark panels with lit seams, curved round the back
+    const wallTex = texCanvas(1024, 512, (x, w, h) => {
+      x.fillStyle = "#0b1018"; x.fillRect(0, 0, w, h);
+      for (let i = 0; i < 16; i++) { const v = 16 + Math.floor(R0() * 10); x.fillStyle = `rgb(${v},${v + 5},${v + 12})`; x.fillRect(i * 64 + 3, 40, 58, h - 80); }
+      x.fillStyle = "rgba(70,216,255,.5)"; for (let i = 0; i < 16; i += 2) x.fillRect(i * 64 + 30, 60, 3, h - 120);
+      x.fillStyle = "rgba(224,40,58,.6)"; x.fillRect(0, h - 44, w, 3); x.fillStyle = "rgba(70,216,255,.35)"; x.fillRect(0, 42, w, 2);
+    });
+    wallTex.wrapS = THREE.RepeatWrapping; wallTex.repeat.set(3, 1);
+    const cw = new THREE.Mesh(new THREE.CylinderGeometry(15, 15, 11, 64, 1, true, Math.PI * 0.6, Math.PI * 0.8), new THREE.MeshStandardMaterial({ map: wallTex, side: THREE.BackSide, roughness: 0.6, metalness: 0.4, emissive: 0xffffff, emissiveMap: wallTex, emissiveIntensity: 0.35 }));
+    cw.position.set(0, FLOOR + 5.2, -2); lab.add(cw);
+    // light on the fighter: cool from the front, crimson from behind
+    const key = new THREE.PointLight(0x9fdcff, 1.1, 16); key.position.set(0, 5, 5); lab.add(key);
+    const back = new THREE.PointLight(0xff3040, 0.9, 12); back.position.set(0, 3.5, -3.5); lab.add(back);
+  }
+  function setLab(on) {
+    for (const o of ARENA_ENV) o.visible = !on;
+    lab.visible = on;
+    scene.background.set(on ? 0x05080d : 0x07080b); scene.fog.color.set(on ? 0x05080d : 0x07080b);
+  }
+  function tickLab(clock) {
+    if (!lab.visible) return;
+    LAB.rune.rotation.z = clock * 0.18;
+    const k = (clock % 3.2) / 3.2, y = FLOOR + 0.05 + k * 3.9 * FIGHTER_SCALE / 1.3;
+    LAB.scan.position.y = LAB.scanDisc.position.y = y;
+    const quiet = cur && cur.models[0] && cur.models[0].forge ? 0 : 1;   // the scanner rests while the weapon is forged
+    LAB.scan.material.opacity = 0.85 * Math.sin(k * Math.PI) * quiet; LAB.scanDisc.material.opacity = 0.09 * Math.sin(k * Math.PI) * quiet;
+    LAB.beams.forEach((b, j) => { b.material.opacity = (j ? 0.3 : 0.2) + Math.sin(clock * 1.3 + j * 2) * 0.06; });
+  }
+
   // =====================================================================
   // 4. The fighters: the real characters, cut out of the screenshots
   // =====================================================================
@@ -274,11 +346,11 @@ export function createArenaScene(opts) {
   const FLIP_SHEETS = {};
   // The Iron Condor on its own (cut from the recordings, 14 wing beats), flying over fighters who own one.
   // Each cell is 240 x 210 with the master's head-top at (120, 200). PET_SIZE: its width on screen in metres.
-  const PET = { src: A + "pet.webp", n: 14, cols: 7, rows: 2, cell: [240, 210], anchor: [120, 200] };
-  const PET_SIZE = 1.15, PET_H_M = PET_SIZE * PET.cell[1] / PET.cell[0];
+  const PET_SPR = { src: A + "pet.webp", n: 14, cols: 7, rows: 2, cell: [240, 210], anchor: [120, 200] };
+  const PET_SIZE = 1.15, PET_H_M = PET_SIZE * PET_SPR.cell[1] / PET_SPR.cell[0];
   let PET_TEX = null;
   async function prepareSkins() {
-    loadImage(PET.src).then((img) => { const t = new THREE.Texture(img); t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.anisotropy = 4; t.needsUpdate = true; PET_TEX = t; }).catch(() => {});
+    loadImage(PET_SPR.src).then((img) => { const t = new THREE.Texture(img); t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.anisotropy = 4; t.needsUpdate = true; PET_TEX = t; }).catch(() => {});
     await Promise.all(Object.entries(FLIP.src).map(async ([k, src]) => {
       FLIP_SHEETS[k] = await loadImage(src);
       const t = new THREE.Texture(FLIP_SHEETS[k]); const mip = true;
@@ -602,15 +674,15 @@ export function createArenaScene(opts) {
   function placePet(f, clock, ko) {
     const P_ = f.pet, on = f.hasPet && !(ko >= 0) && !!PET_TEX;
     P_.mesh.visible = on; if (!on) { P_.pos = null; return; }
-    if (!P_.tex) { P_.tex = PET_TEX.clone(); P_.tex.needsUpdate = true; P_.tex.repeat.set(1 / PET.cols, 1 / PET.rows); P_.mesh.material.map = P_.tex; P_.mesh.material.needsUpdate = true; }
-    const k = Math.floor(clock * 14) % (PET.n * 2 - 2), j = k < PET.n ? k : PET.n * 2 - 2 - k;
-    P_.tex.offset.set((j % PET.cols) / PET.cols, 1 - (Math.floor(j / PET.cols) + 1) / PET.rows);
+    if (!P_.tex) { P_.tex = PET_TEX.clone(); P_.tex.needsUpdate = true; P_.tex.repeat.set(1 / PET_SPR.cols, 1 / PET_SPR.rows); P_.mesh.material.map = P_.tex; P_.mesh.material.needsUpdate = true; }
+    const k = Math.floor(clock * 14) % (PET_SPR.n * 2 - 2), j = k < PET_SPR.n ? k : PET_SPR.n * 2 - 2 - k;
+    P_.tex.offset.set((j % PET_SPR.cols) / PET_SPR.cols, 1 - (Math.floor(j / PET_SPR.cols) + 1) / PET_SPR.rows);
     const cf = f.flip.frame, tbl = HALO_TRACK[cf.clip], a = tbl && tbl[cf.k0];
     const hx = a ? (a[0] - 0.5) * FLIP_W : 0, hy = a ? Math.max(1.7, (1 - a[1]) * FLIP_H - FLIP_FEET + f.fall.position.y) : 2.2;
     const ty = hy + 0.12 + Math.sin(clock * 2.1) * 0.07, tx = hx + Math.sin(clock * 0.9) * 0.05;
     if (!P_.pos) P_.pos = [tx, ty]; else { P_.pos[0] += (tx - P_.pos[0]) * 0.08; P_.pos[1] += (ty - P_.pos[1]) * 0.1; }
     // the cell's anchor (the head-top) sits at the point above the head
-    P_.mesh.position.set(P_.pos[0], P_.pos[1] + (PET.anchor[1] - PET.cell[1] / 2) * (PET_SIZE / PET.cell[0]), -0.05);
+    P_.mesh.position.set(P_.pos[0], P_.pos[1] + (PET_SPR.anchor[1] - PET_SPR.cell[1] / 2) * (PET_SIZE / PET_SPR.cell[0]), -0.05);
     P_.mesh.rotation.z = Math.sin(clock * 1.3) * 0.04;
   }
   function placeHalo(f, clock, ko) {
@@ -1428,6 +1500,11 @@ export function createArenaScene(opts) {
     const back = narrow ? Math.min(13.5, 9.6 * Math.max(1, 0.95 / (w / h))) : 6.9;
     return [new THREE.Vector3(mid + Math.sin(orbit) * 7, narrow ? 1.2 + back * 0.42 : 4.1, Math.cos(orbit) * back), new THREE.Vector3(mid, narrow ? 1.8 : 1.9, 0), narrow ? 68 : 62];
   }
+  // the Character Lab's camera: closer, looking at the fighter on the platform, drifting slowly round it
+  function labCam(w, h, clock, forging) {
+    const narrow = w / h < 1, orbit = forging ? 0 : Math.sin(clock * 0.22) * 0.38, back = (narrow ? 9.5 : 6.4) * (forging ? 0.72 : 1);
+    return [new THREE.Vector3(Math.sin(orbit) * back, narrow ? 3.6 : 3.1, Math.cos(orbit) * back), new THREE.Vector3(0, narrow ? 2.0 : 2.2, 0), narrow ? 64 : 52];
+  }
   function project(v, w, h) { const p = v.clone().project(camera); return [(p.x + 1) / 2 * w, (1 - p.y) / 2 * h, p.z]; }
 
   // HUD helpers drawn like the game's own frames
@@ -1457,10 +1534,14 @@ export function createArenaScene(opts) {
     // name under the frame
     hctx.font = `600 ${12 * S}px 'Barlow Condensed', sans-serif`; hctx.textAlign = mirror ? "right" : "left"; hctx.fillStyle = "#e9c46a";
     const colX = mirror ? x0 + fw - 54 * S : x0 + 54 * S;   // to the side of the level diamond and the entries
-    hctx.fillText(`${f.name} · Speed ${s.spd}%${f.weapon ? ` · Weapon +${f.weapon}` : ""}`, colX, y0 + 58 * S);
+    // Speed as it is right now: Spirits Within raises it while it is up (shown in its colour)
+    const spdNow = fr.spd ? Math.round(fr.spd[i]) : s.spd, boosted = spdNow > s.spd;
+    const pre = `${f.name} · `, sp = `Speed ${spdNow}%${boosted ? " ▲" : ""}`, post = f.weapon ? ` · Weapon +${f.weapon}` : "";
+    if (mirror) { hctx.fillText(post, colX, y0 + 58 * S); const pw2 = hctx.measureText(post).width; hctx.fillStyle = boosted ? hexStr(SKILLS.spirits.color) : "#e9c46a"; hctx.fillText(sp, colX - pw2, y0 + 58 * S); const sw2 = hctx.measureText(sp).width; hctx.fillStyle = "#e9c46a"; hctx.fillText(pre, colX - pw2 - sw2, y0 + 58 * S); }
+    else { hctx.fillText(pre, colX, y0 + 58 * S); const pw2 = hctx.measureText(pre).width; hctx.fillStyle = boosted ? hexStr(SKILLS.spirits.color) : "#e9c46a"; hctx.fillText(sp, colX + pw2, y0 + 58 * S); const sw2 = hctx.measureText(sp).width; hctx.fillStyle = "#e9c46a"; hctx.fillText(post, colX + pw2 + sw2, y0 + 58 * S); }
     // buff icons row: only what is up right now, each with what is left of it (hits or attacks) under it
     const icons = [];
-    if (fr.charged[i]) icons.push(["lightning", 1, "#ffd36a"]);
+    { const ce = lastEv(i, ["cast"], fr.t); if (fr.charged[i] || (ce && fr.t - ce.t < CAST * (ce.k || 1))) icons.push(["lightning", 1, hexStr(CHARGE.color)]); }
     for (const id of BUFF_IDS) if (fr.sk[i][id] > 0) icons.push([id, fr.sk[i][id], hexStr(SKILLS[id].color)]);
     let ix = mirror ? colX - 22 * S : colX;
     for (const [id, n, col] of icons) {
@@ -1497,7 +1578,7 @@ export function createArenaScene(opts) {
   const SKILL_AURA = { shield: "a pale blue bubble", blow: "a red orb spirals round the fighter", spirits: "pale blue wind spirals up the body", blood: "the blade's aura turns to fire and flames run along it",
     garuda: "a lilac prayer circle turns under the feet", nirvana: "purple lightning crackles round the body", bullet: "a green barrier flashes up when it sends a hit back" };
   const BASE_SKILLS = {
-    lightning: { name: "Crimson LightningCharger", color: 0x35e8f0, lines: ["Every fighter's own: charges the spear before each Skyfall", "The charge makes the Skyfall hit for 1× to 2×", `Costs ${CHARGE.mp} MP`] },
+    lightning: { name: CHARGE.name, color: CHARGE.color, buff: true, lines: ["Every fighter's own buff: cast before each Skyfall", "Charges the spear so the Skyfall hits for 1× to 2×", "Lasts until that Skyfall lands or misses", `MP: ${fmt(CHARGE.mp)}`, "Aura: crimson lightning, seals on the ground and a pillar of light"] },
     slash: { name: "Skyfall", color: 0xffd36a, lines: ["Every fighter's own: the 360° spinning slash", "Lands with Accuracy − the target's Evasion", "A critical does 3× to 7× damage"] },
     potion: { name: "HP potion", color: 0x6fd39b, lines: ["Drunk automatically after a hit that leaves the fighter at 70% HP or less", "Heals the fighter's potion heal % of max HP"] }
   };
@@ -1507,7 +1588,7 @@ export function createArenaScene(opts) {
     else L.push(`<b>${Math.round(k.chance * 100)}%</b> chance to cast at the start of a turn`);
     if (id === "shield") L.push(`Halves the next <b>${k.charges}</b> hits that land`);
     if (id === "blow") L.push(`<b>+${k.crit}%</b> Crit rate for ${k.attacks} of the fighter's attacks`);
-    if (id === "spirits") L.push(`<b>+${Math.round(k.atk * 100)}%</b> ATK and <b>+${Math.round(k.spd * 100)}%</b> attack speed for ${k.attacks} attacks`);
+    if (id === "spirits") L.push(`<b>+${Math.round(k.atk * 100)}%</b> ATK and <b>+${Math.round(k.spd * 100)}%</b> Speed for ${k.attacks} attacks: faster moves and more turns, from the moment it is cast`);
     if (id === "blood") L.push(`<b>+${Math.round(k.atk * 100)}%</b> ATK for ${k.attacks} attacks`);
     if (id === "garuda") L.push(`<b>+${k.eva}%</b> Evasion against the next ${k.guards} incoming attacks`);
     if (id === "nirvana") L.push(`<b>+${k.critdef}%</b> Crit defense against the next ${k.guards} incoming attacks`);
@@ -1523,7 +1604,7 @@ export function createArenaScene(opts) {
   function tipHtml(id) {
     const k = SKILLS[id] || BASE_SKILLS[id]; if (!k) return "";
     const lines = SKILLS[id] ? skillLines(id) : k.lines, img = IMG_SRC[id === "potion" ? "" : id];
-    return `<div class="th">${img ? `<img alt="" src="${img}">` : `<span></span>`}<b style="color:${hexStr(k.color)}">${k.name}</b><small>${SKILLS[id] ? (SKILLS[id].passive ? "Passive skill" : "Buff skill") : "Every fighter"}</small></div><ul>${lines.map((l) => `<li>${l}</li>`).join("")}</ul>`;
+    return `<div class="th">${img ? `<img alt="" src="${img}">` : `<span></span>`}<b style="color:${hexStr(k.color)}">${k.name}</b><small>${SKILLS[id] ? (SKILLS[id].passive ? "Passive skill" : "Buff skill") : k.buff ? "Buff skill · every fighter" : "Every fighter"}</small></div><ul>${lines.map((l) => `<li>${l}</li>`).join("")}</ul>`;
   }
   // one tooltip for the page: anything with data-skill shows it on hover and on keyboard focus; the HUD's
   // skill icons are drawn on a canvas, so the stage looks up what is under the pointer itself
@@ -1553,7 +1634,7 @@ export function createArenaScene(opts) {
   // the buffs that can be up on a fighter (Extreme Bullet Proof is passive and never "up")
   const BUFF_IDS = ["shield", "blow", "spirits", "blood", "garuda", "nirvana"];
   const SHORT = { hp: "HP", atk: "ATK", def: "DEF", crit: "Crit", eva: "Dodge", critdef: "C.Def" };
-  const mountShort = (m) => `${MOUNT.pairs[m.pair].map((id) => SHORT[id]).join("/")} +${m.lv}%`;
+  const mountShort = (m) => `${MOUNT.pairs[m.pair].map((id) => SHORT[id]).join("/")} +${m.lv * MOUNT.per}%`;
   // The skill bar: Crimson LightningCharger, Skyfall, the fighter's own buff skills (none, one or two) and the
   // HP potion. A buff that is up gets a ring in its colour and what is left of it in the corner; one cooling
   // down is dimmed with the attacks still to go; a slot lights up while it is being used.
@@ -1577,12 +1658,12 @@ export function createArenaScene(opts) {
         hctx.fillStyle = "#fff"; hctx.font = `700 ${Math.round(sz * 0.32)}px Barlow, sans-serif`; hctx.textAlign = "right"; hctx.textBaseline = "alphabetic";
         hctx.strokeStyle = "rgba(0,0,0,.9)"; hctx.lineWidth = 3; hctx.strokeText(String(n), x + sz - 2, y0 + sz - 3); hctx.fillText(String(n), x + sz - 2, y0 + sz - 3); hctx.textBaseline = "middle";
       } else drawImg(key, x, y0, sz, sz);
-      if (key === "lightning") on = !!(cast && tc - cast.t < CAST);
-      if (key === "slash") on = !!(spin && tc - spin.t < SPIN);
+      if (key === "lightning") { ring = hexStr(CHARGE.color); on = !!(cast && tc - cast.t < CAST * (cast.k || 1)); if (fr.charged[i] || on) { hctx.lineWidth = 2; hctx.strokeStyle = ring; hctx.strokeRect(x - 1.5, y0 - 1.5, sz + 3, sz + 3); hctx.lineWidth = 1; } }
+      if (key === "slash") on = !!(spin && tc - spin.t < SPIN * (spin.k || 1));
       if (sk) {
         ring = hexStr(sk.color);
         const left = fr.sk[i][key] || 0, wait = fr.cd[i][key] || 0;
-        const casting = !!(bf && bf.skill === key && tc - bf.t < BUFF_CAST);
+        const casting = !!(bf && bf.skill === key && tc - bf.t < BUFF_CAST * (bf.k || 1));
         const proc = key === "bullet" ? !!(hit && hit.reflect && tc - hit.t < 0.8) : key === "shield" ? !!(hit && hit.shielded && tc - hit.t < 0.8) : false;
         on = casting || proc;
         if (left > 0) { hctx.lineWidth = 2; hctx.strokeStyle = ring; hctx.strokeRect(x - 1.5, y0 - 1.5, sz + 3, sz + 3); hctx.lineWidth = 1; corner(String(left), x + 3, ring, "left"); }
@@ -1600,14 +1681,15 @@ export function createArenaScene(opts) {
   // Sound effects, synthesised with the Web Audio API, so there is nothing to license or download.
   // Tunables: master is the overall level (0.7 is about -3 dB, with a limiter after it so nothing clips);
   // hit, crit, swing and koStinger scale each sound; pitchJitter is the random pitch spread (±5%).
-  const SOUND = { master: 0.7, hit: 0.55, crit: 0.75, swing: 0.6, koStinger: 1, powerUp: 0.9, attack: 1, buff: 1, dash: 0.7, pitchJitter: 0.05 };
+  const SOUND = { master: 0.7, charge: 0.8, hit: 0.55, crit: 0.75, swing: 0.6, koStinger: 1, powerUp: 0.9, attack: 1, buff: 1, dash: 0.7, pitchJitter: 0.05 };
   // The game's own sounds, cut from the recordings: the buff skill's charge, Skyfall's sweep and blast, the leap
   const SAMPLE_SRC = { buff: A + "sfx/buff.mp3", attack: A + "sfx/attack.mp3", dash: A + "sfx/dash.mp3" };
   const SFX = (() => {
     let ctx = null, out = null, noiseBuf = null, on = true;
     const samples = {};
     // one of the game's sounds; false when it has not loaded (the made-up sound plays instead)
-    function sample(k, vol, at = 0, rate = 1) { const b = samples[k]; if (!b) return false; const src = ctx.createBufferSource(), g = ctx.createGain(); src.buffer = b; src.playbackRate.value = rate; g.gain.value = vol; src.connect(g); g.connect(out); src.start(ctx.currentTime + at); return true; }
+    // at < 0 starts that far into the sound (so a faster move still has its blast land on the blow)
+    function sample(k, vol, at = 0, rate = 1) { const b = samples[k]; if (!b) return false; const src = ctx.createBufferSource(), g = ctx.createGain(); src.buffer = b; src.playbackRate.value = rate; g.gain.value = vol; src.connect(g); g.connect(out); src.start(ctx.currentTime + Math.max(0, at), Math.max(0, -at)); return true; }
     const irs = [];   // room tails for the reverb, short to long
     function makeIR(sec) {
       const n = Math.floor(ctx.sampleRate * sec), b = ctx.createBuffer(2, n, ctx.sampleRate);
@@ -1650,7 +1732,7 @@ export function createArenaScene(opts) {
     const S = {
       // the swing: a soft whoosh that peaks just before Skyfall connects
       // Skyfall: the game's sweep and blast, started so the blast lands as the blow does (0.74 s into the sound)
-      spin() { if (sample("attack", 0.9 * SOUND.attack, Math.max(0, SPIN - 0.74))) return; const v = SOUND.swing; noise("bandpass", 600 * jitter(), 3000, 0.32, 0.2 * v, 0.42, 1.2, 0.2); },
+      spin(pace = 1) { if (sample("attack", 0.9 * SOUND.attack, SPIN * (pace || 1) - 0.74)) return; const v = SOUND.swing; noise("bandpass", 600 * jitter(), 3000, 0.32, 0.2 * v, 0.42, 1.2, 0.2); },
       // the leap in: the game's jump sound
       dash() { sample("dash", 0.75 * SOUND.dash, 0, jitter()); },
       // an ordinary hit: a short "shk" of the edge, a little ring, and the thump of the blow, all at the moment of contact
@@ -1730,7 +1812,37 @@ export function createArenaScene(opts) {
         o.start(t); vib.start(t); breath.start(t, Math.random());
         const end = t + dur + 0.2; o.stop(end); vib.stop(end); breath.stop(end);
       },
-      fight: quiet, cast: quiet, shieldCast: quiet, miss: quiet, shieldBreak: quiet, potion: quiet, ko: quiet, pop: quiet
+      // Crimson LightningCharger: the spear charging with crimson lightning. A low electric hum that climbs,
+      // crackling zaps on top, and a bright snap as the charge is full (dur = the charge's time at this pace).
+      cast(dur = CAST) {
+        const d = Math.max(0.4, dur || CAST), p = jitter(), v = SOUND.charge, r = room(2, 0.25), both = [out, r];
+        tone("sawtooth", 70 * p, 150 * p, d, 0.16 * v, 0, d * 0.5, [r]);
+        tone("square", 140 * p, 420 * p, d * 0.95, 0.035 * v, 0, d * 0.6, both);
+        noise("bandpass", 900 * p, 4200 * p, d, 0.22 * v, 0, 1.4, d * 0.5, both);
+        for (let k = 0; k < 14; k++) { const at = Math.random() * d * 0.9; noise("highpass", 3000 + Math.random() * 3000, 1800, 0.025 + Math.random() * 0.03, (0.18 + Math.random() * 0.25) * v, at, 0.8, 0.0008, both); }
+        noise("bandpass", 5200 * p, 2400 * p, 0.09, 0.45 * v, d * 0.92, 2.2, 0.001, both);
+        tone("triangle", 1900 * p, 1400 * p, 0.25, 0.05 * v, d * 0.92, 0.002, both);
+      },
+      // the weapon forge: a rising, humming draw-in; a bright chime when it holds; a cracking fizzle when it fails
+      forge() {
+        const p = jitter(), v = 0.7, r = room(3, 0.3), both = [out, r];
+        tone("sine", 180 * p, 520 * p, 1.6, 0.18 * v, 0, 1.2, both);
+        tone("triangle", 360 * p, 1040 * p, 1.6, 0.06 * v, 0, 1.3, both);
+        noise("bandpass", 400, 3200, 1.6, 0.22 * v, 0, 1.6, 1.1, both);
+      },
+      forgeWin() {
+        if (sample("buff", 0.8 * SOUND.buff)) { /* and the chime on top */ }
+        const p = jitter(), r = room(4, 0.4), both = [out, r];
+        [[1046, 1], [1318, 0.7], [1568, 0.6], [2093, 0.4]].forEach(([f, w], k) => tone("sine", f * p, f * p, 1.4, 0.07 * w, k * 0.05, 0.003, both));
+        tone("sine", 98 * p, 49 * p, 0.6, 0.5, 0, 0.003);
+      },
+      forgeFail() {
+        const p = jitter(), r = room(2, 0.25), both = [out, r];
+        noise("bandpass", 2600, 500, 0.5, 0.45, 0, 2, 0.002, both);
+        for (let k = 0; k < 6; k++) noise("highpass", 3000 + Math.random() * 3000, 1500, 0.04, 0.3, 0.05 + k * 0.06, 0.8, 0.001, both);
+        tone("sawtooth", 320 * p, 70 * p, 0.7, 0.07, 0.05, 0.01, both);
+      },
+      fight: quiet, shieldCast: quiet, miss: quiet, shieldBreak: quiet, potion: quiet, ko: quiet, pop: quiet
     };
     return {
       play(name, arg) { if (!on || !ctx) return; if (ctx.state === "suspended") ctx.resume(); try { S[name](arg); } catch (e) { /* ignore */ } },   // silent until the first tap or key
@@ -1794,6 +1906,43 @@ export function createArenaScene(opts) {
   }
   let tauntSide = 0, lastTaunt = 0;
 
+  // The Character Lab's screen: the fighter's frame and skill bar, its name over its head, a "Character
+  // Lab" tag and what is being tested, and the stats it fights with. No opponent, no timer.
+  function drawLabHud(w, h, fr, S, narrow) {
+    const f = cur.a, st = statsOf(f, cur.values);
+    const top = project(new THREE.Vector3(worldX(fr.x[0]), FLOOR + (cur.models[0].hasPet ? 3.62 : 3.0) * FIGHTER_SCALE, 0), w, h);
+    const fs = narrow ? 10 : Math.round(12 * S);
+    hctx.textAlign = "center"; hctx.textBaseline = "middle"; hctx.lineWidth = 3; hctx.strokeStyle = "rgba(0,0,0,.8)"; hctx.font = `500 ${fs}px Barlow, sans-serif`;
+    const l2 = `[${f.rank || "Member"}] INTROBOYS`, y2 = Math.max(fs * 3 + 70 * S, top[1] - fs * 1.3), y3 = y2 + fs * 1.3;
+    hctx.strokeText(l2, top[0] + 8, y2); hctx.fillStyle = "#9cc9ff"; hctx.fillText(l2, top[0] + 8, y2);
+    const l2w = hctx.measureText(l2).width; hctx.save(); hctx.shadowColor = "rgba(195,21,31,.9)"; hctx.shadowBlur = 6; drawImg("logo", top[0] + 8 - l2w / 2 - 19, y2 - 8, 15, 16); hctx.restore();
+    hctx.strokeText(f.name, top[0], y3); hctx.fillStyle = "#fff"; hctx.fillText(f.name, top[0], y3);
+    playerFrame("left", w, h, fr, 0, S);
+    // the tag and what the fighter is trying right now
+    const tc = clockT, ev = lastEv(0, ["buff", "cast", "spin", "swing"], tc);
+    const doing = !ev || tc - ev.t > 1.0 ? "Idle · getting ready" : ev.type === "buff" ? `Testing ${SKILLS[ev.skill].name}` : ev.type === "cast" ? `Testing ${CHARGE.name}` : "Testing Skyfall";
+    const tx = narrow ? w / 2 : w - 12, al = narrow ? "center" : "right", ty = narrow ? h - 34 * S - 54 : 16;
+    hctx.textAlign = al; hctx.textBaseline = "top";
+    hctx.font = `800 ${Math.round((narrow ? 15 : 20) * S)}px 'Barlow Condensed', sans-serif`; hctx.lineWidth = 4; hctx.strokeStyle = "rgba(0,0,0,.85)";
+    hctx.strokeText("CHARACTER LAB", tx, ty); hctx.fillStyle = "#46d8ff"; hctx.fillText("CHARACTER LAB", tx, ty);
+    hctx.font = `600 ${Math.round((narrow ? 11 : 13) * S)}px 'Barlow Condensed', sans-serif`;
+    hctx.strokeText(doing, tx, ty + (narrow ? 18 : 24) * S); hctx.fillStyle = "#e9c46a"; hctx.fillText(doing, tx, ty + (narrow ? 18 : 24) * S);
+    // the numbers it fights with (computers only: on a phone the panel under the stage has them)
+    if (!narrow) {
+      const rows = [["HP", fmt(st.hp)], ["ATK", fmt(st.atk)], ["DEF", fmt(st.def)], ["Crit rate", `${st.crit}%`], ["Crit def", `${st.critdef}%`], ["Accuracy", `${st.acc}%`], ["Evasion", `${st.eva}%`], ["Speed", `${Math.round(fr.spd ? fr.spd[0] : st.spd)}%`]];
+      const pw = 150 * S, rh = 17 * S, px = w - pw - 12, py = ty + 48 * S;
+      hctx.fillStyle = "rgba(6,12,20,.72)"; hctx.fillRect(px, py, pw, rows.length * rh + 10 * S);
+      hctx.strokeStyle = "rgba(70,216,255,.55)"; hctx.lineWidth = 1; hctx.strokeRect(px + .5, py + .5, pw - 1, rows.length * rh + 10 * S - 1);
+      hctx.font = `500 ${Math.round(12 * S)}px Barlow, sans-serif`; hctx.textBaseline = "middle";
+      rows.forEach(([k, v], j) => {
+        const yy = py + 5 * S + rh * (j + 0.5);
+        hctx.textAlign = "left"; hctx.fillStyle = "#9fb3c8"; hctx.fillText(k, px + 8 * S, yy);
+        hctx.textAlign = "right"; hctx.fillStyle = k === "Speed" && fr.spd && fr.spd[0] > st.spd ? hexStr(SKILLS.spirits.color) : "#f3ead7"; hctx.fillText(v, px + pw - 8 * S, yy);
+      });
+    }
+    if (cur.banner) { hctx.textAlign = "center"; hctx.textBaseline = "middle"; hctx.lineWidth = 4; hctx.strokeStyle = "rgba(0,0,0,.75)"; hctx.font = `600 ${Math.min(18, w * 0.035)}px 'Barlow Condensed', sans-serif`; hctx.fillStyle = "#f1d38c"; hctx.strokeText(cur.banner, w / 2, h * 0.86); hctx.fillText(cur.banner, w / 2, h * 0.86); }
+  }
+
   function drawHud(w, h, fr, t) {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     if (hud.width !== Math.round(w * dpr) || hud.height !== Math.round(h * dpr)) { hud.width = Math.round(w * dpr); hud.height = Math.round(h * dpr); }
@@ -1802,6 +1951,7 @@ export function createArenaScene(opts) {
     // S: the size of the HUD. On a computer it grows with the stage (bigger text and skill icons); on a phone
     // it shrinks just enough to fit the two player frames side by side.
     const narrow = w < 640, S = narrow ? Math.max(0.55, Math.min(0.8, w / 620)) : Math.max(0.9, Math.min(1.45, w / 680));
+    if (cur.setup) { drawLabHud(w, h, fr, S, narrow); return; }
     // name plates over heads and the red/blue bars at the feet
     [0, 1].forEach((i) => {
       const f = i ? cur.b : cur.a;
@@ -1809,11 +1959,10 @@ export function createArenaScene(opts) {
       const feet = project(new THREE.Vector3(worldX(fr.x[i]), FLOOR, 1.0), w, h);
       hctx.textAlign = "center"; hctx.textBaseline = "middle"; hctx.lineWidth = 3; hctx.strokeStyle = "rgba(0,0,0,.8)";
       const fs = narrow ? 10 : Math.round(12 * S); hctx.font = `500 ${fs}px Barlow, sans-serif`;
-      const l1 = "[Premium]", l2 = `[${f.rank || "Member"}] INTROBOYS`, l3 = f.name;
+      const l2 = `[${f.rank || "Member"}] INTROBOYS`, l3 = f.name;
       // keep the plate clear of the player frames and the chips at the top of the stage
-      const minY = Math.max(8 + 66 * S, 74) + fs * 0.6, lift = Math.max(0, minY - (top[1] - fs * 2.6));
-      const ys = [top[1] - fs * 2.6 + lift, top[1] - fs * 1.3 + lift, top[1] + lift];
-      hctx.strokeText(l1, top[0], ys[0]); hctx.fillStyle = "#e8d27a"; hctx.fillText(l1, top[0], ys[0]);
+      const minY = Math.max(8 + 66 * S, 74) + fs * 0.6, lift = Math.max(0, minY - (top[1] - fs * 1.3));
+      const ys = [0, top[1] - fs * 1.3 + lift, top[1] + lift];
       hctx.strokeText(l2, top[0] + 8, ys[1]); hctx.fillStyle = "#9cc9ff"; hctx.fillText(l2, top[0] + 8, ys[1]);
       const l2w = hctx.measureText(l2).width; hctx.save(); hctx.shadowColor = "rgba(195,21,31,.9)"; hctx.shadowBlur = 6; drawImg("logo", top[0] + 8 - l2w / 2 - 19, ys[1] - 8, 15, 16); hctx.restore();
       hctx.font = `500 ${fs}px Barlow, sans-serif`; hctx.strokeText(l3, top[0], ys[2]); hctx.fillStyle = "#ffffff"; hctx.fillText(l3, top[0], ys[2]);
@@ -1851,8 +2000,10 @@ export function createArenaScene(opts) {
     else if (t < 0) { hctx.font = `900 ${Math.min(58, w * 0.085)}px Cinzel, Georgia, serif`; hctx.fillStyle = "#ca1622"; hctx.strokeStyle = "rgba(0,0,0,.7)"; hctx.lineWidth = 5; hctx.textAlign = "center"; hctx.strokeText("FIGHT!", w / 2, h * 0.42); hctx.fillText("FIGHT!", w / 2, h * 0.42); }
     if (t >= cur.fight.length) {
       const W = cur.fight.winner === 1 ? cur.b : cur.a; const txt = cur.fight.winner === -1 ? `DRAW · NO KO IN ${LIMIT} SECONDS` : `${W.name.toUpperCase()} WINS${cur.fight.how === "time" ? " ON TIME" : " BY KO"}`;
-      hctx.font = "700 20px 'Barlow Condensed', sans-serif"; const tw = hctx.measureText(txt).width + 30;
-      hctx.fillStyle = "#d4a72c"; hctx.fillRect((w - tw) / 2, h * 0.3, tw, 34); hctx.fillStyle = "#1a1205"; hctx.textAlign = "center"; hctx.fillText(txt, w / 2, h * 0.3 + 18);
+      // no box behind it: gold letters with a dark edge, so the arena shows through
+      hctx.font = `800 ${Math.round(Math.min(34, Math.max(20, w * 0.036)))}px 'Barlow Condensed', sans-serif`; hctx.textAlign = "center"; hctx.textBaseline = "middle";
+      hctx.lineJoin = "round"; hctx.lineWidth = 5; hctx.strokeStyle = "rgba(0,0,0,.8)"; hctx.strokeText(txt, w / 2, h * 0.3 + 18);
+      hctx.save(); hctx.shadowColor = "rgba(212,167,44,.8)"; hctx.shadowBlur = 14; hctx.fillStyle = "#f1d38c"; hctx.fillText(txt, w / 2, h * 0.3 + 18); hctx.restore();
     }
   }
 
@@ -1864,7 +2015,15 @@ export function createArenaScene(opts) {
     if (!w || !h) return;
     renderer.setSize(w, h, false); camera.aspect = w / h;
     const dt = Math.min(0.1, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
-    if (cur.ext) {
+    if (cur.setup) {
+      // the Character Lab: its own practice loop, round and round
+      const c = cur.ext ? cur.ext() : {};
+      cur.banner = c.banner || ""; cur.betting = false; cur.idle = false;
+      // while the weapon is being forged the fighter stands still at the start of the loop, so the blade can be seen
+      if (cur.models[0].forge) { if (clockT > 1.2) { clockT = 0.3; shownEvents = 0; pops.length = 0; } else clockT = Math.min(clockT + dt, 1.2); }
+      else clockT += dt;
+      if (clockT >= cur.fight.length) { clockT -= cur.fight.length; shownEvents = 0; pops.length = 0; for (const f of fx) scene.remove(f.m); fx.length = 0; }
+    } else if (cur.ext) {
       // a live fight: the time comes from the server's clock, so every screen is at the same moment
       const c = cur.ext();
       cur.betting = !!c.betting; cur.betLeft = c.betLeft || 0; cur.idle = !!c.idle; cur.banner = c.banner || "";
@@ -1872,23 +2031,25 @@ export function createArenaScene(opts) {
     } else if (cur.betting) clockT = 0;
     else if (!seekPaused) clockT += dt * speed * (performance.now() < hitStopUntil ? 0.06 : 1);   // the game freezes for a beat when a blow lands
     const clock = now / 1000, F = cur.fight;
-    const t = Math.min(clockT - INTRO, F.length + 5);
+    const t = cur.setup ? clockT : Math.min(clockT - INTRO, F.length + 5);
     const tc = Math.max(0, Math.min(t, F.length));
     const fr = frameAt(tc);
     [0, 1].forEach((i) => {
       const cast = lastEv(i, ["cast"], tc), spin = lastEv(i, ["spin"], tc), hurt = lastHitOn(i, tc), ko = lastEv(i, ["ko"], tc);
-      const castK = cast && tc - cast.t < CAST ? (tc - cast.t) / CAST : 0;
-      const spinK = spin && tc - spin.t < SPIN ? (tc - spin.t) / SPIN : 0;
+      // every move takes its time times the fighter's pace (k on the event: 1 at 100% Speed, less when faster)
+      const castD = CAST * ((cast && cast.k) || 1), spinD = SPIN * ((spin && spin.k) || 1);
+      const castK = cast && tc - cast.t < castD ? (tc - cast.t) / castD : 0;
+      const spinK = spin && tc - spin.t < spinD ? (tc - spin.t) / spinD : 0;
       const hurtK = hurt && tc - hurt.t < 0.4 ? 1 - (tc - hurt.t) / 0.4 : 0;
       const koT = ko ? Math.max(0, t - ko.t) : -1, dead = ko ? 1 : 0;
-      const bEv = lastEv(i, ["buff"], tc), buffK = bEv && tc - bEv.t < BUFF_CAST ? Math.max(0.01, (tc - bEv.t) / BUFF_CAST) : 0;
+      const bEv = lastEv(i, ["buff"], tc), buffD = BUFF_CAST * ((bEv && bEv.k) || 1), buffK = bEv && tc - bEv.t < buffD ? Math.max(0.01, (tc - bEv.t) / buffD) : 0;
       const shieldK = buffK && bEv.skill === "shield" ? buffK : 0;
       const reflectK = hurt && hurt.reflect && tc - hurt.t < 0.8 ? (tc - hurt.t) / 0.8 : -1;   // Extreme Bullet Proof's barrier
       const shieldHit = hurt && hurt.shielded && tc - hurt.t < 0.8 ? (tc - hurt.t) / 0.8 : -1;
       const prev = F.frames[Math.max(0, Math.round(tc / DT) - 2)];
       const moving = Math.abs(prev.x[i] - fr.x[i]) > 0.02 && !dead && !spinK && !castK && !hurtK && !buffK;
       { const mm = cur.models[i]; if (moving && !mm.wasWalking && !seekPaused && clockT - (mm.dashSndAt || -9) > 1.2 && t < F.length) { mm.dashSndAt = clockT; SFX.play("dash", i); } mm.wasWalking = moving; }
-            const done = lastEv(i, ["hit", "miss"], tc), followK = done && tc - done.t < RECOVER ? 1 - (tc - done.t) / RECOVER : 0;
+      const done = lastEv(i, ["hit", "miss", "swing"], tc), recD = RECOVER * ((done && done.k) || 1), followK = done && tc - done.t < recD ? 1 - (tc - done.t) / recD : 0;
       pose(cur.models[i], { x: worldX(fr.x[i]), dir: i ? -1 : 1, walk: moving ? tc * 9 : 0, cast: castK, charged: !!fr.charged[i] && !spinK, spin: spinK, follow: spinK ? 0 : followK, hurt: hurtK, dead, koT, shield: (debugBuffs[i] || fr.sk[i]).shield > 0, shieldK, shieldHit, buffK, buffs: debugBuffs[i] || fr.sk[i], reflectK: debugBuffs[i] && debugBuffs[i].reflectK != null ? debugBuffs[i].reflectK : reflectK, buff: fr.buff[i] }, clock);
     });
     for (const fl of flames) { const s = 2.4 + Math.sin(clock * 9 + fl.position.x) * 0.2; fl.scale.set(s, s * 1.3, 1); }
@@ -1898,9 +2059,9 @@ export function createArenaScene(opts) {
     }
     for (const e of embers) { const u = e.userData, y = ((clock * u.sp + u.ph) % 8); e.position.set(u.x + Math.sin(clock * 0.7 + u.ph) * 0.6, y, u.z); e.material.opacity = Math.sin((y / 8) * Math.PI) * 0.85; }
     for (const [j, b] of banners.entries()) b.rotation.x = Math.sin(clock * 0.9 + j * 1.7) * 0.025;
-    tickFx();
+    tickFx(); tickLab(clock); tickForge();
     const mid = (worldX(fr.x[0]) + worldX(fr.x[1])) / 2;
-    const [cp, cl, fov] = camTarget(mid, w, h, clock);
+    const [cp, cl, fov] = cur.setup ? labCam(w, h, clock, !!cur.models[0].forge) : camTarget(mid, w, h, clock);
     const k = 1 - Math.exp(-dt * 3);
     camPos.lerp(cp, k); camLook.lerp(cl, k); camera.fov += (fov - camera.fov) * k; camera.updateProjectionMatrix();
     camera.position.copy(camPos); camera.lookAt(camLook);
@@ -1921,9 +2082,9 @@ export function createArenaScene(opts) {
       else if (e.type === "buff") { const k = SKILLS[e.skill]; txt = k.name; col = hexStr(k.color); off = 1.4; spawnFx("shock", worldX(fr.x[e.who]), k.color); line = `<span class="buff"><b>${S(e.who)}</b> casts ${k.name}${e.stacked ? " again, stacking it" : ""}: ${k.text}</span>`; if (e.stacked) txt += " ×2"; }
       else if (e.type === "potion" && (crowd(e.who, ["🍼", "🧂", "😭"], 1), snd("potion"), false)) {}
       else if (e.type === "potion") { txt = "+" + fmt(e.heal); col = "#6fd39b"; big = false; spawnFx("burst", tx, 0x40ff80); line = `<span class="heal"><b>${S(e.who)}</b> drinks an HP potion: +${fmt(e.heal)} HP (${e.left} left)</span>`; }
-      else if (e.type === "cast" && (snd("cast"), false)) {}
-      else if (e.type === "cast") { txt = "Crimson LightningCharger"; col = "#7ff0f0"; off = 0.9; if (!cur.models[e.who].flip) spawnFx("charge", worldX(fr.x[e.who])); line = `<span class="buff"><b>${S(e.who)}</b> charges Crimson LightningCharger</span>`; }
-      else if (e.type === "spin") { const m = cur.models[e.who]; spawnFx("dust", worldX(fr.x[e.who]), 0x8a7f70); snd("spin"); }
+      else if (e.type === "cast" && live && (SFX.play("cast", CAST * (e.k || 1)), false)) {}
+      else if (e.type === "cast") { txt = CHARGE.name; col = hexStr(CHARGE.color); off = 0.9; spawnFx("shock", worldX(fr.x[e.who]), CHARGE.color); if (!cur.models[e.who].flip) spawnFx("charge", worldX(fr.x[e.who])); line = `<span class="buff"><b>${S(e.who)}</b> casts ${CHARGE.name}: the next Skyfall is charged</span>`; }
+      else if (e.type === "spin") { spawnFx("dust", worldX(fr.x[e.who]), 0x8a7f70); if (live) SFX.play("spin", e.k || 1); }
       else if (e.type === "hit") {
         txt = (e.crit ? `CRITICAL ×${e.mult} ` : "") + fmt(e.dmg); col = e.crit ? "#ffd34d" : "#ffffff"; big = e.crit;
         const hue = e.crit ? 0xffc040 : cur.models[e.who].tierColor;
@@ -1959,7 +2120,7 @@ export function createArenaScene(opts) {
       if (line && opts.onLog) opts.onLog({ key: cur.key, t: e.t, html: line });
     }
     drawHud(w, h, fr, t);
-    if (t >= F.length && !cur.ended) { cur.ended = true; if (opts.onEnd) opts.onEnd(cur.key); }
+    if (!cur.setup && t >= F.length && !cur.ended) { cur.ended = true; if (opts.onEnd) opts.onEnd(cur.key); }
   }
 
   // ---------- the old lights: r128 multiplied every light by PI and faded point lights in a straight line ----------
@@ -1970,6 +2131,131 @@ export function createArenaScene(opts) {
     if (o.isPointLight) o.decay = 0;
   });
 
+  // ---------- the weapon forge (a weapon upgrade try in the Character Lab) ----------
+  // The page sends "bi:forge" events: { phase: "start", level } when the member presses Try upgrade, then
+  // { phase: "end", success, level } once the server has answered. While waiting, motes of the next level's
+  // aura colour spiral in from all round and soak into the blade, which glows brighter and brighter in that
+  // colour. Success: a flash and a ring of light, and the new aura stays. Failure: the glow flickers, breaks
+  // apart into sparks that scatter and fade, and the blade goes back to the aura it had.
+  const FORGE = { motes: 56, radius: 2.6, spin: 2.6, fade: 1.1 };
+  const _fc = new THREE.Color(), _fc2 = new THREE.Color();
+  function forgeModel() { return cur && cur.setup ? cur.models[0] : null; }
+  function forgeParts(f) {
+    if (f.forgeG) return f.forgeG;
+    const g = new THREE.Group(); f.blade.g.parent.add(g);
+    g.userData.motes = Array.from({ length: FORGE.motes }, (_, k) => { const m = glow(0xffffff, 0.3 + (k % 4) * 0.1, 0); m.userData = { a: Math.random() * Math.PI * 2, ph: k / FORGE.motes, r: 0.75 + Math.random() * 0.5, z: (Math.random() - 0.5) * 0.6, vx: 0, vy: 0 }; g.add(m); return m; });
+    g.userData.core = glow(0xffffff, 1, 0); g.add(g.userData.core);
+    g.userData.cloud = glow(0xffffff, 4, 0); g.add(g.userData.cloud);   // the aura round the fighter that is drawn into the blade
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.85, 1.0, 64), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    g.add(ring); g.userData.ring = ring;
+    f.forgeG = g; return g;
+  }
+  on(document, "bi:forge", (ev) => {
+    const d = ev.detail || {}, f = forgeModel(); if (!f) return;
+    const now = performance.now() / 1000;
+    if (d.phase === "start") {
+      const lv = Math.max(1, Math.min(WEAPON.max, d.level || 1));
+      f.forge = { color: WEAPON.looks[lv - 1].color, from: f.tierColor, fromTier: f.tier || 0, level: lv, t0: now, phase: "absorb" };
+      const g = forgeParts(f); for (const m of g.userData.motes) { m.material.color.setHex(f.forge.color); m.userData.vx = m.userData.vy = 0; }
+      g.userData.core.material.color.setHex(f.forge.color); g.userData.ring.material.color.setHex(f.forge.color); g.userData.cloud.material.color.setHex(f.forge.color);
+      SFX.play("forge");
+    } else if (d.phase === "end" && f.forge) {
+      f.forge.phase = d.success ? "win" : "fail"; f.forge.t1 = now;
+      if (d.success) { setWeaponAura(f, f.forge.level); SFX.play("forgeWin"); }
+      else {
+        SFX.play("forgeFail");
+        for (const m of f.forgeG.userData.motes) { const a = Math.random() * Math.PI * 2, v = 1.8 + Math.random() * 2.6; m.userData.vx = Math.cos(a) * v; m.userData.vy = Math.sin(a) * v + 0.8; }
+      }
+    }
+  });
+  function tickForge() {
+    const f = forgeModel();
+    if (!f || !f.forge) { if (f && f.forgeG) f.forgeG.visible = false; return; }
+    const F_ = f.forge, now = performance.now() / 1000, g = forgeParts(f), b = f.blade, h = b.held;
+    g.visible = true;
+    // the blade's middle, where everything goes to (or flies out from)
+    const L = BLADE.length, cx = h ? h.x + Math.cos(h.a) * L * 0.55 : 0, cy = h ? h.y + Math.sin(h.a) * L * 0.55 : 1.6;
+    const strengthAt = (lv) => BLADE.aura + BLADE.auraPerLevel * Math.max(0, lv - 1);
+    const U = b.aura.material.uniforms, core = g.userData.core, ring = g.userData.ring, cloud = g.userData.cloud;
+    ring.position.set(cx, cy, 0.14); core.position.set(cx, cy, 0.15);
+    if (F_.phase === "absorb") {
+      const t = now - F_.t0, k = Math.min(1, t / 1.6);
+      g.userData.motes.forEach((m) => {
+        const u = (t * 0.55 + m.userData.ph) % 1, r = FORGE.radius * m.userData.r * (1 - u), a = m.userData.a + u * FORGE.spin * Math.PI;
+        m.position.set(cx + Math.cos(a) * r, cy + Math.sin(a) * r * 0.8, 0.12 + m.userData.z * (1 - u));
+        m.material.opacity = Math.min(1, Math.sin(u * Math.PI) * 1.3) * Math.min(1, t * 2);
+      });
+      // the aura gathers round the whole fighter, then shrinks down into the blade
+      const c = Math.min(1, t / 1.5), ce = c * c;
+      cloud.position.set(cx * ce, (cy + 0.2) * ce + 1.75 * (1 - ce), 0.1); cloud.scale.setScalar(4.6 - 3.8 * ce);
+      cloud.material.opacity = 0.55 * Math.min(1, t * 2.5) * (0.85 + 0.15 * Math.sin(t * 8));
+      // the blade soaks up the colour: its aura turns to it and swells, pulsing faster as it fills
+      _fc.setHex(F_.from).lerp(_fc2.setHex(F_.color), k); b.auraColor.value.copy(_fc);
+      b.aura.visible = true; b.weapon.material.uniforms.auraOn.value = 1;
+      U.strength.value = strengthAt(F_.fromTier) * (0.6 + 0.4 * k) + k * 1.1 * (0.75 + 0.25 * Math.sin(t * (6 + 10 * k)));
+      core.material.opacity = 0.25 + 0.35 * k; core.scale.setScalar(0.6 + 0.5 * k + Math.sin(t * 9) * 0.08);
+      ring.material.opacity = 0;
+    } else if (F_.phase === "win") {
+      const t = now - F_.t1, k = Math.min(1, t / 1.0);
+      g.userData.motes.forEach((m) => { m.material.opacity *= 0.82; });
+      core.material.opacity = Math.max(0, 1 - k) * 1.2; core.scale.setScalar(1.1 + k * 2.6);
+      ring.material.opacity = Math.max(0, 0.9 * (1 - k)); ring.scale.setScalar(0.3 + k * 1.6);
+      cloud.material.opacity = Math.max(0, 0.7 * (1 - k * 1.6)); cloud.scale.setScalar(0.8 + k * 0.6);
+      U.strength.value = strengthAt(F_.level) + (1 - k) * 1.6;
+      if (t > 1.1) { f.forge = null; applyBladeStyle(f); }
+    } else {
+      const t = now - F_.t1, k = Math.min(1, t / FORGE.fade);
+      // a stutter first, then it breaks apart and the old aura comes back
+      cloud.material.opacity *= 0.85;
+      if (t < 0.35) { U.strength.value = (strengthAt(F_.fromTier) + 0.9) * (Math.random() < 0.5 ? 0.25 : 1.1); core.material.opacity = Math.random() * 0.6; }
+      else {
+        const q = Math.min(1, (t - 0.35) / (FORGE.fade - 0.35));
+        g.userData.motes.forEach((m) => { m.position.x += m.userData.vx * 0.016; m.position.y += m.userData.vy * 0.016; m.userData.vy -= 0.05; m.material.opacity = Math.max(0, (1 - q) * 0.9); });
+        _fc.setHex(F_.color).lerp(_fc2.setHex(F_.from), q); b.auraColor.value.copy(_fc);
+        b.aura.visible = F_.fromTier > 0 || q < 1; b.weapon.material.uniforms.auraOn.value = b.aura.visible ? 1 : 0;
+        U.strength.value = strengthAt(F_.fromTier) * (F_.fromTier ? 1 : 1 - q) + (1 - q) * 0.5;
+        core.material.opacity = Math.max(0, 0.5 * (1 - q * 2)); core.scale.setScalar(1 + q * 1.5);
+        // a grey puff where the aura broke apart
+        cloud.material.color.setHex(0x8a8f99); cloud.position.set(cx, cy + q * 0.5, 0.1); cloud.scale.setScalar(1 + q * 2.2); cloud.material.opacity = 0.35 * Math.sin(Math.min(1, q * 1.4) * Math.PI);
+      }
+      if (t > FORGE.fade + 0.15) { f.forge = null; applyBladeStyle(f); }
+    }
+  }
+
+  // ---------- the Character Lab's practice loop ----------
+  // A made-up timeline for one fighter on the platform (nothing is decided here): it casts its own buff
+  // skills, charges Crimson LightningCharger and swings Skyfall at the air twice, then rests, and loops.
+  function labFight(f, values) {
+    const s = statsOf(f, values), skills = (f.skills || []).filter((id) => SKILLS[id]).slice(0, 2);
+    const own = skills.filter((id) => !SKILLS[id].passive);
+    const events = [], marks = [];   // marks: [from, to, what] for the frames
+    let t = 1.4, mp = s.mp;
+    const spirits = own.includes("spirits");
+    for (const id of own) { const k = paceOf(s.spd); events.push({ t, who: 0, type: "buff", skill: id, stacked: false, k }); marks.push([t, "buff", id]); t += BUFF_CAST * k + 0.25; }
+    for (let n = 0; n < 2; n++) {
+      const k = paceOf(s.spd * (spirits ? 1 + SKILLS.spirits.spd : 1));
+      events.push({ t, who: 0, type: "cast", k }); marks.push([t, "cast"]); t += CAST * k;
+      events.push({ t, who: 0, type: "spin", k }); marks.push([t, "spin"]); const sp = t; t += SPIN * k;
+      marks.push([sp, "spinEnd", t]);
+      events.push({ t, who: 0, type: "swing", k }); t += RECOVER * k + 0.9;
+    }
+    const L = Math.round((t + 2.2) / DT) * DT, frames = [];
+    const sk = { shield: 0, blow: 0, spirits: 0, blood: 0, garuda: 0, nirvana: 0 }, cd = { ...sk };
+    for (let x = 0; x <= L + 1e-9; x += DT) {
+      const tt = Math.round(x * 100) / 100, cur2 = { ...sk };
+      let mpNow = s.mp, charged = false;
+      for (const m of marks) {
+        if (m[0] > tt) continue;
+        if (m[1] === "buff") { cur2[m[2]] = SKILLS[m[2]].charges || SKILLS[m[2]].attacks || SKILLS[m[2]].guards || 1; mpNow -= SKILLS[m[2]].mp || 0; }
+        if (m[1] === "cast") mpNow -= CHARGE.mp;
+        if (m[1] === "spinEnd" && tt < m[2]) charged = true;
+      }
+      const spd = s.spd * (cur2.spirits > 0 ? 1 + SKILLS.spirits.spd : 1);
+      frames.push({ t: tt, x: [6, 40], hp: [s.hp, s.hp], mp: [Math.max(0, mpNow), s.mp], pots: [s.pots, s.pots], charged: [charged, false], spd: [spd, 100], sk: [cur2, { ...sk }], cd: [cd, cd], buff: [charged ? { lightning: 1 } : {}, {}] });
+    }
+    return { lab: true, frames, events, winner: 0, how: "lab", length: L, maxhp: [s.hp, s.hp], maxmp: [s.mp, s.mp], maxpots: [s.pots, s.pots], skills: [skills, []], stats: [s, s] };
+  }
+
   // ---------- what the page uses ----------
   function show(spec) {
     const { a, b } = spec;
@@ -1978,9 +2264,13 @@ export function createArenaScene(opts) {
     ma.hasPet = !!a.pet; mb.hasPet = !!b.pet;
     setWeaponAura(ma, a.weapon || 0); setWeaponAura(mb, b.weapon || 0);
     setHaloLook(ma, a.entries || 1); setHaloLook(mb, b.entries || 1);
-    ma.root.visible = mb.root.visible = true;
-    const same = cur && cur.key === spec.key && cur.fight === spec.fight;
-    cur = { key: spec.key, fight: spec.fight, a, b, models: [ma, mb], values: spec.values, ext: spec.clock || undefined, betting: !!spec.betting, betLeft: 0, ended: false };
+    // spec.setup: the Character Lab, the member's own fighter alone (b is not shown)
+    const setup = !!spec.setup;
+    ma.root.visible = true; mb.root.visible = !setup;
+    setLab(setup);
+    const same = cur && cur.key === spec.key && (setup ? cur.setup : cur.fight === spec.fight);
+    const fight = setup ? (same ? cur.fight : labFight(a, spec.values)) : spec.fight;
+    cur = { key: spec.key, fight, a, b, setup, models: [ma, mb], values: spec.values, ext: spec.clock || undefined, betting: !!spec.betting, betLeft: 0, ended: false };
     if (same) return;
     floaters.length = 0; clockT = 0; flashUntil = 0; shownEvents = 0; pops.length = 0;
     for (const f of fx) scene.remove(f.m); fx.length = 0;
