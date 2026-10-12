@@ -182,7 +182,7 @@ export function useArenaCrowd(scope, enabled = true) {
     let alive = true;
     const ask = async () => {
       if (typeof document !== "undefined" && document.hidden) return;
-      const here = Date.now() - lastHere.current > 30000;
+      const here = Date.now() - lastHere.current > 45000; // 6.17: every 45 s (the server counts 90 s)
       try {
         const res = await base44.functions.invoke("arenaAction", { action: "pulse", scope, ...(here ? { here: true } : {}) });
         if (here) lastHere.current = Date.now();
@@ -605,4 +605,4 @@ export function useServerClock() {
   }, [serverNow]);
   return { now: serverNow(), sync, serverNow };
 }
-export const useStable = (v) => useMemo(() => v, [JSON.stringify(v)]);
+export const useStable = (v) => useMemo(() => v, [JSON.stringify(v)]);  

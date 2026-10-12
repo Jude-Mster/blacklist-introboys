@@ -37,6 +37,11 @@ async function readToken(req): Promise<string> {
 // remembered for a short while by this running copy of the function. The member row
 // is still read fresh on every call, so losing access or a ban applies at once.
 const SESSION_CACHE_MS = 120000;   // two minutes (was 30 s): fewer database reads on every call
+// 6.17: screens that only look (the table, the crowd, chat) may reuse what this copy read about the
+// caller for up to 2 minutes (member row) / 10 minutes (session). Losing access still signs the member
+// out within about 90 s (the account refresh), and anything that moves points always reads fresh.
+export const POLL_REUSE_MS = 120000;
+const POLL_SESSION_MS = 600000;
 const sessionCache = new Map<string, { s: any; at: number }>();
 const memberSeen = new Map<string, { m: any; at: number; used: number }>();
 
@@ -55,7 +60,7 @@ export async function sessionUser(b, req, maxAgeMs = 0) {
   if (!TOKEN_RE.test(token)) return null;
   const hash = await sha256Hex(token);
   const cached = sessionCache.get(hash);
-  let s = cached && Date.now() - cached.at < SESSION_CACHE_MS ? cached.s : null;
+  let s = cached && Date.now() - cached.at < (maxAgeMs > 0 ? POLL_SESSION_MS : SESSION_CACHE_MS) ? cached.s : null;
   if (!s) {
     const { items } = await b.asServiceRole.entities.Session.filter({ token_hash: hash }, { limit: 1 });
     s = items[0];

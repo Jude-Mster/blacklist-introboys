@@ -4,7 +4,7 @@ import { UserError } from './points.ts';
 import { memo, bust } from './memo.ts';
 
 export const EMOJIS = ['😂', '🤡', '💀', '🔥', '😤', '🐔', '🧂', '🍼', '😭', '🫵', '💩', '👑'];
-const SEEN_MS = 60000;        // watching = seen in the last minute
+const SEEN_MS = 90000;        // watching = seen in the last 90 s (6.17: screens say so every 45 s)
 const KEEP_MS = 120000;       // reactions are kept two minutes
 const SHOW_MS = 20000;        // a screen is sent the reactions of the last 20 seconds (screens ask every 12)
 const GAP_MS = 1200;          // one emoji per member every 1.2 seconds
@@ -14,7 +14,7 @@ export const cleanScope = (v) => { const s = String(v || 'live'); return s === '
 
 // 6.16: everyone watching a screen shares one read of the crowd (3 s), so the crowd costs about
 // the same whether 3 or 30 are watching. Old rows are tidied only when that shared read is made.
-const CROWD_MS = 3000;
+const CROWD_MS = 8000; // 6.17: 8 s (emojis show within the 20 s window either way)
 const crowdOf = (b, scope: string) => memo('crowd:' + scope, CROWD_MS, async () => {
   const now = Date.now();
   const [{ items: seen }, { items: recent }] = await Promise.all([
@@ -26,7 +26,7 @@ const crowdOf = (b, scope: string) => memo('crowd:' + scope, CROWD_MS, async () 
   return { seen, recent };
 });
 
-// here = true: count this member as watching (screens send it every ~30 s, not on every pulse).
+// here = true: count this member as watching (screens send it every ~45 s, not on every pulse).
 export async function pulse(b, me, scope: string, here: boolean) {
   const crowd = await crowdOf(b, scope);
   if (here) {

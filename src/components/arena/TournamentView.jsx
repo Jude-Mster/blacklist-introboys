@@ -193,6 +193,7 @@ export default function TournamentView({ balance, member }) {
     } finally { inFlight.current = false; }
   }, [sync]);
 
+  const jitter = useRef(Math.floor(Math.random() * 750));
   // Ask when something can change: the next match opening, betting closing (the seed), a fight ending.
   useEffect(() => {
     refresh();
@@ -206,7 +207,8 @@ export default function TournamentView({ balance, member }) {
         for (const m of t.matches) for (const k of ["open_at", "close_at", "end_at"]) if (m[k]) marks.push(Date.parse(m[k]));
         if (t.ends_at) marks.push(Date.parse(t.ends_at));
         const next = marks.filter((x) => x > now - 200).sort((a, b) => a - b)[0];
-        wait = next ? Math.min(6000, Math.max(300, next - now + 350)) : 4000;
+        // 6.17: each screen adds its own 0.25-1.1 s, so a crowd doesn't arrive in the same second
+        wait = next ? Math.min(6000, Math.max(300, next - now + 350 + jitter.current)) : 4000;
         // a match whose betting has closed but whose seed we don't have yet
         if (t.matches.some((m) => now >= Date.parse(m.close_at) && now < Date.parse(m.close_at) + 600000 && m.seed == null && m.a != null && m.b != null)) wait = Math.min(wait, 1200);
       } else if (t && t.status === "signup") {

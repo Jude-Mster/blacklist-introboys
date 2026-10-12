@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-import { sessionUser } from '../../shared/session.ts';
+import { sessionUser, POLL_REUSE_MS } from '../../shared/session.ts';
 import {
   getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, todayStr, randInt,
   validRouletteBet, roulettePayout, ROULETTE_POCKETS, GAME_NAMES, UserError, errorResponse
@@ -54,7 +54,8 @@ async function advance(b, settings, shared = false) {
   if (!due(first, Date.now())) return first;
   if (first.settling_at && Date.now() - Date.parse(first.settling_at) < BUSY_MS) return first; // someone is already on it
   bust('roulette:'); // the round is moving on: the next look must read it fresh
-  return withRecordLock(b, 'RouletteTable', first.id, async () => {
+  // 6.16: requests in this copy that notice together share one attempt at the lock
+  return memo(`roulettework:${first.id}:${first.round_no}:${first.status}`, 1500, () => withRecordLock(b, 'RouletteTable', first.id, async () => {
     let t = await b.asServiceRole.entities.RouletteTable.get(first.id);
     const now = Date.now();
     if (t.status === 'betting' && Date.parse(t.bets_close_at) <= now) {
@@ -81,7 +82,7 @@ async function advance(b, settings, shared = false) {
       });
     }
     return t;
-  }, SETTLE_LOCK_MS);
+  }, SETTLE_LOCK_MS));
 }
 
 async function settle(b, t, now: number, settings) {
@@ -167,7 +168,7 @@ async function handle(req, action: string) {
     const arrived = Date.now();
     const b = resilient(createClientFromRequest(req));
     // 6.16: a screen's poll ('state') may reuse a member row read in the last 20 s
-    const user = await sessionUser(b, req, action === 'state' ? 20000 : 0);
+    const user = await sessionUser(b, req, action === 'state' ? POLL_REUSE_MS : 0);
     if (!user) throw new UserError('Link your Discord first.', 401);
     let p; try { p = await req.json(); } catch { p = {}; }
     if (p.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION });

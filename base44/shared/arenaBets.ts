@@ -213,7 +213,7 @@ export async function payOthers(b, scopeFilter, resolve: Resolve, settings, skip
 }
 
 // Everyone's bets on one fight, for the bet board. Payouts are only worked out once `o` is known.
-const BOARD_MS = 1500;
+const BOARD_MS = 2500;
 export async function betBoard(b, key: FightKey, meId: string, o) {
   // 6.16: every screen on this fight shares one read (1.5 s); a bet, take-back or payout
   // made through this copy of the function clears it at once.

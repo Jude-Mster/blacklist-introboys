@@ -64,7 +64,8 @@ export default function LiveArena({ balance }) {
         const until = sn < close ? close : end && sn < end ? end : next || close;
         const every = sn < close ? 5000 : end && sn < end ? 15000 : 6000;
         const left = until - sn;
-        wait = left > 0 ? Math.min(every, left + (until === next ? jitter.current : 300)) : 1500;
+        // 6.17: every moment is spread a little per screen, so a crowd doesn't arrive in the same second
+        wait = left > 0 ? Math.min(every, left + (until === next ? jitter.current : 300 + Math.round(jitter.current * 0.8))) : 1500;
         // the fight is over on screen but the result hasn't been fetched yet
         if (end && sn >= end && !t.outcome) wait = Math.min(wait, 900);
       }

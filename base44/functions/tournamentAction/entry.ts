@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-import { sessionUser } from '../../shared/session.ts';
+import { sessionUser, POLL_REUSE_MS } from '../../shared/session.ts';
 import {
   getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, UserError, errorResponse, resilient
 } from '../../shared/points.ts';
@@ -135,7 +135,19 @@ const codeSpec = (x) => {
 };
 
 // ---------- finding tournaments ----------
+// 6.17: one query for the three open states (was three). If the data store ever refuses $in,
+// fall back to the three single queries for good.
+let inOk = true;
 async function activeTour(b) {
+  if (inOk) {
+    try {
+      const { items } = await E(b).Tournament.filter({ status: { $in: ['signup', 'running', 'paying'] } }, { sort: '-created_date', limit: 1 });
+      return items[0] || null;
+    } catch (e) {
+      if (e && ((e as any).status === 429 || /rate limit/i.test(String((e as any).message || '')))) throw e;
+      inOk = false;
+    }
+  }
   const lists = await Promise.all(['signup', 'running', 'paying'].map((s) => E(b).Tournament.filter({ status: s }, { sort: '-created_date', limit: 1 })));
   return lists.map((x) => x.items[0]).filter(Boolean).sort((x, y) => String(y.created_date).localeCompare(String(x.created_date)))[0] || null;
 }
@@ -147,7 +159,16 @@ const entrantsOf = async (b, tourId: string) => (await E(b).TourEntrant.filter({
 // 6.16: what every screen polls ('state', 'status') is shared for a moment by all requests in this
 // copy of the function. Anything that changes a tournament or a fighter clears it (see the end of the
 // file), and the clock work always reads fresh under the lock.
-const sharedActive = (b) => memo('tour:active', 2500, () => activeTour(b));
+// 6.17: the open tournament only changes when one of its times comes (a match opening, betting closing,
+// a fight ending, the start or the end) or when someone changes it (which clears the shared answers).
+// So the shared look is kept up to 10 s, but dropped the moment one of those times passes.
+const marksOf = (t) => {
+  const xs = [t.starts_at, t.ends_at];
+  for (const m of t.matches || []) xs.push(m.open_at, m.close_at, m.end_at);
+  return xs.filter(Boolean).map((x) => tms(x));
+};
+const noMarkPassed = (t, at: number) => { if (!t) return true; const now = Date.now(); return !marksOf(t).some((x) => x > at && x <= now); };
+const sharedActive = (b) => memo('tour:active', 10000, () => activeTour(b), noMarkPassed);
 const sharedLast = (b) => memo('tour:last', 20000, () => lastTour(b));
 const sharedEntrants = (b, tourId: string) => memo('tour:ent:' + tourId, 2000, () => entrantsOf(b, tourId));
 const buildOf = (x) => ({ entries: x.entries || 0, ups: x.ups || {}, weapon: x.weapon || 0, skills: x.skills || [], pet: x.pet || 0, mount: x.mount && x.mount.lv ? x.mount : null });
@@ -465,7 +486,10 @@ async function tick(b, t) {
   if (!due) return t;
   try {
     // only one request moves the tournament on; the others don't queue (see withRecordLock's waitMs)
-    return await withRecordLock(b, 'Tournament', t.id, async () => {
+    // 6.16: requests in this copy that notice together share one attempt at the lock
+    // 6.17: "someone else is on it" is remembered for a moment too (null), so this copy doesn't keep
+    // knocking on the lock while another copy does the work; the next look then reads fresh.
+    const done = await memo(`tourwork:${t.id}:${t.status}:${t.updated_date || ''}`, 1500, () => withRecordLock(b, 'Tournament', t.id, async () => {
       const cur = await E(b).Tournament.get(t.id);
       const left = tms(cur.starts_at) - Date.now();
       if (cur.status === 'signup' && cur.starts_at && !cur.reminded_at && left > 0 && left <= REMIND_MS) {
@@ -483,7 +507,9 @@ async function tick(b, t) {
         if (next.ends_at && Date.now() >= tms(next.ends_at)) await finishTour(b, next);
       } else if (cur.status === 'paying') await finishTour(b, cur);
       return await E(b).Tournament.get(t.id);
-    }, TOUR_LOCK_MS, 0);
+    }, TOUR_LOCK_MS, 0).catch((e) => { if (e instanceof UserError && (e as any).busy) return null; throw e; }));
+    if (done === null) { bust('tour:'); return t; }
+    return done;
   } catch (e) {
     if (e instanceof UserError) return (e as any).busy ? t : await E(b).Tournament.get(t.id); // someone else is moving it on
     throw e;
@@ -652,7 +678,8 @@ async function reroll(b, t, me) {
 }
 
 // 6.16: after anything that isn't a read, forget the shared answers so the next screen sees the change.
-const READS = new Set(['state', 'status', 'ping', 'pulse']);
+// (bets and payouts don't change the tournament itself; they clear the shared bet boards on their own)
+const READS = new Set(['state', 'status', 'ping', 'pulse', 'bet', 'remove', 'settle']);
 export default async function(req) {
   let action = '';
   try { const q = await req.clone().json(); action = String((q && q.action) || ''); } catch { /* no body */ }
@@ -681,7 +708,7 @@ async function handle(req) {
     }
 
     // 6.15: the screen's polls ('state', 'status') may reuse a member row read in the last 20 s.
-    const user = await sessionUser(b, req, p.action === 'state' || p.action === 'status' ? 20000 : 0);
+    const user = await sessionUser(b, req, p.action === 'state' || p.action === 'status' ? POLL_REUSE_MS : 0);
     if (!user) throw new UserError('Link your Discord first.', 401);
     if (p.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION, engine: ENGINE_VERSION });
     const me = await getMemberByUserId(b, user.id);
@@ -750,7 +777,11 @@ async function handle(req) {
     }
 
     if (p.action === 'bet' || p.action === 'remove') {
-      const t = await activeTour(b);
+      // 6.17: the shared look at the tournament is enough when it already shows this match open;
+      // otherwise read it fresh (a match that opened a moment ago)
+      let t = await sharedActive(b);
+      const openIn = (x) => x && x.status === 'running' && Array.isArray(x.matches) && x.matches.some((mm) => mm.no === Number(p.match) && mm.open_at && arrived >= tms(mm.open_at));
+      if (!openIn(t)) t = await activeTour(b);
       if (!t || t.status !== 'running' || !Array.isArray(t.matches)) throw new UserError('No tournament match is open for bets.');
       const m = t.matches.find((x) => x.no === Number(p.match));
       if (!m) throw new UserError('That match is not in this tournament.');

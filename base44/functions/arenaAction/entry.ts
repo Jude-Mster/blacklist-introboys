@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-import { sessionUser } from '../../shared/session.ts';
+import { sessionUser, POLL_REUSE_MS } from '../../shared/session.ts';
 import { getSettings, getMemberByUserId, withRecordLock, UserError, errorResponse, resilient } from '../../shared/points.ts';
 import {
   ENGINE_VERSION, LOOK_KEYS, LIMIT, mulberry32, matchedPair, simulate, outcomeOf, priceMatch
@@ -8,7 +8,7 @@ import {
   ARENA_NAME, placeBets, removeBets, payMine, payOthers, betBoard, arenaLimit, arenaMin, type Resolve
 } from '../../shared/arenaBets.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
-import { memo, remember } from '../../shared/memo.ts';
+import { memo, remember, bust } from '../../shared/memo.ts';
 import { pulse, react, cleanScope } from '../../shared/arenaSocial.ts';
 
 // Blacklist Arena, the Live Arena: one shared fight every few minutes, between two members of
@@ -118,9 +118,13 @@ async function getTable(b, settings) {
 // enough. Only one request does the work; the others wait for it and read what it wrote.
 // 6.16: screens polling 'state' share one read of the table (1 s). When the round is due to move
 // on, the work below still reads the table fresh under the lock, and puts what it wrote in place.
-const TABLE_MS = 1000;
+const TABLE_MS = 2000;
 async function current(b, settings, shared = false) {
-  const t0 = shared ? await memo('arena:table', TABLE_MS, () => getTable(b, settings)) : await getTable(b, settings);
+  // 6.17: the table only changes when betting closes or the next round opens (both known times) and
+  // whoever does that work puts the new table in place; so a shared look can last up to 10 s, but is
+  // dropped the moment one of those times passes.
+  const noMarkPassed = (t, at: number) => { const now = Date.now(); return !usable(t) ? false : ![closeMs(t), nextMs(t)].some((x) => x > at && x <= now); };
+  const t0 = shared ? await memo('arena:table', 10000, () => getTable(b, settings), noMarkPassed) : await getTable(b, settings);
   const due = (t) => !usable(t) || (Date.now() >= closeMs(t) && !fought(t));
   const stale = (t) => !usable(t) || (fought(t) && Date.now() >= nextMs(t));
   if (!stale(t0) && !due(t0)) return t0;
@@ -137,8 +141,13 @@ async function current(b, settings, shared = false) {
   // every waiting request checking the lock several times a second, which tripped the platform's
   // request limit). They answer with the table as it is, and the screen asks again a moment later.
   try {
-    const t = await withRecordLock(b, 'ArenaTable', t0.id, open, 10000, 0);
-    remember('arena:table', TABLE_MS, t);
+    // 6.16: screens that notice at the same moment share this copy's one attempt at the lock
+    // (each attempt is several database calls; ten screens used to make ten attempts).
+    // 6.17: "another copy is on it" is remembered too (null), so this copy doesn't keep knocking.
+    const t = await memo(`arena:work:${t0.id}:${t0.round_no}:${fought(t0) ? 1 : 0}`, 1500, () => withRecordLock(b, 'ArenaTable', t0.id, open, 10000, 0)
+      .catch((e) => { if (e instanceof UserError && (e as any).busy) return null; throw e; }));
+    if (t === null) { bust('arena:table'); if (usable(t0)) return t0; throw Object.assign(new UserError('Busy, try again in a moment.', 409), { busy: true }); }
+    remember('arena:table', 10000, t);
     return t;
   } catch (e) {
     if (e instanceof UserError) {
@@ -200,7 +209,7 @@ export default async function(req) {
     // Screens poll 'state' and 'pulse' every few seconds; they may reuse a member row read in the
     // last 20 s. Bets and everything else read it fresh.
     const LIGHT = p.action === 'state' || p.action === 'pulse';
-    const user = await sessionUser(b, req, LIGHT ? 20000 : 0);
+    const user = await sessionUser(b, req, LIGHT ? POLL_REUSE_MS : 0);
     if (!user) throw new UserError('Link your Discord first.', 401);
     if (p.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION, engine: ENGINE_VERSION });
     const me = await getMemberByUserId(b, user.id);

@@ -9,7 +9,7 @@ ok((await w(C)) === 2, `watching: A (4 tabs/pulses at once) + B = 2 (got ${await
 await call(arena, C, { action: 'pulse', scope: 'live', here: true });
 ok((await w(C)) === 3, 'watching: C joins = 3');
 advance(45e3); await call(arena, A, { action: 'pulse', scope: 'live', here: true });
-advance(20e3);
-ok((await w(C)) === 1, `watching: B and C stopped sending for over a minute, A still here = 1 (got ${await w(C)})`);
+advance(50e3); // 6.17: "watching" means seen in the last 90 s
+ok((await w(C)) === 1, `watching: B and C stopped sending for over 90 s, A still here = 1 (got ${await w(C)})`);
 ok((await call(arena, A, { action: 'pulse', scope: 'tour:x', here: true })).watching >= 1 && (await w(C)) === 1, 'watching: the tournament count is separate from the live one');
 done();

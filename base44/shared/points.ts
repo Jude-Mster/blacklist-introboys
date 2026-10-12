@@ -57,7 +57,10 @@ export async function getSettings(b, fresh = false) {
   if (!fresh && settingsCache && Date.now() - settingsCache.at < SETTINGS_CACHE_MS) return settingsCache.v;
   if (!fresh && settingsLoading) return await settingsLoading;
   const run = readSettings(b).then((v) => { settingsCache = { v, at: Date.now() }; return v; });
-  if (!fresh) settingsLoading = run.finally(() => { settingsLoading = null; });
+  if (!fresh) {
+    settingsLoading = run.finally(() => { settingsLoading = null; });
+    settingsLoading.catch(() => {}); // a failed read is reported to the caller; never left unhandled (that would stop this copy)
+  }
   return await run;
 }
 
@@ -266,8 +269,13 @@ export async function withRecordLock(b, entity: string, id: string, fn: () => Pr
     let rows = seen;
     while (true) {
       if (!rows.some(ahead)) { rows = await others(mine.id); if (!rows.some(ahead)) break; }
-      if (waitMs <= 0) throw Object.assign(new UserError("Busy, try again in a moment.", 409), { busy: true });
-      if (Date.now() - started > waitMs) throw new UserError("Your last action is still finishing. Try again in a moment.", 409);
+      if (waitMs <= 0) {
+        // 6.17: "don't queue" callers give up at once when someone already HOLDS the lock. But when the
+        // only ones ahead are still choosing their number (two arrived together), they wait a moment for
+        // that to settle: giving up then could make both give up, and nobody would do the work.
+        const holding = rows.some((r) => !r.choosing && ahead(r));
+        if (holding || Date.now() - started > 600) throw Object.assign(new UserError("Busy, try again in a moment.", 409), { busy: true });
+      } else if (Date.now() - started > waitMs) throw new UserError("Your last action is still finishing. Try again in a moment.", 409);
       await sleep(pause + randInt(100));
       pause = Math.min(1000, Math.round(pause * 1.5));
       rows = await others(mine.id);

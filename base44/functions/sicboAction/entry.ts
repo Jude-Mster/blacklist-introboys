@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-import { sessionUser } from '../../shared/session.ts';
+import { sessionUser, POLL_REUSE_MS } from '../../shared/session.ts';
 import {
   getSettings, getMemberByUserId, changePoints, withMemberLock, todayStr, randInt, UserError, errorResponse
 } from '../../shared/points.ts';
@@ -160,7 +160,7 @@ async function handle(req, action: string) {
     const arrived = Date.now();
     const b = resilient(createClientFromRequest(req));
     // 6.16: a screen's poll ('state') may reuse a member row read in the last 20 s
-    const user = await sessionUser(b, req, action === 'state' ? 20000 : 0);
+    const user = await sessionUser(b, req, action === 'state' ? POLL_REUSE_MS : 0);
     if (!user) throw new UserError('Link your Discord first.', 401);
     let p; try { p = await req.json(); } catch { p = {}; }
     if (p.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION });
