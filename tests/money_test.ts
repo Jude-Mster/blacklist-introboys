@@ -2,6 +2,7 @@
 // Every test ends with the ledger check: for every member, points = starting points + sum of their PointLog,
 // and nobody is below 0. Double clicks are fired as 6 identical requests at the same moment.
 import { member, settings, call, E, advance, ok, done } from './h.ts';
+const offeredKey = (o) => (o.a > 1 ? 'a' : o.b > 1 ? 'b' : ((o.side || []).find((x) => x.price > 1) || { id: 'lenover' }).id);   // a fighter if one is offered, else a side bet
 const F = async (n) => (await import(`../base44/functions/${n}/entry.ts`)).default;
 const arena = await F('arenaAction'), tour = await F('tournamentAction'), roul = await F('rouletteAction'), sicbo = await F('sicboAction'),
   wheel = await F('wheelAction'), derby = await F('derbyAction'), play = await F('playGame'), daily = await F('claimDaily'),
@@ -149,7 +150,7 @@ const BAD = [-100, 0, 0.5, 1.5, 1e20, 'abc', null, NaN, '100abc', [], {}];
 {
   let s = await call(arena, A, { action: 'state' });
   const round = s.table.round_no, odds = s.table.odds;
-  const fk = odds.a > 1 ? 'a' : 'b';
+  const fk = offeredKey(odds);
   for (const v of BAD) { const b0 = await pts(B); const r = await call(arena, B, { action: 'bet', round, lines: [{ k: fk, amount: v }] }); ok(r.status >= 400 && (await pts(B)) === b0, `arena: amount ${JSON.stringify(v)} refused (got ${r.status})`); if (r.status === 200) await call(arena, B, { action: 'remove', round, all: true }); }
   const b0 = await pts(B);
   const rs = await race(6, () => call(arena, B, { action: 'bet', round, lines: [{ k: fk, amount: 700 }] }));
@@ -161,7 +162,8 @@ const BAD = [-100, 0, 0.5, 1.5, 1e20, 'abc', null, NaN, '100abc', [], {}];
   const tb = await race(4, () => call(arena, B, { action: 'remove', round, all: true }));
   ok((await pts(B)) === b0, `arena: take everything back x4 at once returns exactly the stake once (${JSON.stringify(statusCount(tb))})`);
   await call(arena, B, { action: 'bet', round, lines: [{ k: fk, amount: 1000 }] });
-  await call(arena, C, { action: 'bet', round, lines: [{ k: 'draw', amount: 100 }] });
+  ok((await call(arena, C, { action: 'bet', round, lines: [{ k: 'draw', amount: 100 }] })).status === 400, 'arena: no Draw bet since engine 8');
+  await call(arena, C, { action: 'bet', round, lines: [{ k: 'lenover', amount: 100 }] });
   advance(31e3); s = await call(arena, A, { action: 'state' });
   ok((await call(arena, D, { action: 'bet', round, lines: [{ k: fk, amount: 100 }] })).status === 400, 'arena: no bets after betting closes');
   advance(400e3);
@@ -196,7 +198,7 @@ const BAD = [-100, 0, 0.5, 1.5, 1e20, 'abc', null, NaN, '100abc', [], {}];
     const t = s.tournament; if (!t) break;
     if (t.status !== 'running') { await Promise.all([call(tour, C, { action: 'state' }), call(tour, null, { action: 'sweep', __wf_secret: SECRET.tour })]); continue; }
     const m = t.matches.find((x) => x.status === 'betting');
-    if (m && m.odds) { const k2 = m.odds.a > 1 ? 'a' : 'b'; await race(3, () => call(tour, D, { action: 'bet', match: m.no, lines: [{ k: k2, amount: 100 }] })); }
+    if (m && m.odds) { const k2 = offeredKey(m.odds); await race(3, () => call(tour, D, { action: 'bet', match: m.no, lines: [{ k: k2, amount: 100 }] })); }
     await Promise.all([call(tour, D, { action: 'settle' }), call(tour, D, { action: 'settle' }), call(tour, null, { action: 'sweep', __wf_secret: SECRET.tour })]);
   }
   for (let k = 0; k < 6; k++) { advance(20e3); await Promise.all([call(tour, A, { action: 'state' }), call(tour, L, { action: 'state' }), call(tour, null, { action: 'sweep', __wf_secret: SECRET.tour }), call(tour, D, { action: 'settle' })]); }

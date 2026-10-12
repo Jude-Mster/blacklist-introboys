@@ -1,6 +1,7 @@
 import { advance, member, settings, call, pts, ok, done, E } from './h.ts';
 import tour from '../base44/functions/tournamentAction/entry.ts';
 import { simulate, outcomeOf, normValues, betReturn } from '../base44/shared/arenaEngine.ts';
+const offeredKey = (o) => (o.a > 1 ? 'a' : o.b > 1 ? 'b' : ((o.side || []).find((x) => x.price > 1) || { id: 'lenover' }).id);   // a fighter if one is offered, else a side bet
 
 await settings();
 const L = await member('Juts', 100000, 'leader');
@@ -79,7 +80,7 @@ ok(m1.status === 'betting' && m1.odds, 'match 1 open for bets');
 r = await call(tour, ms[5], { action: 'bet', match: 1, lines: [{ k: 'a', amount: 500 }, { k: 'b', amount: 100 }] });
 // (when one fighter isn't offered at all, e.g. a heavy favourite, it is refused for that reason instead)
 ok(r.status === 400 && (/both/.test(r.error) || !(m1.odds.a > 1 && m1.odds.b > 1)), 'no bet on both fighters in a match: ' + r.error);
-const side1 = m1.odds.a > 1 ? 'a' : 'b';   // a heavy favourite isn't offered
+const side1 = offeredKey(m1.odds);   // a heavy favourite or a long shot isn't offered
 r = await call(tour, ms[5], { action: 'bet', match: 1, lines: [{ k: side1, amount: 500 }] });
 ok(r.ok, 'bet on match ' + (r.error || ''));
 const fa = s.tournament.field[m1.a];

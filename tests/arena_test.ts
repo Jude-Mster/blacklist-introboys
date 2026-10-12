@@ -1,6 +1,7 @@
 import { advance, member, settings, call, pts, ok, done, E } from './h.ts';
 import arena from '../base44/functions/arenaAction/entry.ts';
 import { simulate, outcomeOf, betReturn } from '../base44/shared/arenaEngine.ts';
+const offeredKey = (o) => (o.a > 1 ? 'a' : o.b > 1 ? 'b' : ((o.side || []).find((x) => x.price > 1) || { id: 'lenover' }).id);   // a fighter if one is offered, else a side bet
 
 await settings();
 const A = await member('Juts'), B = await member('Judy'), C = await member('Kael');
@@ -11,19 +12,20 @@ ok(s.status === 200 && s.table.status === 'betting', 'state opens a round in bet
 ok(s.table.fight === null && s.table.outcome === null, 'no seed or result before close');
 ok(!JSON.stringify(s).includes('"seed"') && !JSON.stringify(s.table).includes('fight_ends_at'), 'seed and end time not leaked');
 ok(s.table.fighters.length === 2 && s.table.fighters[0].look !== s.table.fighters[1].look, 'two fighters with different looks');
-ok((s.table.odds.a > 1 || s.table.odds.b > 1) && s.table.odds.a <= 6 && s.table.odds.b <= 6 && (s.table.odds.draw === 0 || s.table.odds.draw <= 10), 'prices capped: ' + JSON.stringify([s.table.odds.a, s.table.odds.b, s.table.odds.draw]));
+ok((s.table.odds.a > 1 || s.table.odds.b > 1) && s.table.odds.a <= 4 && s.table.odds.b <= 4 && s.table.odds.draw === 0, 'prices capped: ' + JSON.stringify([s.table.odds.a, s.table.odds.b, s.table.odds.draw]));
 ok(s.table.odds.side.every((x) => x.price === 0 || x.price <= 5), 'side bets capped at 5x');
 const round = s.table.round_no;
 
 // a heavy favourite isn't offered (its price would be under 1.01): bet on the side that is
-const fk = s.table.odds.a > 1 ? 'a' : 'b', fo = fk === 'a' ? 'b' : 'a';
-const ov = s.table.odds.side.find((x) => x.id === 'over' && x.price > 1) ? 'over' : 'critover';
+const fk = offeredKey(s.table.odds), fo = fk === 'a' ? 'b' : 'a';
+const ov = ['over', 'lenover', 'critover'].find((k) => s.table.odds.side.some((x) => x.id === k && x.price > 1)) || 'lenover';
+const OPP = { over: 'under', lenover: 'lenunder', critover: 'critunder' };
 let r;
 r = await call(arena, A, { action: 'bet', round, lines: [{ k: fk, amount: 1000 }, { k: ov, amount: 15 }] });
 ok(r.ok && r.balance === 100000 - 1015, 'bet takes points ' + (r.error || ''));
 r = await call(arena, A, { action: 'bet', round, lines: [{ k: fo, amount: 10 }] });
 ok(r.status === 400 && /both|offered/.test(r.error), 'no bet on both fighters: ' + r.error);
-r = await call(arena, A, { action: 'bet', round, lines: [{ k: ov === 'over' ? 'under' : 'critunder', amount: 10 }] });
+r = await call(arena, A, { action: 'bet', round, lines: [{ k: OPP[ov], amount: 10 }] });
 ok(r.status === 400 && /both/.test(r.error), 'no over and under: ' + r.error);
 r = await call(arena, B, { action: 'bet', round, lines: [{ k: 'onehitA', amount: 10 }, { k: 'onehitB', amount: 10 }] });
 ok(r.status === 400, 'no one-hit KO by each');

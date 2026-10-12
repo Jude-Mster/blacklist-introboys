@@ -130,3 +130,13 @@ Not verifiable here: the Discord DM with the code (needs the bot) and the live B
 | Browser: Re-roll gone from the stage; mount reset and re-roll ask first, Yes disabled until ticked, Cancel changes nothing, Yes does the change | Pass |
 | Browser: bracket on a computer and a phone (no sideways page scroll); Watch; Download saved a 46 s WebM (VP9 + Opus) with its length written in | Pass |
 | npm run test:backend (10 files) | Pass |
+
+## 8. Version 6.11 additions (executed)
+
+| Check | Result |
+|---|---|
+| Prices re-counted from 2,000 real practice fights for 120 matchups: identical; no fighter over 4x, no side bet over 3x or outside 30-70%, no buff lines, a length line, no Draw | Pass |
+| Every offered fighter bet's expected return (P(win) x price + P(draw) x 0.5) under 1: average 0.836, highest 0.884 | Pass |
+| Live Arena builds 1-51 entries; matched pairs always within 20% entries, 57 of 60 close fights (25-75%) over 1,000 re-check fights; about 90 ms to pick a pair | Pass |
+| Real fights at real prices (2 x 1,400): Live Arena fighters 82.8-82.9%, side bets 70.3-92.2%, all 81.3-81.9%; both fighters offered 99-100% of Live Arena fights; top price 3.92x | Pass |
+| npm run test:backend (10 files) x 4 runs; formulas; lint; build; bet slip in the browser (computer and phone) | Pass |

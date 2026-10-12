@@ -141,6 +141,19 @@ check("Overtime ends", "always a winner; at most 90 s of overtime", "300 fights"
   check("Speed sets attack rate", "a 180% Speed fighter attacks (round at 100%) / (round at 180%) times as often", `${tA} fights`, `${want.toFixed(2)}x`, `${ratio.toFixed(2)}x`, Math.abs(ratio - want) < 0.12);
 }
 
+// ---- 6.11: Live Arena builds up to 51 entries, matched pairs ----
+{
+  const rm = E.mulberry32(21); let maxE = 0, big = 0, far = 0, close = 0, n = 0, ms = 0;
+  for (let k = 0; k < 400; k++) { const x = E.randomBuild(rm); maxE = Math.max(maxE, x.entries); if (x.entries > 40) big++; }
+  for (let k = 0; k < 60; k++) {
+    const t0 = performance.now(); const [a, b] = E.matchedPair(rm, (rm() * 2 ** 32) >>> 0); ms += performance.now() - t0;
+    n++; if (Math.abs(a.entries - b.entries) > Math.max(1, a.entries * 0.2) + 0.5) far++;
+    const w = E.winRate(a, b, (rm() * 2 ** 32) >>> 0, 1000); if (w.p >= 0.25 && w.p <= 0.75 && w.d <= 0.05) close++;
+  }
+  check("Live Arena builds", "1 to 51 entries (up to the full 50 upgrades)", "400 builds", "top 51, some over 40", `top ${maxE}, ${big} over 40`, maxE <= 51 && big > 10);
+  check("Live Arena matchmaking", "B within 20% of A's entries; A wins 32-68% of practice fights, nearly no stalemates", `${n} pairs, re-checked over 1,000 fights each`, "within 20% always; a close fight in 90%+", `${far} outside 20%; ${close} of ${n} close; ${(ms / n).toFixed(0)} ms a pair`, far === 0 && close >= n * 0.9);
+}
+
 check("Fighter stats", "base + rolls x per-roll + pet (full x lv/8) + mount (lv x 3%) + weapon (+15% ATK, +5 crit a level)", "1,500 fights, 3,000 builds", "0 differences", `${statBad} differences`, statBad === 0);
 check("Damage", "round(max(ATK x 0.2, ATK - DEF x 0.5) x 0.46 x charge x crit), ATK +15% Spirits, +25% Blood Lust", `${dmgN} hits`, "every hit within rounding", `${dmgBad} off${worstDmg ? ` (worst ${worstDmg.ref} vs ${worstDmg.full})` : ""}`, dmgBad === 0);
 check("Shield", "a shielded hit = round(full x 0.5), at least 1", "all shielded hits", "exact", dmgBad === 0 ? "exact" : "see damage", dmgBad === 0);
@@ -173,35 +186,41 @@ check("Crit chance", "clamp(CRIT (+20 Blow) - CRIT DEF (+20 Nirvana), 1, 60)%", 
 // ---- odds ----
 {
   const safeP = (p, N) => Math.min(1, p + 2 * Math.sqrt(Math.max(p * (1 - p), 1 / N) / N));
-  const floor2 = (x) => Math.floor(x * 100) / 100, offer = (raw, cap) => (raw >= 1.01 ? Math.min(cap, floor2(raw)) : 0);
+  // engine 8: a price over its cap is not offered at all (never cut down to the cap)
+  const floor2 = (x) => Math.floor(x * 100) / 100, offer = (raw, cap) => (raw >= 1.01 && raw <= cap ? floor2(raw) : 0);
   let bad = 0, n = 0, overRound = [];
   for (let i = 0; i < 120; i++) {
-    const a = E.randomBuild(r), b = E.randomBuild(r), seed = (r() * 2 ** 32) >>> 0;
+    // half matched Live Arena pairs, half random (tournament-like) pairs
+    const [a, b] = i % 2 ? E.matchedPair(r, (r() * 2 ** 32) >>> 0) : [E.randomBuild(r), E.randomBuild(r)], seed = (r() * 2 ** 32) >>> 0;
     const o = E.priceMatch(a, b, seed, { draws: true });
     // re-count the practice fights myself
     let wa = 0, wb = 0, dr = 0; const N = 2000;
-    for (let k = 0; k < N; k++) { const q = E.quickFight(a, b, ((seed >>> 0) * 7919 + k * 104729) >>> 0, { draws: true }); if (q.winner === 0) wa++; else if (q.winner === 1) wb++; else dr++; }
+    // the practice fights are real fights (simulate, frames off) since engine 8
+    for (let k = 0; k < N; k++) { const q = E.simulate(a, b, ((seed >>> 0) * 7919 + k * 104729) >>> 0, { draws: true, frames: false }); if (q.winner === 0) wa++; else if (q.winner === 1) wb++; else dr++; }
     const pa = wa / N, pb = wb / N, pd = dr / N, favA = pa >= pb;
-    const fp = (p, edge) => (p <= 0 ? 0 : offer(((1 - edge) - 0.5 * pd) / safeP(p, N), 6));
-    const want = { a: fp(pa, favA ? 0.10 : 0.15), b: fp(pb, favA ? 0.15 : 0.10), draw: offer(0.85 / safeP(pd, N), 10) };
+    const fp = (p, edge) => (p <= 0 ? 0 : offer(((1 - edge) - 0.5 * pd) / safeP(p, N), 4));
+    const want = { a: fp(pa, favA ? 0.10 : 0.15), b: fp(pb, favA ? 0.15 : 0.10), draw: 0 };
     n++;
     if (want.a !== o.a || want.b !== o.b || want.draw !== o.draw) bad++;
     // the house's margin on the two fighters: implied probability of the offered prices
-    if (o.a > 1 && o.b > 1) overRound.push(1 / o.a + 1 / o.b);
-    for (const s of o.side) if (s.price && (s.price > 5 || s.p < 0.10 || s.p > 0.90)) bad++;
+    // what each fighter bet is expected to pay back, from the practice fights (a Draw gives half back)
+    for (const [pr, p] of [[o.a, pa], [o.b, pb]]) if (pr > 1) overRound.push(p * pr + pd * 0.5);
+    for (const s of o.side) if (s.price && (s.price > 3 || s.p < 0.30 || s.p > 0.70)) bad++;
+    if (o.side.some((s) => /buff/.test(s.id)) || !o.side.some((s) => s.id === 'lenover')) bad++;
+    if (o.a > 4 || o.b > 4) bad++;
   }
   const avgOR = overRound.reduce((x, y) => x + y, 0) / overRound.length;
-  check("Fighter and Draw prices", "floor2(min(cap, (1 - edge - 0.5 x P(draw)) / cautious P)); edge 10% favourite / 15% other; Draw (0.85 / cautious P), max 10; nothing under 1.01", `${n} matchups re-counted`, "identical", `${bad} different`, bad === 0);
-  check("Implied probability of both fighters", "1/price A + 1/price B > 1 means the house has a margin", `${overRound.length} matchups with both offered`, "> 1.00", `${avgOR.toFixed(3)} on average (min ${Math.min(...overRound).toFixed(3)})`, Math.min(...overRound) > 1);
+  check("Fighter prices and side bets", "floor2((1 - edge - 0.5 x P(draw)) / cautious P), not offered over 4x or under 1.01; edge 10% favourite / 15% other; no Draw bet; side bets only at 30-70%, at most 3x, no buff lines, a length line", `${n} matchups re-counted`, "identical", `${bad} different`, bad === 0);
+  check("Fighter bets' expected return", "P(win) x price + P(draw) x 0.5, from the practice fights: under 1 means the house keeps a margin", `${overRound.length} offered fighter bets`, "under 1.00 every time", `${avgOR.toFixed(3)} on average (max ${Math.max(...overRound).toFixed(3)})`, Math.max(...overRound) < 1);
 }
 
 // ---- payouts ----
 {
   let bad = 0, n = 0;
-  const outs = [{ winner: 0, draw: false, critko: true, pots: 3, crits: 2, buffs: 1, oneHitBy: [false, false] }, { winner: -1, draw: true, critko: false, pots: 0, crits: 0, buffs: 4, oneHitBy: [false, false] }, { winner: 1, draw: false, critko: false, pots: 5, crits: 5, buffs: 0, oneHitBy: [false, false] }];
-  for (const o of outs) for (const k of ["a", "b", "draw", "over", "under", "critover", "critunder", "buffover", "buffunder", "nocritko"]) for (const amt of [1, 7, 100, 333, 5000]) for (const price of [1.01, 1.37, 2.5, 5.99, 10]) {
+  const outs = [{ winner: 0, draw: false, critko: true, pots: 3, crits: 2, buffs: 1, length: 1.2, oneHitBy: [false, false] }, { winner: -1, draw: true, critko: false, pots: 0, crits: 0, buffs: 4, length: 180, oneHitBy: [false, false] }, { winner: 1, draw: false, critko: false, pots: 5, crits: 5, buffs: 0, length: 2.51, oneHitBy: [false, false] }];
+  for (const o of outs) for (const k of ["a", "b", "draw", "over", "under", "critover", "critunder", "buffover", "buffunder", "lenover", "lenunder", "nocritko"]) for (const amt of [1, 7, 100, 333, 5000]) for (const price of [1.01, 1.37, 2.5, 5.99, 10]) {
     const line = 2.5, l = { k, amount: amt, price, line };
-    const hit = k === "a" ? o.winner === 0 : k === "b" ? o.winner === 1 : k === "draw" ? o.draw : k === "over" ? o.pots > line : k === "under" ? o.pots < line : k === "critover" ? o.crits > line : k === "critunder" ? o.crits < line : k === "buffover" ? o.buffs > line : k === "buffunder" ? o.buffs < line : !o.critko;
+    const hit = k === "a" ? o.winner === 0 : k === "b" ? o.winner === 1 : k === "draw" ? o.draw : k === "over" ? o.pots > line : k === "under" ? o.pots < line : k === "critover" ? o.crits > line : k === "critunder" ? o.crits < line : k === "buffover" ? o.buffs > line : k === "buffunder" ? o.buffs < line : k === "lenover" ? o.length > line : k === "lenunder" ? o.length < line : !o.critko;
     const want = (k === "a" || k === "b") && o.draw ? Math.floor(amt * 0.5) : hit ? Math.floor(amt * price) : 0;
     n++; if (E.lineReturn(l, o, {}) !== want) bad++;
   }

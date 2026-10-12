@@ -2,19 +2,20 @@ import { advance, member, settings, call, pts, ok, done, E } from './h.ts';
 import arena from '../base44/functions/arenaAction/entry.ts';
 import tour from '../base44/functions/tournamentAction/entry.ts';
 import * as Eng from '../base44/shared/arenaEngine.ts';
+const offeredKey = (o) => (o.a > 1 ? 'a' : o.b > 1 ? 'b' : ((o.side || []).find((x) => x.price > 1) || { id: 'lenover' }).id);   // a fighter if one is offered, else a side bet
 await settings();
 const L = await member('Juts', 100000, 'leader'), A = await member('A'), B = await member('B');
-// prices: never above the caps, draw only when it really happens
+// prices (engine 8): fighters at most 4x, side bets at most 3x, no Draw bet
 const r = Eng.mulberry32(9); let maxF = 0, maxS = 0, maxD = 0, draws = 0;
 for (let i = 0; i < 200; i++) { const o = Eng.priceMatch(Eng.randomBuild(r), Eng.randomBuild(r), i, { draws: true }); maxF = Math.max(maxF, o.a, o.b); maxD = Math.max(maxD, o.draw); if (o.draw) draws++; for (const s of o.side) maxS = Math.max(maxS, s.price); }
-ok(maxF <= 6 && maxS <= 5 && maxD <= 10, `caps: fighter ${maxF}, side ${maxS}, draw ${maxD}, draw offered in ${draws}/200`);
+ok(maxF <= 4 && maxS <= 3 && maxD === 0, `caps: fighter ${maxF}, side ${maxS}, draw ${maxD}, draw offered in ${draws}/200`);
 let s = await call(arena, A, { action: 'state' });
 const round = s.table.round_no;
 let row = (await E.ArenaTable.filter({}, {})).items[0];
 ok(row.fought === false && !row.seed && !row.outcome.winner && row.outcome.winner !== 0, 'live: nothing decided while betting is open');
-ok(s.table.odds.side.every((q) => !/onehit/.test(q.id)) && s.table.odds.side.some((q) => q.id === 'buffover'), 'side bets: no one-hit KO, buffs over/under present');
+ok(s.table.odds.side.every((q) => !/onehit|buff/.test(q.id)) && s.table.odds.side.some((q) => q.id === 'lenover') && s.table.odds.draw === 0, 'side bets: no one-hit KO, no buffs, a fight-length line, no Draw bet');
 // both fighters must be offered to test the "not both" rule (a heavy favourite isn't offered at all)
-const both = s.table.odds.a > 1 && s.table.odds.b > 1, fk = s.table.odds.a > 1 ? 'a' : 'b';
+const both = s.table.odds.a > 1 && s.table.odds.b > 1, fk = offeredKey(s.table.odds);
 let x = await call(arena, A, { action: 'bet', round, lines: [{ k: 'a', amount: 10 }, { k: 'b', amount: 10 }] });
 ok(x.status === 400 && (both ? /both/.test(x.error) : /offered/.test(x.error)), 'a+b refused: ' + x.error);
 // about 1 matchup in 400 offers neither fighter (one never won a practice fight and the other would pay under 1.01)

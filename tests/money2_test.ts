@@ -1,6 +1,7 @@
 // Phase 2, part 2: poker and pusoy (points held at the table), tournament start/cancel races,
 // banned members with real bets, expired sessions. Conservation check: no points created or lost.
 import { member, settings, call, E, advance, ok, done } from './h.ts';
+const offeredKey = (o) => (o.a > 1 ? 'a' : o.b > 1 ? 'b' : ((o.side || []).find((x) => x.price > 1) || { id: 'lenover' }).id);   // a fighter if one is offered, else a side bet
 const F = async (n) => (await import(`../base44/functions/${n}/entry.ts`)).default;
 const poker = await F('pokerAction'), pusoy = await F('pusoyAction'), tour = await F('tournamentAction'), roul = await F('rouletteAction'),
   arena = await F('arenaAction'), derby = await F('derbyAction'), wheel = await F('wheelAction'), duel = await F('duelAction'), daily = await F('claimDaily'), play = await F('playGame');
@@ -116,7 +117,7 @@ const rnd = (n) => Math.floor(Math.random() * n);
   const r = await Promise.all([
     call(roul, X, { action: 'bet', bets: [{ type: 'red', amount: 100 }] }),
     call(wheel, X, { action: 'bet', faction: 'dragon', amount: 100 }),
-    call(arena, X, { action: 'bet', round: s.table.round_no, lines: [{ k: s.table.odds.a > 1 ? 'a' : 'b', amount: 100 }] }),
+    call(arena, X, { action: 'bet', round: s.table.round_no, lines: [{ k: offeredKey(s.table.odds), amount: 100 }] }),
     call(duel, X, { action: 'create', wager: 100, side: 'heads' }),
     call(daily, X, {}),
     call(play, X, { game: 'coinflip', wager: 100, choice: 'heads' }),

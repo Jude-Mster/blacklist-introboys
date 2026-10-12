@@ -7,7 +7,7 @@ import Avatar from "@/components/Avatar";
 import { Points } from "@/components/SealLogo";
 import { cn } from "@/lib/utils";
 import {
-  SKILLS, WEAPON, PET, MOUNT, STAT_NAME, UPGRADES, PER_STAT, TOTAL_CAP, petGrowth, petBonus, statsOf, mountText, lineLabel, lineReturn, DRAW_REFUND, LIMIT, CONFLICT
+  SKILLS, WEAPON, PET, MOUNT, STAT_NAME, UPGRADES, PER_STAT, TOTAL_CAP, petGrowth, petBonus, statsOf, mountText, lineLabel, lineReturn, DRAW_REFUND, LIMIT, CONFLICT, DEFAULT_EDGES
 } from "@/lib/arenaEngine";
 import { createArenaScene, LOOKS, lookTitle, lookColor } from "./arenaScene";
 import "./arena.css";
@@ -333,7 +333,8 @@ export function BetSlip({ fightKey, odds, names, draws, open, closedText, limit,
   // redraw, and a tap landing while React swaps it would be lost
   const btn = ({ k, label, sub, stack }) => {
     const p = priceOf(k), on = picks.includes(k), lock = locked(k);
-    const why = lock ? "You already bet on the other side" : !(p > 1) ? (k === "draw" ? `Not offered: no realistic chance of a draw in ${LIMIT} s` : "Not offered on this fight") : sub;
+    const longShot = (k === "a" || k === "b") && odds.pa != null && (k === "a" ? odds.pa < odds.pb : odds.pb < odds.pa);
+    const why = lock ? "You already bet on the other side" : !(p > 1) ? (k === "draw" ? `Not offered: no realistic chance of a draw in ${LIMIT} s` : longShot ? `Not offered: a long shot (over ${DEFAULT_EDGES.maxPrice}×)` : (k === "a" || k === "b") ? "Not offered: too sure to win" : "Not offered on this fight") : sub;
     return (
       <button key={k} type="button" disabled={!open || !(p > 1) || lock} onClick={() => toggle(k)} aria-pressed={on} title={lock || !(p > 1) ? why : undefined}
         className={cn("flex min-w-0 rounded border px-2.5 py-2 text-left text-[13px] transition-colors disabled:cursor-default", stack ? "flex-col items-start gap-0.5" : "items-center justify-between gap-2",
@@ -345,9 +346,9 @@ export function BetSlip({ fightKey, odds, names, draws, open, closedText, limit,
   };
   return (
     <Panel title="Bet slip">
-      <div className={cn("grid gap-1.5", draws ? "grid-cols-3" : "grid-cols-2")}>
+      <div className={cn("grid gap-1.5", draws && odds.draw > 1 ? "grid-cols-3" : "grid-cols-2")}>
         {btn({ k: "a", label: names[0], sub: "to win", stack: true })}
-        {draws && btn({ k: "draw", label: "Draw", sub: `no KO in ${LIMIT} s`, stack: true })}
+        {draws && odds.draw > 1 && btn({ k: "draw", label: "Draw", sub: `no KO in ${LIMIT} s`, stack: true })}
         {btn({ k: "b", label: names[1], sub: "to win", stack: true })}
       </div>
       {(() => {

@@ -31,12 +31,12 @@ export default function ArenaRules({ mode = "live", values, costs = COSTS, betSe
             </Rule>
             <Rule title="Betting">
               <p>Bet {fmt(minBet)} to {fmt(limit)} on one fight. Back one fighter, a Draw, and any side bets. You can't back <B>both fighters</B> or <B>both over and under</B> the same line on the same fight. Bets can be taken back until betting closes.</p>
-              <p>Side bets: ends without a critical; over or under the potions drunk, the critical hits and the buff skills cast in the fight.</p>
-              <p>Prices come from {fmt(PRACTICE_FIGHTS)} practice fights between these two exact fighters (every stat, upgrade, weapon level, skill, pet and mount), priced cautiously and with a house edge on every bet.</p>
-              <p>The price is what you get back per point, your stake included: 100 at 1.80× returns 180. Fighters pay at most {E.maxPrice}×, side bets at most {E.maxSide}×. Side bets that come up less than {Math.round(E.minP * 100)}% or more than {Math.round(E.maxP * 100)}% of the time in that matchup aren't offered.</p>
+              <p>Side bets: ends without a critical; over or under the potions drunk, the critical hits, and how long the fight lasts (in seconds).</p>
+              <p>Prices come from {fmt(PRACTICE_FIGHTS)} practice fights between these two exact fighters (every stat, upgrade, weapon level, skill, pet and mount), fought exactly like the real one, priced cautiously and with a house edge on every bet. The two fighters are matched to be close in strength (similar entries, and neither wins much more than about 70% of practice fights).</p>
+              <p>The price is what you get back per point, your stake included: 100 at 1.80× returns 180. Fighters pay at most {E.maxPrice}× and side bets at most {E.maxSide}×: a long shot whose fair price would be higher isn't offered at all. Side bets that come up less than {Math.round(E.minP * 100)}% or more than {Math.round(E.maxP * 100)}% of the time in that matchup aren't offered.</p>
             </Rule>
             <Rule title="Draw">
-              <p>A fight lasts at most {LIMIT} seconds. No knockout by then is a Draw: Draw bets win and bets on either fighter get {Math.round(DRAW_REFUND * 100)}% of the stake back. The Draw is always offered and pays at most {E.drawCap}×. Knockouts are the norm, so a Draw is rare.</p>
+              <p>There is no Draw bet: both fighters attack at the same time, so a fight practically always ends in a knockout well inside the {LIMIT} seconds. If one ever reaches {LIMIT} seconds it is a Draw, and bets on either fighter get {Math.round(DRAW_REFUND * 100)}% of the stake back (prices allow for that).</p>
             </Rule>
           </>
         ) : (

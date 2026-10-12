@@ -2,7 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { sessionUser } from '../../shared/session.ts';
 import { getSettings, getMemberByUserId, withRecordLock, UserError, errorResponse, resilient } from '../../shared/points.ts';
 import {
-  ENGINE_VERSION, LOOK_KEYS, LIMIT, mulberry32, randomBuild, simulate, outcomeOf, priceMatch
+  ENGINE_VERSION, LOOK_KEYS, LIMIT, mulberry32, matchedPair, simulate, outcomeOf, priceMatch
 } from '../../shared/arenaEngine.ts';
 import {
   ARENA_NAME, placeBets, removeBets, payMine, payOthers, betBoard, arenaLimit, arenaMin, type Resolve
@@ -66,7 +66,9 @@ async function newRound(b, round: number, recent, settings, now: number) {
   if (who[0].name === who[1].name) who[1] = { ...who[1], name: `${who[1].name} II` };
   const la = pick(LOOK_KEYS.length);
   let lb = pick(LOOK_KEYS.length - 1); if (lb >= la) lb++;
-  const fighters = [0, 1].map((i) => ({ member_id: who[i].id, name: who[i].name, avatar: who[i].avatar, role: who[i].role || 'member', look: LOOK_KEYS[i ? lb : la], build: randomBuild(rnd) }));
+  // two builds close in strength (similar entries; neither a near-certain winner), so prices stay sensible
+  const builds = matchedPair(rnd, secretSeed(), { limit: LIMIT });
+  const fighters = [0, 1].map((i) => ({ member_id: who[i].id, name: who[i].name, avatar: who[i].avatar, role: who[i].role || 'member', look: LOOK_KEYS[i ? lb : la], build: builds[i] }));
   const fa = { ...fighters[0].build, name: fighters[0].name }, fb = { ...fighters[1].build, name: fighters[1].name };
   const odds = priceMatch(fa, fb, secretSeed(), { draws: true, limit: LIMIT });
   const close = now + betSeconds(settings) * 1000;
