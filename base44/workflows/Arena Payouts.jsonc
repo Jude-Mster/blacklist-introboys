@@ -26,7 +26,7 @@
       }
     ]
   },
-  "description": "Every 5 minutes, pay any Blacklist Arena bets on finished Live Arena fights that were not collected yet, so members who closed the page are always paid. Passes a shared secret so the function can reject anonymous callers.",
+  "description": "Every 5 minutes, pay any Blacklist Arena bets on finished Live Arena fights that were not collected yet, so members who closed the page are always paid. Runs at minutes 1, 6, 11 ... so it does not land in the same second as the other sweeps. Passes a shared secret so the function can reject anonymous callers.",
   "name": "Arena Payouts",
   "trigger": {
     "condition": null,
@@ -34,7 +34,7 @@
       "trigger_type": "scheduled",
       "events": [],
       "schedule_mode": "recurring",
-      "cron_expression": "*/5 * * * *",
+      "cron_expression": "1,6,11,16,21,26,31,36,41,46,51,56 * * * *",
       "one_time_date": null,
       "timezone": "UTC",
       "interval_value": null,

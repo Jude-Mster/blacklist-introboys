@@ -26,7 +26,7 @@
       }
     ]
   },
-  "description": "Every 5 minutes, pay any Blacklist Derby bets on finished races that were not collected yet, so members who closed the page are always paid. Passes a shared secret so the function can reject anonymous callers.",
+  "description": "Every 5 minutes, pay any Blacklist Derby bets on finished races that were not collected yet, so members who closed the page are always paid. Runs at minutes 3, 8, 13 ... so it does not land in the same second as the other sweeps. Passes a shared secret so the function can reject anonymous callers.",
   "name": "Derby Payouts",
   "trigger": {
     "condition": null,
@@ -34,7 +34,7 @@
       "trigger_type": "scheduled",
       "events": [],
       "schedule_mode": "recurring",
-      "cron_expression": "*/5 * * * *",
+      "cron_expression": "3,8,13,18,23,28,33,38,43,48,53,58 * * * *",
       "one_time_date": null,
       "timezone": "UTC",
       "interval_value": null,

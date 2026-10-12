@@ -3,7 +3,8 @@ import { resilient } from '../../shared/points.ts';
 import { sendPush } from '../../shared/webpush.ts';
 import { eventsBetween, alertText } from '../../shared/events.ts';
 
-// Runs on a schedule (the "Event Push Alerts" workflow, every minute) and sends the war
+// Runs on the schedule of the "Event Push Alerts" workflow (every 5 minutes — 5 minutes is the
+// platform's minimum schedule interval, so this cannot run every minute) and sends the war
 // and HSB push notifications that are due, using each device's own choices.
 // An alert is due from "<minutes> before" until one minute after the start, so a late or
 // skipped run still sends it. Each device gets each alert once.

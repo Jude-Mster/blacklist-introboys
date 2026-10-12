@@ -26,7 +26,7 @@
       }
     ]
   },
-  "description": "Every 5 minutes, start a Blacklist Arena tournament whose start time has come, finish one whose last match is over (prizes paid, fighters cleared), and pay match bets of members who left the page. Passes a shared secret so the function can reject anonymous callers.",
+  "description": "Every 5 minutes, start a Blacklist Arena tournament whose start time has come, finish one whose last match is over (prizes paid, fighters cleared), and pay match bets of members who left the page. Runs at minutes 2, 7, 12 ... so it does not land in the same second as the other sweeps. Passes a shared secret so the function can reject anonymous callers.",
   "name": "Tournament Clock",
   "trigger": {
     "condition": null,
@@ -34,7 +34,7 @@
       "trigger_type": "scheduled",
       "events": [],
       "schedule_mode": "recurring",
-      "cron_expression": "*/5 * * * *",
+      "cron_expression": "2,7,12,17,22,27,32,37,42,47,52,57 * * * *",
       "one_time_date": null,
       "timezone": "UTC",
       "interval_value": null,
