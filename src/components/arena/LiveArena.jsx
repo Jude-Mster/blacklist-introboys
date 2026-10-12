@@ -253,7 +253,7 @@ export default function LiveArena({ balance }) {
       <div className="min-w-0 space-y-4">
         {wide && slip}
         <BetBoard board={state} names={names} done={!!outcome} />
-        <ArenaRules mode="live" betSeconds={table.bet_seconds || 30} limit={table.limit || 5000} minBet={table.min_bet || 1} />
+        <ArenaRules mode="live" betSeconds={table.bet_seconds || 15} limit={table.limit || 5000} minBet={table.min_bet || 1} />
       </div>
     </div>
   );

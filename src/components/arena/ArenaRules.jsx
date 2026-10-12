@@ -11,7 +11,7 @@ const AURA = {
   garuda: "a lilac prayer circle turns under the feet", nirvana: "purple lightning crackles round the body", bullet: "a green barrier flashes up"
 };
 
-export default function ArenaRules({ mode = "live", values, costs = COSTS, betSeconds = 30, limit = 5000, minBet = 1 }) {
+export default function ArenaRules({ mode = "live", values, costs = COSTS, betSeconds = 15, limit = 5000, minBet = 1, maxSpend = 0 }) {
   const V = normValues(values);
   const E = DEFAULT_EDGES;
   const Rule = ({ title, children }) => (
@@ -42,7 +42,7 @@ export default function ArenaRules({ mode = "live", values, costs = COSTS, betSe
         ) : (
           <>
             <Rule title="Sign-up">
-              <p>Your first entry ({fmt(costs.entry)} points) gives you a fighter: one of the guild's 50 characters at random. One free re-roll, never the same one back. Fighters are removed when the tournament ends. Every point paid goes into the Arena bank; no refunds once paid, unless only one fighter signs up or the Guild Leader cancels with refunds.</p>
+              <p>Your first entry ({fmt(costs.entry)} points) gives you a fighter: one of the guild's 50 characters at random. One free re-roll, never the same one back. Fighters are removed when the tournament ends. Every point paid goes into the Arena bank; no refunds once paid, unless only one fighter signs up or the Guild Leader cancels with refunds.{maxSpend > 0 ? ` In this tournament each member can spend up to ${fmt(maxSpend)} points on their fighter (bets on matches aren't counted).` : ""}</p>
             </Rule>
             <Rule title="The bracket">
               <p>Drawn at random at the start, with byes when the number of fighters isn't a power of two. 2 fighters play a single 1v1; 1 fighter cancels and refunds. The semi-final losers fight for 3rd place. Every match is live: 10 seconds of betting, the fight, the result. No knockout at the {LIMIT}-second limit means <b>overtime</b>: sudden death with no potions, where every hit does ×{OT.start} damage, rising by one every {OT.every} seconds. If neither fighter is down after {OT.max} seconds of overtime (practically never), the larger share of HP left wins. Anyone can bet, fighters included, but never on both fighters or both sides of a side bet.</p>

@@ -33,9 +33,9 @@ export default function TourLeader({ data, onChanged }) {
       setForm({
         title: t.title, starts_at: toLocal(t.starts_at), repeat: t.repeat || "none",
         prizes: t.prizes.map((p) => ({ kind: p.kind, points: p.points ? String(p.points) : "", label: p.kind === "points" ? "" : p.label, from_bank: !!p.from_bank, code: "", from_stock: false })),
-        values: normValues(t.values), costs: normCosts(t.costs)
+        values: normValues(t.values), costs: normCosts(t.costs), max_spend: t.max_spend ? String(t.max_spend) : ""
       });
-    } else if (!t) setForm({ title: "", starts_at: "", repeat: "none", prizes: [blankPrize(), blankPrize(), blankPrize()], values: normValues(DEFAULT_VALUES), costs: normCosts(COSTS) });
+    } else if (!t) setForm({ title: "", starts_at: "", repeat: "none", prizes: [blankPrize(), blankPrize(), blankPrize()], values: normValues(DEFAULT_VALUES), costs: normCosts(COSTS), max_spend: "" });
   }, [t, editing, form]);
   // a different tournament (or one that moved on): start the form again
   const keyRef = React.useRef(`${t ? t.id : ""}:${t ? t.status : ""}`);
@@ -93,6 +93,7 @@ export default function TourLeader({ data, onChanged }) {
       code: p.kind === "code" ? (p.from_stock ? { from_stock: true } : p.code.trim() ? { code: normalizeCode(p.code) } : null) : null
     })),
     costs: Object.fromEntries(COST_ITEMS.map((c) => [c.id, Number(form.costs[c.id])])),
+    max_spend: form.max_spend ? Number(form.max_spend) : 0,
     values: {
       ups: Object.fromEntries(UPGRADES.map((u) => [u.id, Number(form.values.ups[u.id])])),
       weapon: { atk: Number(form.values.weapon.atk), crit: Number(form.values.weapon.crit), chance: Number(form.values.weapon.chance) }
@@ -179,6 +180,15 @@ export default function TourLeader({ data, onChanged }) {
             </div>
             <button type="button" onClick={() => set("costs", normCosts(COSTS))} className="btn-bronze mt-3 h-9 px-3 text-sm">Back to the default prices</button>
             <p className="mt-2 text-xs text-mist">What members pay in this tournament for each part of their character, 1 to 1,000,000 points. A changed price counts from the next purchase; what was already bought isn't charged again or refunded. A repeating tournament keeps these prices.</p>
+          </fieldset>
+
+          <fieldset className="rounded border border-bronze/40 bg-black/30 p-3">
+            <legend className="px-1 font-heading font-bold text-gold">Spending limit</legend>
+            <label className="flex flex-col text-xs text-mist">Most one member may spend on their fighter (points)
+              <input type="text" inputMode="numeric" placeholder="No limit" className="field mt-1 h-9 w-full max-w-xs tabular-nums" value={form.max_spend ?? ""}
+                onChange={(e) => set("max_spend", e.target.value.replace(/[^\d]/g, "").slice(0, 10))} aria-label="Spending limit per member in points" />
+            </label>
+            <p className="mt-2 text-xs text-mist">Counts everything bought for the fighter: entries, skills, weapon tries (failed ones too), Iron Condor growth, mount levels and resets. Bets on matches don't count; they have the per-match and daily limits. Leave it empty or 0 for no limit. You can change it while sign-up is open: a lower limit stops further buying but takes nothing back. A repeating tournament keeps it.</p>
           </fieldset>
 
           <details className="rounded border border-bronze/40 bg-black/30 p-3">

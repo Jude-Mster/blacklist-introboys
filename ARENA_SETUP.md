@@ -110,3 +110,8 @@ Fight → Tournament tab, Guild Leader only: name, start time (or the "Start in 
   - every tap or key wakes the sound up again (not just the first), and it is woken when the tab comes back: phones and browsers silence it after a tab switch or a call;
   - sounds play even when a frame is late (they were skipped when the page was 0.3 s behind);
   - when sound is on but the browser hasn't allowed it yet, a "Tap to hear the fight" button shows next to Sound on.
+
+## 14. What changed in 6.13 (redeploy every function; Tournament gains max_spend; no engine or package changes)
+- Spending limit per member, set by the Guild Leader for each tournament ("Spending limit" in the leader panel, when opening or editing; empty or 0 = no limit). It counts everything bought for the fighter: entries, skills, weapon tries (failed ones too), Iron Condor growth, mount levels and resets. Bets on matches are not counted (they keep the per-match and daily limits). The free re-roll is always allowed.
+- A purchase that would go over the limit is refused before any points move, with how much is left. It is checked under the member's lock on a fresh read of the tournament, so several clicks at once can't pass it, and a limit the leader just changed applies to the next purchase. Lowering it below what someone has already spent takes nothing back; it only stops further buying. A repeating tournament keeps the limit.
+- Members see the limit before their first entry, in the rules, and under "Your fighter" as "total spent X of Y" with a bar and what is left. Buttons that would go over it are greyed out.

@@ -150,3 +150,13 @@ Not verifiable here: the Discord DM with the code (needs the bot) and the live B
 | "Tap to hear the fight" shows before the first tap and goes after it | Pass |
 | Result to next betting window | about 6-8 s (was 15 s plus) |
 | Default betting time 15 s; npm run test:backend x 3; formulas; lint; build | Pass |
+
+## 10. Version 6.13 additions (executed)
+
+| Check | Result |
+|---|---|
+| Limit 1.5 refused; 2,000 limit: 1,500 spent, a 1,000 buy refused with "500 left" and nothing charged, a 500 buy fits exactly, then everything refused; re-roll still works | Pass |
+| 4 buys at once with room for one: 1 accepted | Pass |
+| Leader raises, lowers (nothing taken back), removes the limit; a member can't change it | Pass |
+| Ledger holds; npm run test:backend (11 files); formulas; lint; build | Pass |
+| Browser: leader field, member "total spent X of Y", greyed-out buttons | Pass |

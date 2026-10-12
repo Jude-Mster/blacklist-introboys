@@ -265,7 +265,7 @@ function matchStatus(m, now: number) {
 function publicTour(t, now: number, leader: boolean) {
   const base = {
     id: t.id, title: t.title, status: t.status, starts_at: t.starts_at || null, started_at: t.started_at || null, ends_at: t.ends_at || null,
-    values: normValues(t.values), costs: normCosts(t.costs), prizes: (t.prizes || []).map((p) => ({ label: p.label, kind: p.kind, points: p.points || 0, from_bank: !!p.from_bank })),
+    values: normValues(t.values), costs: normCosts(t.costs), max_spend: maxSpendOf(t), prizes: (t.prizes || []).map((p) => ({ label: p.label, kind: p.kind, points: p.points || 0, from_bank: !!p.from_bank })),
     entrant_count: t.entrant_count || 0, bank_in: t.bank_in || 0, results: t.results || [], cancel_reason: t.cancel_reason || '',
     finished_at: t.finished_at || null, announced_at: leader ? t.announced_at || null : undefined, engine: t.engine || ENGINE_VERSION,
     repeat: cleanRepeat(t.repeat)
@@ -347,7 +347,7 @@ async function scheduleNext(b, t) {
     while (next < Date.now() + 60000) next += step;
     const prizes = (t.prizes || []).map((x) => ({ ...x }));
     const n = await E(b).Tournament.create({
-      title: t.title, status: 'signup', starts_at: iso(next), values: normValues(t.values), costs: normCosts(t.costs), prizes, repeat: t.repeat,
+      title: t.title, status: 'signup', starts_at: iso(next), values: normValues(t.values), costs: normCosts(t.costs), max_spend: maxSpendOf(t), prizes, repeat: t.repeat,
       entrant_count: 0, bank_in: 0, bank_deferred: true, created_by: t.created_by || '', engine: ENGINE_VERSION
     });
     await E(b).Tournament.update(t.id, { next_id: n.id }).catch(() => {});
@@ -510,6 +510,17 @@ function freeLook(taken: Set<string>, not: string) {
 // Points paid are held on each fighter (spent) and go into the Arena bank in one move when the
 // tournament starts (or is cancelled without refunds). Tournaments opened before 6.7 still pay the bank
 // on each purchase (bank_deferred is not set on them).
+// The most a member may spend on their fighter in one tournament (entries, skills, weapon tries, pet,
+// mount levels and resets; bets on matches are not counted, they have their own limits). 0 = no limit.
+// Set by the Guild Leader when opening or editing a tournament.
+const MAX_SPEND_TOP = 1000000000;
+function cleanMaxSpend(v) {
+  if (v === undefined || v === null || v === '') return 0;
+  const x = Number(v);
+  if (!Number.isInteger(x) || x < 0 || x > MAX_SPEND_TOP) throw new UserError('The spending limit must be a whole number of points (0 for no limit).');
+  return x;
+}
+const maxSpendOf = (t) => { const x = Number(t && t.max_spend); return Number.isInteger(x) && x > 0 ? x : 0; };
 async function stillSignup(b, tourId: string) {
   const t = await E(b).Tournament.get(tourId).catch(() => null);
   return !!t && t.status === 'signup';
@@ -579,6 +590,14 @@ async function buy(b, t, me, item: string, count: number, shown?: number) {
       cost = COSTS.mountReset; what = 'a mount stat reset';
     }
     if (me.banned) throw new UserError('You are banned from the games.', 403);
+    // the Guild Leader's spending limit for this tournament (read fresh, so a limit just changed applies)
+    const cap = maxSpendOf(cur), already = x ? x.spent || 0 : 0;
+    if (cap > 0 && already + cost > cap) {
+      const left = Math.max(0, cap - already);
+      throw new UserError(left > 0
+        ? `This tournament allows up to ${fmt(cap)} points of spending per fighter. You have ${fmt(left)} left, and that costs ${fmt(cost)}.`
+        : `You've reached this tournament's spending limit of ${fmt(cap)} points per fighter.`);
+    }
 
     let balance;
     try { ({ balance } = await changePoints(b, me.id, -cost, 'tournament', `Tournament: ${what}: ${cur.title}`, null)); }
@@ -745,6 +764,7 @@ export default async function(req) {
       prizes.forEach((x, i) => { if (x.kind === 'code' && !specs[i]) throw new UserError(`Add the code for the ${PLACE[i]} prize, or take one from stock.`); });
       const repeat = cleanRepeat(p.repeat);
       if (repeat !== 'none' && !starts) throw new UserError('A repeating tournament needs a start time.');
+      const maxSpend = cleanMaxSpend(p.max_spend);
       const typed = new Set();
       for (let i = 0; i < prizes.length; i++) {
         const sp = specs[i];
@@ -755,7 +775,7 @@ export default async function(req) {
         await assertNewCode(b, sp.code);
       }
       const t = await E(b).Tournament.create({
-        title, status: 'signup', starts_at: starts ? iso(starts) : '', values: normValues(p.values), costs: normCosts(p.costs), prizes, repeat,
+        title, status: 'signup', starts_at: starts ? iso(starts) : '', values: normValues(p.values), costs: normCosts(p.costs), max_spend: maxSpend, prizes, repeat,
         entrant_count: 0, bank_in: 0, bank_deferred: true, created_by: me.id, engine: ENGINE_VERSION
       });
       try {
@@ -788,6 +808,7 @@ export default async function(req) {
         }
         if ('values' in p) update.values = normValues(p.values);
         if ('costs' in p) update.costs = normCosts(p.costs);
+        if ('max_spend' in p) update.max_spend = cleanMaxSpend(p.max_spend);
         if ('repeat' in p) update.repeat = cleanRepeat(p.repeat);
         if ((update.repeat ?? cleanRepeat(cur.repeat)) !== 'none' && !('starts_at' in update ? update.starts_at : cur.starts_at)) throw new UserError('A repeating tournament needs a start time.');
         if ('prizes' in p) {

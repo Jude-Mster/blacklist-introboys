@@ -87,29 +87,29 @@ function LabTile({ busy, id, onClick, disabled, icon, text, name, price, note, g
     </button>
   );
 }
-function LabRails({ me, costs, values, busy, buy, flash, used }) {
+function LabRails({ me, costs, values, busy, buy, flash, used, over = () => false }) {
   const mt = me.mount, W = me.weapon ? WEAPON.looks[me.weapon - 1] : null, maxW = me.weapon >= WEAPON.max, nextW = !maxW ? WEAPON.looks[me.weapon] : null;
   const skillIcon = me.skills.length ? `/arena/icons/${me.skills[me.skills.length - 1]}.jpg` : "/arena/icons/spirits.jpg";
   const chance = Math.round(values.weapon.chance * 100);
   return (
     <>
       <div className="lab-rail left" role="group" aria-label="Entries and skills">
-        <LabTile busy={busy} id="entry1" gold onClick={() => buy("entry", 1)} text="+1" name="1 entry" price={`${fmt(costs.entry)} pts`} pips={[used, TOTAL_CAP]} note={`Buy 1 entry (${fmt(costs.entry)} pts): rolls one upgrade and raises your halo. ${used}/${TOTAL_CAP} upgrades.`} />
-        <LabTile busy={busy} id="entry5" gold onClick={() => buy("entry", 5)} text="+5" name="5 entries" price={`${fmt(costs.entry * 5)} pts`} note={`Buy 5 entries (${fmt(costs.entry * 5)} pts): five upgrade rolls at once`} />
-        <LabTile busy={busy} id="skill1" onClick={() => buy("skill")} disabled={me.skills.length >= MAX_SKILLS} icon={skillIcon} name={`Skill ${me.skills.length}/${MAX_SKILLS}`}
+        <LabTile busy={busy} id="entry1" gold onClick={() => buy("entry", 1)} disabled={over(costs.entry)} text="+1" name="1 entry" price={`${fmt(costs.entry)} pts`} pips={[used, TOTAL_CAP]} note={`Buy 1 entry (${fmt(costs.entry)} pts): rolls one upgrade and raises your halo. ${used}/${TOTAL_CAP} upgrades.`} />
+        <LabTile busy={busy} id="entry5" gold onClick={() => buy("entry", 5)} disabled={over(costs.entry * 5)} text="+5" name="5 entries" price={`${fmt(costs.entry * 5)} pts`} note={`Buy 5 entries (${fmt(costs.entry * 5)} pts): five upgrade rolls at once`} />
+        <LabTile busy={busy} id="skill1" onClick={() => buy("skill")} disabled={me.skills.length >= MAX_SKILLS || over(costs.skill)} icon={skillIcon} name={`Skill ${me.skills.length}/${MAX_SKILLS}`}
           price={me.skills.length >= MAX_SKILLS ? "Full" : `${fmt(costs.skill)} pts`} note="Add a random buff skill you don't have yet" />
       </div>
       <div className="lab-rail right" role="group" aria-label="Weapon, pet and mount">
-        <LabTile busy={busy} id="weapon1" onClick={() => buy("weapon")} disabled={maxW} icon="/arena/icons/weapon.jpg" glow={W ? hex(W.color) : ""}
+        <LabTile busy={busy} id="weapon1" onClick={() => buy("weapon")} disabled={maxW || over(costs.weaponTry)} icon="/arena/icons/weapon.jpg" glow={W ? hex(W.color) : ""}
           name={`Weapon +${me.weapon}`} price={maxW ? "Max" : `${fmt(costs.weaponTry)} · ${chance}%`} pips={[me.weapon, WEAPON.max]} pipColor={W ? hex(W.color) : undefined}
           note={maxW ? `Weapon +${WEAPON.max}` : `Try a weapon upgrade (${fmt(costs.weaponTry)} pts): +${me.weapon + 1}, ${nextW.name} aura. Each level +${Math.round(values.weapon.atk * 100)}% ATK and +${values.weapon.crit}% Crit rate. ${weaponNote(chance)}`} />
-        <LabTile busy={busy} id="pet1" onClick={() => buy("pet")} disabled={me.pet >= PET.levels} icon="/arena/icons/pet.jpg"
+        <LabTile busy={busy} id="pet1" onClick={() => buy("pet")} disabled={me.pet >= PET.levels || over(costs.pet)} icon="/arena/icons/pet.jpg"
           name={me.pet >= PET.levels ? "Condor max" : `Condor ${petGrowth(me.pet)}%`} price={me.pet >= PET.levels ? "Max" : `${fmt(costs.pet)} pts`} pips={[me.pet, PET.levels]} pipColor="#c9a2ff"
           note={me.pet >= PET.levels ? "Iron Condor at 200%" : `Grow the Iron Condor to ${petGrowth(me.pet + 1)}% (${fmt(costs.pet)} pts): HP +${fmt(petBonus(me.pet + 1, "hp") - petBonus(me.pet, "hp"))}, ATK +${fmt(petBonus(me.pet + 1, "atk") - petBonus(me.pet, "atk"))}, DEF +${fmt(petBonus(me.pet + 1, "def") - petBonus(me.pet, "def"))}`} />
-        <LabTile busy={busy} id="mount1" onClick={() => buy("mount")} disabled={mt && mt.lv >= MOUNT.levels} icon="/arena/icons/mount.jpg"
+        <LabTile busy={busy} id="mount1" onClick={() => buy("mount")} disabled={(mt && mt.lv >= MOUNT.levels) || over(costs.mountLevel)} icon="/arena/icons/mount.jpg"
           name={mt ? `Mount Lv${mt.lv}` : "Mount"} price={mt && mt.lv >= MOUNT.levels ? "Max" : `${fmt(costs.mountLevel)} pts`} pips={[mt ? mt.lv : 0, MOUNT.levels]} pipColor="#7fc3ff"
           note={mt ? `${mountText(mt)}. Next level: +${MOUNT.per}% more to both (${fmt(costs.mountLevel)} pts)` : `Buy a mount (${fmt(costs.mountLevel)} pts): draws two stats at random`} />
-        {mt && <LabTile busy={busy} id="mountReset1" onClick={() => buy("mountReset")} icon={<Shuffle className="h-4 w-4 text-[#7fc3ff]" />} name="Reset"
+        {mt && <LabTile busy={busy} id="mountReset1" onClick={() => buy("mountReset")} disabled={over(costs.mountReset)} icon={<Shuffle className="h-4 w-4 text-[#7fc3ff]" />} name="Reset"
           price={`${fmt(costs.mountReset)} pts`} note={`Draws a new pair of mount stats and keeps the level (${fmt(costs.mountReset)} pts). ${NOT_ENTRY}`} />}
       </div>
       {flash && <p role="status" className={cn("lab-flash", flash.error && "err")}>{flash.text}</p>}
@@ -316,6 +316,11 @@ function SignUp({ data, t, sn, balance, member, setBalance, onChanged, onBought,
   const values = normValues(t.values);
   const costs = data.costs;
   const me = data.me;
+  // the Guild Leader's spending limit for this tournament: what is left for this member (Infinity = no limit)
+  const cap = t.max_spend > 0 ? t.max_spend : 0;
+  const capLeft = cap ? Math.max(0, cap - ((me && me.spent) || 0)) : Infinity;
+  const over = (cost) => cost > capLeft;
+  const capText = (cost) => (capLeft <= 0 ? `You've reached this tournament's spending limit of ${fmt(cap)} points.` : `Over this tournament's spending limit: ${fmt(capLeft)} of ${fmt(cap)} points left, and that costs ${fmt(cost)}.`);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [rolled, setRolled] = useState("");
@@ -353,7 +358,10 @@ function SignUp({ data, t, sn, balance, member, setBalance, onChanged, onBought,
   const FORGE_MS = 1700, FORGE_END_MS = 1000;
   // Re-roll and mount reset can't be undone: they ask first (see ConfirmChange).
   const [confirm, setConfirm] = useState(null);
+  const COST_OF = { entry: costs.entry, skill: costs.skill, weapon: costs.weaponTry, pet: costs.pet, mount: costs.mountLevel, mountReset: costs.mountReset };
   const buy = (item, count = 1) => {
+    const cost = item === "reroll" ? 0 : (COST_OF[item] || 0) * (item === "entry" ? count : 1);
+    if (cost && over(cost)) { const m = capText(cost); setError(m); setFlash({ text: m, error: true, at: Date.now() }); return undefined; }
     if (item === "reroll" || item === "mountReset") { if (!busy) setConfirm({ item }); return undefined; }
     return doBuy(item, count);
   };
@@ -393,13 +401,14 @@ function SignUp({ data, t, sn, balance, member, setBalance, onChanged, onBought,
       <div className="min-w-0 space-y-4">
         <Header t={t} sn={sn} crowd={crowd} />
         <ArenaStage spec={spec} clock={stageClock} showLog={false} crowd={myFighter ? null : crowd} chip={myFighter ? null : { text: "Sign-up open" }}
-          overlay={me ? <LabRails me={me} costs={costs} values={values} busy={busy} buy={buy} flash={flash} used={used} /> : null} />
+          overlay={me ? <LabRails me={me} costs={costs} values={values} busy={busy} buy={buy} flash={flash} used={used} over={over} /> : null} />
 
         <Panel title="Your fighter">
           {!me ? (
             <div className="space-y-3">
               <p className="text-sm">Your first entry ({fmt(costs.entry)} points) gives you a fighter: one of the guild's characters, picked at random. You get one free re-roll, and it never gives you the same one back.</p>
-              <button type="button" onClick={() => buy("entry", 1)} disabled={!!busy || balance < costs.entry} className="btn-seal h-11 px-5">{busy === "entry1" ? <Loader2 className="h-4 w-4 animate-spin" /> : `Sign up · ${fmt(costs.entry)} pts`}</button>
+              {cap > 0 && <p className="text-sm text-[#f1d38c]">Spending limit in this tournament: {fmt(cap)} points per member, for everything bought for your fighter (bets on matches aren't counted).</p>}
+              <button type="button" onClick={() => buy("entry", 1)} disabled={!!busy || balance < costs.entry || over(costs.entry)} className="btn-seal h-11 px-5">{busy === "entry1" ? <Loader2 className="h-4 w-4 animate-spin" /> : `Sign up · ${fmt(costs.entry)} pts`}</button>
             </div>
           ) : (
             <div className="space-y-4">
@@ -407,7 +416,13 @@ function SignUp({ data, t, sn, balance, member, setBalance, onChanged, onBought,
                 <span className="h-10 w-10 rounded-full border-2 border-gold" style={{ background: `radial-gradient(circle at 35% 35%, #fff8, ${lookColor(me.look)} 60%, #000 120%)` }} aria-hidden="true" />
                 <div className="min-w-0 flex-1">
                   <p className="font-heading text-lg font-bold">{lookTitle(me.look)}</p>
-                  <p className="text-xs text-mist">{fmt(me.entries)} {me.entries === 1 ? "entry" : "entries"} · {used}/{TOTAL_CAP} upgrades · total spent {fmt(me.spent)} pts</p>
+                  <p className="text-xs text-mist">{fmt(me.entries)} {me.entries === 1 ? "entry" : "entries"} · {used}/{TOTAL_CAP} upgrades · total spent {fmt(me.spent)}{cap ? ` of ${fmt(cap)}` : ""} pts</p>
+                  {cap > 0 && (
+                    <div className="mt-1 max-w-xs" aria-label={`Spending limit: ${fmt(me.spent || 0)} of ${fmt(cap)} points used`}>
+                      <div className="h-1.5 overflow-hidden rounded-sm bg-white/10"><div className={cn("h-full", capLeft <= 0 ? "bg-ember" : "bg-[#d4a72c]")} style={{ width: `${Math.min(100, ((me.spent || 0) / cap) * 100)}%` }} /></div>
+                      <p className="mt-0.5 text-[11px] text-mist">{capLeft > 0 ? `${fmt(capLeft)} points left to spend in this tournament` : "Spending limit reached for this tournament"}</p>
+                    </div>
+                  )}
                 </div>
                 <button type="button" onClick={() => buy("reroll")} disabled={!!busy || me.rerolled} className="btn-bronze h-10 px-3 text-sm">
                   {busy === "reroll1" ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Shuffle className="h-4 w-4" /> {me.rerolled ? "Re-roll used" : "Re-roll character (free, once)"}</>}
@@ -421,9 +436,9 @@ function SignUp({ data, t, sn, balance, member, setBalance, onChanged, onBought,
               </div>
 
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <B busy={busy} id="entry1" onClick={() => buy("entry", 1)}><b>Buy 1 entry · {fmt(costs.entry)} pts</b><span className="text-xs text-mist">Rolls one upgrade (up to {PER_STAT} per stat, {TOTAL_CAP} in all) and raises your halo</span></B>
-                <B busy={busy} id="entry5" onClick={() => buy("entry", 5)}><b>Buy 5 entries · {fmt(costs.entry * 5)} pts</b><span className="text-xs text-mist">Five upgrade rolls at once</span></B>
-                <B busy={busy} id="skill1" onClick={() => buy("skill")} disabled={me.skills.length >= MAX_SKILLS}>
+                <B busy={busy} id="entry1" onClick={() => buy("entry", 1)} disabled={over(costs.entry)}><b>Buy 1 entry · {fmt(costs.entry)} pts</b><span className="text-xs text-mist">Rolls one upgrade (up to {PER_STAT} per stat, {TOTAL_CAP} in all) and raises your halo</span></B>
+                <B busy={busy} id="entry5" onClick={() => buy("entry", 5)} disabled={over(costs.entry * 5)}><b>Buy 5 entries · {fmt(costs.entry * 5)} pts</b><span className="text-xs text-mist">Five upgrade rolls at once</span></B>
+                <B busy={busy} id="skill1" onClick={() => buy("skill")} disabled={me.skills.length >= MAX_SKILLS || over(costs.skill)}>
                   <b>{me.skills.length >= MAX_SKILLS ? `${MAX_SKILLS} skills (max)` : `Add skill · ${fmt(costs.skill)} pts`}</b>
                   <span className="flex items-center gap-2 text-xs text-mist">A random buff skill you don't have yet, up to {MAX_SKILLS} <SkillIcons skills={me.skills} size={20} /></span>
                 </B>
@@ -438,21 +453,21 @@ function SignUp({ data, t, sn, balance, member, setBalance, onChanged, onBought,
                   title={`Weapon · ${me.weapon ? `+${me.weapon} · ${WEAPON.looks[me.weapon - 1].name} aura` : "not upgraded"}`}
                   text={`Each level: ATK +${Math.round(values.weapon.atk * 100)}% and Crit rate +${values.weapon.crit}%, and an aura. ${me.weapon_tries} ${me.weapon_tries === 1 ? "try" : "tries"} so far.`}
                   lv={me.weapon} max={WEAPON.max}>
-                  <B2 busy={busy} id="weapon1" onClick={() => buy("weapon")} disabled={me.weapon >= WEAPON.max}>{me.weapon >= WEAPON.max ? `Weapon +${WEAPON.max} (max)` : `Try upgrade · ${fmt(costs.weaponTry)} pts · ${Math.round(values.weapon.chance * 100)}% success rate`}</B2>
+                  <B2 busy={busy} id="weapon1" onClick={() => buy("weapon")} disabled={me.weapon >= WEAPON.max || over(costs.weaponTry)}>{me.weapon >= WEAPON.max ? `Weapon +${WEAPON.max} (max)` : `Try upgrade · ${fmt(costs.weaponTry)} pts · ${Math.round(values.weapon.chance * 100)}% success rate`}</B2>
                   {me.weapon < WEAPON.max && <span className="text-xs text-mist">Next: +{me.weapon + 1} · {WEAPON.looks[me.weapon].name} aura</span>}
                   {me.weapon < WEAPON.max && <span className="w-full text-xs text-[#f1d38c]">{weaponNote(Math.round(values.weapon.chance * 100))}</span>}
                 </GearRow>
                 <GearRow icon="/arena/icons/pet.jpg" color="#c9a2ff" title={`${PET.name} · Growth ${petGrowth(me.pet)}%`}
                   text={me.pet ? `HP +${fmt(petBonus(me.pet, "hp"))} · ATK +${fmt(petBonus(me.pet, "atk"))} · DEF +${fmt(petBonus(me.pet, "def"))}. Each 25% of growth adds an eighth of the full 200% bonus.` : "No pet yet. Each 25% of growth adds an eighth of the full 200% bonus."}
                   lv={me.pet} max={PET.levels}>
-                  <B2 busy={busy} id="pet1" onClick={() => buy("pet")} disabled={me.pet >= PET.levels}>{me.pet >= PET.levels ? "Pet at 200% growth" : `${me.pet ? "Grow to" : "Buy at"} ${petGrowth(me.pet + 1)}% growth · ${fmt(costs.pet)} pts`}</B2>
+                  <B2 busy={busy} id="pet1" onClick={() => buy("pet")} disabled={me.pet >= PET.levels || over(costs.pet)}>{me.pet >= PET.levels ? "Pet at 200% growth" : `${me.pet ? "Grow to" : "Buy at"} ${petGrowth(me.pet + 1)}% growth · ${fmt(costs.pet)} pts`}</B2>
                   {me.pet < PET.levels && <span className="text-xs text-mist">Next: HP +{fmt(petBonus(me.pet + 1, "hp") - petBonus(me.pet, "hp"))} · ATK +{fmt(petBonus(me.pet + 1, "atk") - petBonus(me.pet, "atk"))} · DEF +{fmt(petBonus(me.pet + 1, "def") - petBonus(me.pet, "def"))}</span>}
                 </GearRow>
                 <GearRow icon="/arena/icons/mount.jpg" color="#7fc3ff" title={`Mount · ${mt ? `level ${mt.lv} · ${mountText(mt)}` : "none yet"}`}
                   text={`The first level draws two stats at random; every level after adds ${MOUNT.per}% more to the same two.`}
                   lv={mt ? mt.lv : 0} max={MOUNT.levels}>
-                  <B2 busy={busy} id="mount1" onClick={() => buy("mount")} disabled={mt && mt.lv >= MOUNT.levels}>{!mt ? `Buy mount (draws 2 stats) · ${fmt(costs.mountLevel)} pts` : mt.lv >= MOUNT.levels ? `Mount at level ${MOUNT.levels} (max)` : `Level up to ${mt.lv + 1} (+${(mt.lv + 1) * MOUNT.per}% each) · ${fmt(costs.mountLevel)} pts`}</B2>
-                  <B2 busy={busy} id="mountReset1" onClick={() => buy("mountReset")} disabled={!mt} quiet>Reset stats · {fmt(costs.mountReset)} pts</B2>
+                  <B2 busy={busy} id="mount1" onClick={() => buy("mount")} disabled={(mt && mt.lv >= MOUNT.levels) || over(costs.mountLevel)}>{!mt ? `Buy mount (draws 2 stats) · ${fmt(costs.mountLevel)} pts` : mt.lv >= MOUNT.levels ? `Mount at level ${MOUNT.levels} (max)` : `Level up to ${mt.lv + 1} (+${(mt.lv + 1) * MOUNT.per}% each) · ${fmt(costs.mountLevel)} pts`}</B2>
+                  <B2 busy={busy} id="mountReset1" onClick={() => buy("mountReset")} disabled={!mt || over(costs.mountReset)} quiet>Reset stats · {fmt(costs.mountReset)} pts</B2>
                   {mt && <span className="w-full text-xs text-[#f1d38c]">A reset is not credited as an entry, but its points count toward your total spent.</span>}
                 </GearRow>
               </div>
@@ -489,7 +504,7 @@ function SignUp({ data, t, sn, balance, member, setBalance, onChanged, onBought,
             </div>
           ) : <p className="px-4 text-sm text-mist">No one has signed up yet. Be the first.</p>}
         </Panel>
-        <ArenaRules mode="tour" costs={costs} values={values} />
+        <ArenaRules mode="tour" costs={costs} values={values} maxSpend={t.max_spend || 0} />
       </div>
       <div className="min-w-0 space-y-4">
         {myFighter && <FighterCard f={myFighter} values={values} side="You" />}

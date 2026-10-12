@@ -26,6 +26,11 @@
       "type": "object",
       "description": "What each upgrade gives in this tournament: ups and weapon (see arenaEngine DEFAULT_VALUES)"
     },
+    "max_spend": {
+      "type": "integer",
+      "default": 0,
+      "description": "Most points one member may spend on their fighter in this tournament (entries, skills, weapon tries, pet, mount). 0 = no limit. Bets are not counted."
+    },
     "costs": {
       "type": "object",
       "description": "This tournament's prices in points, set by the Guild Leader: entry, skill, weaponTry, pet, mountLevel, mountReset (see arenaEngine COSTS)"
