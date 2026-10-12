@@ -6,6 +6,7 @@ import {
 } from '../../shared/points.ts';
 import { postFeed } from '../../shared/feed.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
+import { memo, bust } from '../../shared/memo.ts';
 import { resilient } from '../../shared/points.ts';
 
 // One shared Twelve Skies Wheel that runs itself, like the roulette table:
@@ -34,9 +35,10 @@ function due(t, now: number) {
   return !t.next_at || Date.parse(t.next_at) <= now;
 }
 
-async function advance(b, settings) {
-  const first = await getTable(b);
+async function advance(b, settings, shared = false) {
+  const first = shared ? await memo('wheel:table', 1000, () => getTable(b)) : await getTable(b);
   if (!due(first, Date.now())) return first;
+  bust('wheel:'); // the round is moving on: the next look must read it fresh
   return withRecordLock(b, 'WheelTable', first.id, async () => {
     let t = await b.asServiceRole.entities.WheelTable.get(first.id);
     const now = Date.now();
@@ -94,10 +96,22 @@ const publicTable = (t) => ({
   players: t.players || 0, server_now: new Date().toISOString()
 });
 
+// 6.16: after anything but a look at the table, forget the shared answers so screens see the change.
 export default async function(req) {
+  let action = '';
+  try { const q = await req.clone().json(); action = String((q && q.action) || ''); } catch { /* no body */ }
+  try {
+    return await handle(req, action);
+  } finally {
+    if (action !== 'state' && action !== 'ping') bust('wheel:');
+  }
+}
+
+async function handle(req, action: string) {
   try {
     const b = resilient(createClientFromRequest(req));
-    const user = await sessionUser(b, req);
+    // 6.16: a screen's poll ('state') may reuse a member row read in the last 20 s
+    const user = await sessionUser(b, req, action === 'state' ? 20000 : 0);
     if (!user) throw new UserError('Link your Discord first.', 401);
     let p; try { p = await req.json(); } catch { p = {}; }
     if (p.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION });
@@ -108,8 +122,8 @@ export default async function(req) {
     if (!(settings.games_enabled || []).includes('skywheel')) throw new UserError('The wheel is closed right now.');
 
     if (p.action === 'state') {
-      const t = await advance(b, settings);
-      const { items: bets } = await b.asServiceRole.entities.WheelBet.filter({ round_no: t.round_no }, { limit: 200 });
+      const t = await advance(b, settings, true);
+      const { items: bets } = await memo('wheel:bets:' + t.round_no, 1500, () => b.asServiceRole.entities.WheelBet.filter({ round_no: t.round_no }, { limit: 200 }));
       const mine = bets.find((x) => x.member_id === me.id) || null;
       return Response.json({
         table: publicTable(t),

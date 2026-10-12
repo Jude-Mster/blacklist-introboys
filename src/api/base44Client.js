@@ -34,7 +34,11 @@ const client = createClient({
 // Anything a member does (bet, play a card, send a message) is never held back.
 const READ_FUNCTIONS = { getChatMessages: 3000, getGameFeed: 3000, getLeaderboard: 3000 };
 const READ_ACTIONS = { state: 900, list: 900, race: 900, pulse: 1500 };
+// 6.16: each "busy" answer in a row doubles the pause (4 s, 8 s, 16 s, up to 30 s); a good answer resets it.
 const BACKOFF_MS = 4000;
+const BACKOFF_MAX_MS = 30000;
+let busyStreak = 0;
+const slowDown = () => { busyStreak = Math.min(busyStreak + 1, 4); backoffUntil = Date.now() + Math.min(BACKOFF_MAX_MS, BACKOFF_MS * 2 ** (busyStreak - 1)); };
 const LOAD_ACTIONS = new Set(["state", "list", "catalog", "adminOverview", "roster", "totals", "search", "discordStatus", "ping", "mine", "pending", "adminList", "stockSummary"]);
 const LOAD_RETRY_MS = [1200, 2500, 5000];
 // Games that play an animation before the result should be seen set the balance themselves.
@@ -70,7 +74,7 @@ const busyError = (e) => {
 };
 
 const functions = Object.create(client.functions);
-functions.invoke = (name, data) => {
+functions.invoke = async (name, data) => {
   const token = getSessionToken();
   const payload = { ...(data || {}) };
   if (token) payload._s = token;
@@ -88,14 +92,20 @@ functions.invoke = (name, data) => {
     else if (ttl === undefined && !isLoad && !NO_POINTS.has(name) && payload.action !== "react" && payload.action !== "settle") announce("bi:changed", {});
     return res;
   });
+  // A refresh on a timer is not retried here: the page asks again on its own schedule anyway, and
+  // retrying on top of that only adds calls when the server is already over its limit.
+  const retries = ttl !== undefined ? 0 : LOAD_RETRY_MS.length;
   const call = async () => {
     for (let attempt = 0; ; attempt++) {
       try {
-        return await once();
+        const res = await once();
+        busyStreak = 0;
+        return res;
       } catch (e) {
-        if (!isRateLimit(e)) throw e;
-        backoffUntil = Date.now() + BACKOFF_MS;
-        if (!isLoad || attempt >= LOAD_RETRY_MS.length) throw busyError(e);
+        // "One emoji at a time" is a game rule, not the server being busy.
+        if (!isRateLimit(e) || payload.action === "react") throw e;
+        slowDown();
+        if (!isLoad || attempt >= retries) throw busyError(e);
         await new Promise((r) => setTimeout(r, LOAD_RETRY_MS[attempt]));
       }
     }
@@ -114,9 +124,12 @@ functions.invoke = (name, data) => {
   const now = Date.now();
   const hidden = typeof document !== "undefined" && document.hidden;
   const resting = hidden || now < backoffUntil;
-  // Reuse the last good answer when it is fresh, the tab is hidden, or we were just told to slow down.
-  // (Never an answer more than a few seconds old: a table that has moved on must be seen to move on.)
-  if (hit && (now - hit.at < ttl || (resting && now - hit.at < 5000))) return hit.promise;
+  // Reuse the last good answer when it is fresh, or when the tab is hidden (nobody is looking: a
+  // hidden tab makes no calls at all; it asks again the moment it is shown), or while we were told
+  // to slow down (then only an answer a few seconds old, so a table that moved on is seen to move on).
+  if (hit && (now - hit.at < ttl || hidden || (resting && now - hit.at < 5000))) return hit.promise;
+  // Told to slow down and nothing to show yet: wait out the pause instead of adding to the load.
+  if (!hit && !hidden && now < backoffUntil) await new Promise((r) => setTimeout(r, Math.min(backoffUntil - now, 8000)));
   if (inFlight.has(key)) return inFlight.get(key);
   // If a change went through while this refresh was on its way, its answer may be from
   // before the change: ask once more so the page never steps back in time.

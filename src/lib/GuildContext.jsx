@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useCallback, useEffect, useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { clearSession, setInvite } from "@/lib/session";
+import { clearSession, setInvite, getSessionToken } from "@/lib/session";
 import { balanceHold } from "@/lib/balanceHold";
 
 const GuildContext = createContext(null);
@@ -17,8 +17,35 @@ const statusOf = (e) => (e && (e.status || (e.response && e.response.status))) |
 // This device's session is no longer good: forget it and go back to the login page.
 function signOutTo(path) {
   clearSession();
+  dropCache();
   window.location.replace(path);
 }
+
+// 6.16: the last account this device loaded is kept, so a member coming back sees the site at once
+// (and keeps seeing it while the server is busy) while a fresh copy loads in the background.
+const CACHE_KEY = "bi:account";
+const CACHE_MAX_MS = 24 * 60 * 60 * 1000;
+const tokenTag = () => { const t = getSessionToken() || ""; return t ? t.slice(-12) : ""; };
+function readCache() {
+  try {
+    const tag = tokenTag();
+    const c = JSON.parse(window.localStorage.getItem(CACHE_KEY) || "null");
+    if (!c || !tag || c.tag !== tag || Date.now() - (c.at || 0) > CACHE_MAX_MS || !c.data || !c.data.linked) return null;
+    return c.data;
+  } catch { return null; }
+}
+function writeCache(data) {
+  try {
+    const tag = tokenTag();
+    if (!tag || !data || !data.linked) return;
+    const light = { linked: true, setup: data.setup, member: data.member, settings: data.settings, version: data.version, cached: true };
+    window.localStorage.setItem(CACHE_KEY, JSON.stringify({ tag, at: Date.now(), data: light }));
+  } catch { /* storage full or blocked */ }
+}
+function dropCache() { try { window.localStorage.removeItem(CACHE_KEY); } catch { /* blocked */ } }
+// A busy server is retried quietly on the first load before the member is shown an error.
+const FIRST_RETRY_MS = [2000, 4000, 8000, 15000];
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // 6.15: the account is read less often and lighter. The plain read is member + settings only;
 // history, stats and rank ride along only while a page that shows them is open (useAccountDetail).
@@ -28,9 +55,10 @@ const HEARTBEAT = 90000;
 const DETAIL_KEYS = ["rank", "stats", "recentLogs", "recentBets"];
 
 export function GuildProvider({ children }) {
-  const [account, setAccount] = useState(null);
-  const [settings, setSettings] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [cached] = useState(() => (typeof window === "undefined" ? null : readCache()));
+  const [account, setAccount] = useState(cached);
+  const [settings, setSettings] = useState(cached ? cached.settings : null);
+  const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState(null);
   const wantDetail = useRef(0);
   const lastAt = useRef(0);
@@ -58,13 +86,16 @@ export function GuildProvider({ children }) {
           return balanceHold.active && prev && prev.member && data.member ? { ...next, member: { ...data.member, points: prev.member.points } } : next;
         });
         if (data.settings) setSettings(data.settings);
+        writeCache(data);
         setError(null);
+        return true;
       } catch (e) {
         if (statusOf(e) === 401) {
           signOutTo("/login");
-          return;
+          return true;
         }
         setError(errorText(e, "Couldn't load your account."));
+        return false;
       } finally {
         inFlight.current = null;
       }
@@ -74,10 +105,18 @@ export function GuildProvider({ children }) {
   }, []);
 
   useEffect(() => {
+    let alive = true;
     (async () => {
-      await loadAccount();
-      setLoading(false);
+      // With a saved copy on screen, one quiet attempt is enough (the heartbeat tries again later).
+      let ok = await loadAccount();
+      for (let i = 0; !ok && !cached && alive && i < FIRST_RETRY_MS.length; i++) {
+        await sleep(FIRST_RETRY_MS[i]);
+        if (alive) ok = await loadAccount({ fresh: false });
+      }
+      if (alive) setLoading(false);
     })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadAccount]);
 
   const reload = useCallback(async () => {

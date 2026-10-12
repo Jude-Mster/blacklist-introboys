@@ -9,6 +9,7 @@
 import { changePoints, withMemberLock, todayStr, UserError } from './points.ts';
 import { lineKeyOk, priceFor, lineOf, betReturn, lineLabel, conflictIn } from './arenaEngine.ts';
 import { postFeed } from './feed.ts';
+import { memo, bust } from './memo.ts';
 import { announceBigWin, announceLoss, lossWorthTelling } from './chat.ts';
 
 export const ARENA_NAME = 'Blacklist Arena';
@@ -94,6 +95,7 @@ export async function placeBets(b, me, settings, o: { key: FightKey; label: stri
       }
     }
     await daily;
+    bust('bets:');
     return { balance, mine: { lines: row.lines, amount: row.amount } };
   });
 }
@@ -117,6 +119,7 @@ export async function removeBets(b, me, o: { key: FightKey; label: string; close
     const { balance } = await changePoints(b, me.id, back, 'game', `${o.label} bet taken back`, null);
     const fresh = await E(b).Member.get(me.id).catch(() => me);
     if (fresh.daily_bet_date === todayStr()) await E(b).Member.update(me.id, { daily_bet_total: Math.max(0, (fresh.daily_bet_total || 0) - back) }).catch(() => {});
+    bust('bets:');
     return { balance, mine: row ? { lines: row.lines, amount: row.amount } : null };
   });
 }
@@ -148,6 +151,7 @@ export async function payBet(b, row, resolve: Resolve, settings, after: Array<()
     if (!paid) await changePoints(b, cur.member_id, payout, 'game', o ? winReason : backReason, null);
   }
   await E(b).ArenaBet.update(cur.id, { payout, net: payout - cur.amount, settled: true });
+  bust('bets:');
   if (o) after.push(async () => {
     try {
       const names = cur.names || ['Fighter A', 'Fighter B'];
@@ -209,8 +213,11 @@ export async function payOthers(b, scopeFilter, resolve: Resolve, settings, skip
 }
 
 // Everyone's bets on one fight, for the bet board. Payouts are only worked out once `o` is known.
+const BOARD_MS = 1500;
 export async function betBoard(b, key: FightKey, meId: string, o) {
-  const { items: rows } = await E(b).ArenaBet.filter(keyFilter(key), { limit: 300 });
+  // 6.16: every screen on this fight shares one read (1.5 s); a bet, take-back or payout
+  // made through this copy of the function clears it at once.
+  const { items: rows } = await memo('bets:' + JSON.stringify(keyFilter(key)), BOARD_MS, () => E(b).ArenaBet.filter(keyFilter(key), { limit: 300 }));
   const bets = rows.map((x) => {
     const payout = o ? betReturn(x.lines, o, {}) : 0;
     return { name: x.name, avatar: x.avatar, role: x.role, amount: x.amount || 0, lines: x.lines || [], payout, net: o ? payout - (x.amount || 0) : 0, done: !!o, mine: x.member_id === meId };

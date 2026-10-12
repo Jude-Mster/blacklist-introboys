@@ -52,11 +52,13 @@ const SETTINGS_CACHE_MS = Number((globalThis as any).__settingsCacheMs ?? 30000)
 let settingsCache: { v: any; at: number } | null = null;
 export function clearSettingsCache() { settingsCache = null; }
 
+let settingsLoading: Promise<any> | null = null; // 6.16: requests arriving together share one read
 export async function getSettings(b, fresh = false) {
   if (!fresh && settingsCache && Date.now() - settingsCache.at < SETTINGS_CACHE_MS) return settingsCache.v;
-  const v = await readSettings(b);
-  settingsCache = { v, at: Date.now() };
-  return v;
+  if (!fresh && settingsLoading) return await settingsLoading;
+  const run = readSettings(b).then((v) => { settingsCache = { v, at: Date.now() }; return v; });
+  if (!fresh) settingsLoading = run.finally(() => { settingsLoading = null; });
+  return await run;
 }
 
 async function readSettings(b) {

@@ -54,6 +54,7 @@ export default function LiveArena({ balance }) {
   useEffect(() => {
     refresh();
     const poll = setInterval(() => {
+      if (document.hidden) return; // 6.16: a hidden tab makes no calls; it catches up when shown
       const t = tableRef.current, sn = serverNow();
       let wait = 3000;
       if (t) {
@@ -69,7 +70,9 @@ export default function LiveArena({ balance }) {
       }
       if (Date.now() - lastPoll.current >= wait) refresh();
     }, 250);
-    return () => clearInterval(poll);
+    const onShow = () => { if (!document.hidden) refresh(); };
+    document.addEventListener("visibilitychange", onShow);
+    return () => { clearInterval(poll); document.removeEventListener("visibilitychange", onShow); };
   }, [refresh, serverNow]);
 
   const table = state && state.table;

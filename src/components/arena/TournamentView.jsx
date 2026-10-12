@@ -197,6 +197,7 @@ export default function TournamentView({ balance, member }) {
   useEffect(() => {
     refresh();
     const poll = setInterval(() => {
+      if (document.hidden) return; // 6.16: a hidden tab makes no calls; it catches up when shown
       const d = dataRef.current, now = serverNow();
       let wait = 15000;
       const t = d && d.tournament;
@@ -213,7 +214,9 @@ export default function TournamentView({ balance, member }) {
       } else if (t && t.status === "paying") wait = 3000;
       if (Date.now() - lastPoll.current >= wait) refresh();
     }, 250);
-    return () => clearInterval(poll);
+    const onShow = () => { if (!document.hidden) refresh(); };
+    document.addEventListener("visibilitychange", onShow);
+    return () => { clearInterval(poll); document.removeEventListener("visibilitychange", onShow); };
   }, [refresh, serverNow]);
 
   const t = data && data.tournament;

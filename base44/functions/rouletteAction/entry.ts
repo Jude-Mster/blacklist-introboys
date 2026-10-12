@@ -7,6 +7,7 @@ import {
 import { postFeed } from '../../shared/feed.ts';
 import { announceBigWin, announceLoss, lossWorthTelling } from '../../shared/chat.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
+import { memo, bust } from '../../shared/memo.ts';
 import { resilient } from '../../shared/points.ts';
 
 // One shared roulette table that runs itself:
@@ -48,10 +49,11 @@ function due(t, now: number) {
 }
 
 // Settle the current round and/or open the next one. Safe to call often.
-async function advance(b, settings) {
-  const first = await getTable(b);
+async function advance(b, settings, shared = false) {
+  const first = shared ? await memo('roulette:table', 1000, () => getTable(b)) : await getTable(b);
   if (!due(first, Date.now())) return first;
   if (first.settling_at && Date.now() - Date.parse(first.settling_at) < BUSY_MS) return first; // someone is already on it
+  bust('roulette:'); // the round is moving on: the next look must read it fresh
   return withRecordLock(b, 'RouletteTable', first.id, async () => {
     let t = await b.asServiceRole.entities.RouletteTable.get(first.id);
     const now = Date.now();
@@ -147,13 +149,25 @@ const publicTable = (t) => ({
   players: t.players || 0, server_now: new Date().toISOString()
 });
 
+// 6.16: after anything but a look at the table, forget the shared answers so screens see the change.
 export default async function(req) {
+  let action = '';
+  try { const q = await req.clone().json(); action = String((q && q.action) || ''); } catch { /* no body */ }
+  try {
+    return await handle(req, action);
+  } finally {
+    if (action !== 'state' && action !== 'ping') bust('roulette:');
+  }
+}
+
+async function handle(req, action: string) {
   try {
     // When this request reached the server. A chip counts if it ARRIVED before bets closed,
     // however long the checks and the lock take afterwards.
     const arrived = Date.now();
     const b = resilient(createClientFromRequest(req));
-    const user = await sessionUser(b, req);
+    // 6.16: a screen's poll ('state') may reuse a member row read in the last 20 s
+    const user = await sessionUser(b, req, action === 'state' ? 20000 : 0);
     if (!user) throw new UserError('Link your Discord first.', 401);
     let p; try { p = await req.json(); } catch { p = {}; }
     if (p.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION });
@@ -165,8 +179,8 @@ export default async function(req) {
     if (!(settings.games_enabled || []).includes('roulette')) throw new UserError('Roulette is closed right now.');
 
     if (p.action === 'state') {
-      const t = await advance(b, settings);
-      const { items: bets } = await b.asServiceRole.entities.RouletteBet.filter({ round_no: t.round_no }, { limit: 200 });
+      const t = await advance(b, settings, true);
+      const { items: bets } = await memo('roulette:bets:' + t.round_no, 1500, () => b.asServiceRole.entities.RouletteBet.filter({ round_no: t.round_no }, { limit: 200 }));
       const mine = bets.find((x) => x.member_id === me.id) || null;
       return Response.json({
         // Totals are counted from the bets themselves, so they can never disagree with the chips shown.

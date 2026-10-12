@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { sessionUser } from '../../shared/session.ts';
 import { getMemberByUserId, errorResponse } from '../../shared/points.ts';
 import { resilient } from '../../shared/points.ts';
+import { memo } from '../../shared/memo.ts';
 
 // Members-only read of chat messages. ChatMessage is read:false, so the only way
 // to load them is through this function, which requires a linked member.
@@ -15,7 +16,8 @@ export default async function(req) {
     let p; try { p = await req.json(); } catch { p = {}; }
     const channel = String(p.channel || 'guild');
     const limit = Math.min(Math.max(Number(p.limit) || 40, 1), 120);
-    const { items } = await b.asServiceRole.entities.ChatMessage.filter({ channel }, { sort: '-created_date', limit });
+    // 6.16: everyone reading a channel shares one read (3 s); new messages also arrive live.
+    const { items } = await memo(`chat:${channel}:${limit}`, 3000, () => b.asServiceRole.entities.ChatMessage.filter({ channel }, { sort: '-created_date', limit }));
     return Response.json({ items });
   } catch (e) {
     return errorResponse(e);

@@ -15,7 +15,7 @@ const rows = (res) => (Array.isArray(res) ? res : (res && res.items) || []);
 const time = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 
 // Live chat. `channels` is a list of { id, label }; the first one opens by default.
-export default function ChatBox({ channels = [{ id: "guild", label: "Guild" }], className, height = "h-80", frameless = false, onIncoming }) {
+export default function ChatBox({ channels = [{ id: "guild", label: "Guild" }], className, height = "h-80", frameless = false, onIncoming, pollMs = POLL_MS }) {
   const { account, settings } = useGuild();
   const me = account && account.member;
   const canModerate = me && (me.role === "officer" || me.role === "leader");
@@ -91,12 +91,13 @@ export default function ChatBox({ channels = [{ id: "guild", label: "Guild" }], 
     } catch {
       /* realtime unavailable: polling covers it */
     }
-    const poll = setInterval(() => ids.forEach(load), POLL_MS);
+    // New messages arrive live; the poll is only a safety net (and stops while the tab is hidden).
+    const poll = setInterval(() => { if (!document.hidden) ids.forEach(load); }, pollMs);
     return () => {
       clearInterval(poll);
       unsub && unsub();
     };
-  }, [channelIds, load, merge, note]);
+  }, [channelIds, load, merge, note, pollMs]);
 
   const list = messages[active] || [];
 

@@ -7,6 +7,7 @@ import { SICBO_NAME, validSicboBet, validDice, sicboPayout, describeRoll } from 
 import { postFeed } from '../../shared/feed.ts';
 import { announceBigWin, announceLoss, lossWorthTelling } from '../../shared/chat.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
+import { memo, bust } from '../../shared/memo.ts';
 import { resilient } from '../../shared/points.ts';
 
 // Dragon Sic Bo: one shared table that runs on the clock.
@@ -141,13 +142,25 @@ async function payBet(b, t, row, settings) {
   return { payout };
 }
 
+// 6.16: after anything but a look at the table, forget the shared answers so screens see the change.
 export default async function(req) {
+  let action = '';
+  try { const q = await req.clone().json(); action = String((q && q.action) || ''); } catch { /* no body */ }
+  try {
+    return await handle(req, action);
+  } finally {
+    if (action !== 'state' && action !== 'ping') bust('sicbo:');
+  }
+}
+
+async function handle(req, action: string) {
   try {
     // When this request reached the server. A chip counts if it ARRIVED before bets closed,
     // however long the checks and the lock take afterwards.
     const arrived = Date.now();
     const b = resilient(createClientFromRequest(req));
-    const user = await sessionUser(b, req);
+    // 6.16: a screen's poll ('state') may reuse a member row read in the last 20 s
+    const user = await sessionUser(b, req, action === 'state' ? 20000 : 0);
     if (!user) throw new UserError('Link your Discord first.', 401);
     let p; try { p = await req.json(); } catch { p = {}; }
     if (p.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION });
@@ -161,10 +174,12 @@ export default async function(req) {
 
     // ---------- look at the table (no locks; at most one write, to open a round) ----------
     if (p.action === 'state') {
-      const t = await current(b);
+      // 6.16: screens share one look at the table (1 s) and at the round's bets (1.5 s)
+      let t = await memo('sicbo:table', 1000, () => current(b));
+      if (!(usable(t) && Date.now() < nextMs(t))) { bust('sicbo:'); t = await memo('sicbo:table', 1000, () => current(b)); }
       const now = Date.now();
       const closed = closedAt(t, now);
-      const { items: rows } = await E(b).SicBoBet.filter({ round_no: t.round_no }, { limit: 200 });
+      const { items: rows } = await memo('sicbo:bets:' + t.round_no, 1500, () => E(b).SicBoBet.filter({ round_no: t.round_no }, { limit: 200 }));
       // One line per member (a member normally has one row; add them up if there are more).
       const byMember = new Map();
       for (const x of rows) {

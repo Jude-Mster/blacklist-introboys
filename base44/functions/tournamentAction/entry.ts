@@ -14,6 +14,7 @@ import {
 } from '../../shared/discordPost.ts';
 import { checkCode, assertNewCode, codeFields, runStockLocked, takeFromStock, assignAndDeliver } from '../../shared/prizeCodes.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
+import { memo, bust } from '../../shared/memo.ts';
 
 // Blacklist Arena tournaments, run by the Guild Leader.
 //
@@ -143,6 +144,12 @@ async function lastTour(b) {
   return lists.map((x) => x.items[0]).filter(Boolean).sort((x, y) => String(y.created_date).localeCompare(String(x.created_date)))[0] || null;
 }
 const entrantsOf = async (b, tourId: string) => (await E(b).TourEntrant.filter({ tour_id: tourId }, { limit: 1000 })).items.filter((x) => (x.entries || 0) > 0);
+// 6.16: what every screen polls ('state', 'status') is shared for a moment by all requests in this
+// copy of the function. Anything that changes a tournament or a fighter clears it (see the end of the
+// file), and the clock work always reads fresh under the lock.
+const sharedActive = (b) => memo('tour:active', 2500, () => activeTour(b));
+const sharedLast = (b) => memo('tour:last', 20000, () => lastTour(b));
+const sharedEntrants = (b, tourId: string) => memo('tour:ent:' + tourId, 2000, () => entrantsOf(b, tourId));
 const buildOf = (x) => ({ entries: x.entries || 0, ups: x.ups || {}, weapon: x.weapon || 0, skills: x.skills || [], pet: x.pet || 0, mount: x.mount && x.mount.lv ? x.mount : null });
 
 // ---------- the bracket ----------
@@ -644,7 +651,19 @@ async function reroll(b, t, me) {
   });
 }
 
+// 6.16: after anything that isn't a read, forget the shared answers so the next screen sees the change.
+const READS = new Set(['state', 'status', 'ping', 'pulse']);
 export default async function(req) {
+  let action = '';
+  try { const q = await req.clone().json(); action = String((q && q.action) || ''); } catch { /* no body */ }
+  try {
+    return await handle(req);
+  } finally {
+    if (!READS.has(action)) bust('tour:');
+  }
+}
+
+async function handle(req) {
   try {
     const arrived = Date.now();
     const b = resilient(createClientFromRequest(req));
@@ -672,20 +691,22 @@ export default async function(req) {
 
     // A quick look for the menu badge and the guild hall banner (no clock work).
     if (p.action === 'status') {
-      const t = await activeTour(b);
+      const t = await sharedActive(b);
       return Response.json({ tournament: t ? { id: t.id, title: t.title, status: t.status, starts_at: t.starts_at || null, ends_at: t.ends_at || null, entrant_count: t.entrant_count || 0, prizes: (t.prizes || []).map((x) => x.label) } : null, server_now: iso(Date.now()), entry: normCosts(t && t.costs).entry });
     }
 
     if (p.action === 'state') {
-      let t = await tick(b, await activeTour(b));
+      const t0 = await sharedActive(b);
+      let t = await tick(b, t0);
+      if (t !== t0) bust('tour:'); // the clock moved it on: the shared answers are out of date
       // it just ended: a repeating one may have opened the next
-      if (t && !['signup', 'running', 'paying'].includes(t.status)) t = await activeTour(b);
+      if (t && !['signup', 'running', 'paying'].includes(t.status)) { bust('tour:'); t = await sharedActive(b); }
       const now = Date.now();
       const out: any = { server_now: iso(now), costs: normCosts(t && t.costs), limit: arenaLimit(settings), min_bet: arenaMin(settings), bet_seconds: BET_SECONDS, intro: INTRO_SECONDS, result_seconds: RESULT_SECONDS, engine: ENGINE_VERSION };
       out.tournament = t ? publicTour(t, now, leader) : null;
-      if (!t) { const last = await lastTour(b); out.last = last ? publicTour(last, now, false) : null; }
+      if (!t) { const last = await sharedLast(b); out.last = last ? publicTour(last, now, false) : null; }
       if (t && t.status === 'signup') {
-        const list = await entrantsOf(b, t.id);
+        const list = await sharedEntrants(b, t.id);
         // the counts come from the fighters themselves (purchases don't write the tournament row)
         const paid = list.reduce((a, x) => a + (x.spent || 0), 0);
         out.tournament.entrant_count = list.length; out.tournament.bank_in = paid;

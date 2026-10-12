@@ -137,3 +137,13 @@ Base44's diagnosis (12 Oct): the load is reads, not play; the account refresh wa
 - **Arena table read by id** instead of a list query.
 - **Retries: 3** (was 5). At the limit a call now gives up within about 2 seconds instead of 10-20.
 - Load simulation (5 members on the Live Arena for 5 minutes): 570 → 407 database calls a minute, and no account-refresh bursts.
+
+## 17. What changed in 6.16: shared reads, quiet hidden tabs, no endless loading (redeploy every function and publish; no entity, engine, points or package changes)
+6.15 was live and the site still went "server busy": every screen still made its own database reads, so the load grew with each member who joined.
+- **Shared reads (`base44/shared/memo.ts`).** Requests handled by the same running copy of a function share one read for a moment: the Live Arena table (1 s) and its bets (1.5 s), the crowd and emojis (3 s), chat (3 s), the tournament (2.5 s) and its fighters (2 s), and the Roulette, Sic Bo and Wheel tables and bets (1-1.5 s). Requests arriving together wait for that one read. Bets, take-backs, payouts, emojis and every tournament change clear the shared answers at once, so you always see your own bet straight away. Settings are read once per 30 s per copy, also when many requests arrive together.
+- **Polls reuse the member row for 20 s**, now in Roulette, Sic Bo and Wheel too (bets always read it fresh). The emoji "one at a time" check no longer reads the database.
+- **Hidden tabs make no calls.** The Live Arena and tournament screens stop polling when the tab is hidden and catch up the moment it is shown. Chat checks once a minute while the chat panel is closed (new messages still arrive live).
+- **No retry storms.** Timed refreshes are not retried on "busy" (the next refresh is the retry). Each "busy" answer in a row doubles the pause (4, 8, 16, 30 s).
+- **No endless loading.** A returning member sees the site at once from the last account this device loaded, while a fresh copy loads. A first visit during a busy spell retries quietly (2, 4, 8, 15 s) before showing an error, and the error page keeps retrying every 15 s.
+- Load simulation (members on the Live Arena, one running copy): 5 members 381 → 105, 10 members 644 → 122, 20 members 1,442 → 201 database calls a minute. If Base44 runs several copies of a function, each copy has its own shared answers, so the real figure sits a little higher.
+- New test: `tests/shared_reads_test.ts` (20 screens at once cost 1-2 reads; own bet and emojis show straight away).

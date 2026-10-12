@@ -8,6 +8,7 @@ import {
   ARENA_NAME, placeBets, removeBets, payMine, payOthers, betBoard, arenaLimit, arenaMin, type Resolve
 } from '../../shared/arenaBets.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
+import { memo, remember } from '../../shared/memo.ts';
 import { pulse, react, cleanScope } from '../../shared/arenaSocial.ts';
 
 // Blacklist Arena, the Live Arena: one shared fight every few minutes, between two members of
@@ -115,8 +116,11 @@ async function getTable(b, settings) {
 
 // Fight the round when betting closes; open the next round once the last result has been on show long
 // enough. Only one request does the work; the others wait for it and read what it wrote.
-async function current(b, settings) {
-  const t0 = await getTable(b, settings);
+// 6.16: screens polling 'state' share one read of the table (1 s). When the round is due to move
+// on, the work below still reads the table fresh under the lock, and puts what it wrote in place.
+const TABLE_MS = 1000;
+async function current(b, settings, shared = false) {
+  const t0 = shared ? await memo('arena:table', TABLE_MS, () => getTable(b, settings)) : await getTable(b, settings);
   const due = (t) => !usable(t) || (Date.now() >= closeMs(t) && !fought(t));
   const stale = (t) => !usable(t) || (fought(t) && Date.now() >= nextMs(t));
   if (!stale(t0) && !due(t0)) return t0;
@@ -133,7 +137,9 @@ async function current(b, settings) {
   // every waiting request checking the lock several times a second, which tripped the platform's
   // request limit). They answer with the table as it is, and the screen asks again a moment later.
   try {
-    return await withRecordLock(b, 'ArenaTable', t0.id, open, 10000, 0);
+    const t = await withRecordLock(b, 'ArenaTable', t0.id, open, 10000, 0);
+    remember('arena:table', TABLE_MS, t);
+    return t;
   } catch (e) {
     if (e instanceof UserError) {
       if ((e as any).busy && usable(t0)) return t0;
@@ -209,7 +215,7 @@ export default async function(req) {
 
     if (p.action === 'state') {
       if (!open) throw new UserError(CLOSED_GAME);
-      const t = await current(b, settings);
+      const t = await current(b, settings, true);
       const now = Date.now();
       const status = statusAt(t, now);
       const board = await betBoard(b, { scope: 'live', round_no: t.round_no }, me.id, status === 'result' ? t.outcome : null);
