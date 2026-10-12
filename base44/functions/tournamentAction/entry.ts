@@ -32,7 +32,7 @@ import { BACKEND_VERSION } from '../../shared/version.ts';
 // After the last match the prizes are paid, and every fighter and character is removed.
 const BET_SECONDS = 10;
 const INTRO_SECONDS = 3;
-const RESULT_SECONDS = 10;
+const RESULT_SECONDS = 5;      // the result, then the next match opens for bets (was 10)
 const LEAD_IN_SECONDS = 10;    // from the start to the first match opening for bets
 const MAX_ENTRANTS = 128;
 const MAX_PRIZES = 4;

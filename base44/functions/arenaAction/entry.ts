@@ -24,8 +24,8 @@ import { pulse, react, cleanScope } from '../../shared/arenaSocial.ts';
 const GAME = 'arena';
 const CLOCK = 'a1';
 const INTRO_SECONDS = 3;      // "Fight!" before the first step
-const RESULT_SECONDS = 15;    // the result stays on screen this long
-const DEFAULT_BET_SECONDS = 30;
+const RESULT_SECONDS = 6;     // the result stays on screen this long, then the next fight opens (was 15)
+const DEFAULT_BET_SECONDS = 15;   // was 30; the Guild Leader can change it in the admin hall (10 to 300)
 const HISTORY = 300;          // finished fights kept for paying late (about 15 hours)
 const REPLAYS = 20;           // the newest of them keep their seed and builds, so they can be watched again
 // Shared secret only the "Arena Payouts" schedule knows.

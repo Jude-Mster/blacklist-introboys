@@ -66,6 +66,14 @@ export function ArenaStage({ spec, clock, className, showLog = true, logTitle = 
   }, []);
 
   useEffect(() => { if (sceneRef.current) sceneRef.current.setSound(sound); try { localStorage.setItem(SOUND_KEY, sound ? "on" : "off"); } catch { /* private mode */ } }, [sound, ready]);
+  // Browsers keep sound off until the page is tapped (and switch it off again after a tab switch or a call
+  // on phones). While that is the case, say so instead of looking "on" and staying silent.
+  const [soundBlocked, setSoundBlocked] = useState(false);
+  useEffect(() => {
+    if (!sound) { setSoundBlocked(false); return undefined; }
+    const id = setInterval(() => { const sc = sceneRef.current; setSoundBlocked(!!(sc && sc.soundBlocked && sc.soundBlocked())); }, 800);
+    return () => clearInterval(id);
+  }, [sound, ready]);
   useEffect(() => {
     const sc = sceneRef.current;
     if (!sc || !ready || !spec || !spec.fight) return;
@@ -132,6 +140,11 @@ export function ArenaStage({ spec, clock, className, showLog = true, logTitle = 
       </div>
       <div className="flex flex-wrap items-center justify-end gap-1.5 border-t border-[#5a4724] bg-gradient-to-b from-[#16171f] to-[#0d0e13] px-2.5 py-1.5">
         {controls}
+        {sound && soundBlocked && (
+          <button type="button" onClick={() => { const sc = sceneRef.current; if (sc) sc.setSound(true); }} className={cn(btn, "border-[#d6ad52] text-[#f1d38c] animate-pulse")}>
+            <Volume2 className="h-3.5 w-3.5" /> Tap to hear the fight
+          </button>
+        )}
         <button type="button" onClick={() => setSound((s) => !s)} aria-pressed={sound} className={btn}>
           {sound ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />} {sound ? "Sound on" : "Sound off"}
         </button>
@@ -562,11 +575,33 @@ export function useWide(min = 1024) {
 
 // Server time: the offset is kept from each answer, so countdowns agree with the server.
 export function useServerClock() {
-  const offset = useRef(0);
+  // The server's time, as steady as possible: every reply carries the server's clock, and the request's
+  // round trip says how far off that reading can be. The quickest replies are trusted most, and the clock
+  // is eased towards a new reading (at most 5% faster or slower) instead of jumping, so a fight on screen
+  // never stutters or jumps when a reply comes back slow. Only a big error (over 3 s) is corrected at once.
+  const st = useRef({ offset: 0, target: null, best: null, last: Date.now() });
   const [now, setNow] = useState(Date.now());
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 250); return () => clearInterval(t); }, []);
-  const sync = useCallback((iso) => { const v = Date.parse(iso); if (v) offset.current = v - Date.now(); }, []);
-  const serverNow = useCallback(() => Date.now() + offset.current, []);
-  return { now: now + offset.current, sync, serverNow };
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 500); return () => clearInterval(t); }, []);
+  const serverNow = useCallback(() => {
+    const c = st.current, t = Date.now();
+    if (c.target != null && c.offset !== c.target) {
+      const step = (t - c.last) * 0.05, d = c.target - c.offset;
+      c.offset = Math.abs(d) <= step ? c.target : c.offset + Math.sign(d) * step;
+    }
+    c.last = t;
+    return t + c.offset;
+  }, []);
+  // sentAt: when the request went out (Date.now()), so the round trip can be allowed for
+  const sync = useCallback((iso, sentAt) => {
+    const v = Date.parse(iso); if (!v) return;
+    const c = st.current, recv = Date.now();
+    const rtt = sentAt ? Math.max(0, recv - sentAt) : 2000, off = v - (sentAt ? (sentAt + recv) / 2 : recv);
+    serverNow();   // bring the eased offset up to date first
+    // keep the best (quickest) reading; a reading older than a minute gives way to a fresh one
+    if (!c.best || rtt <= c.best.rtt * 1.5 + 50 || recv - c.best.at > 60000) c.best = { rtt, off, at: recv };
+    if (c.target == null || Math.abs(c.best.off - c.offset) > 3000) c.offset = c.best.off;
+    c.target = c.best.off;
+  }, [serverNow]);
+  return { now: serverNow(), sync, serverNow };
 }
 export const useStable = (v) => useMemo(() => v, [JSON.stringify(v)]);

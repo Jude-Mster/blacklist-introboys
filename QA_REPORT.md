@@ -140,3 +140,13 @@ Not verifiable here: the Discord DM with the code (needs the bot) and the live B
 | Live Arena builds 1-51 entries; matched pairs always within 20% entries, 57 of 60 close fights (25-75%) over 1,000 re-check fights; about 90 ms to pick a pair | Pass |
 | Real fights at real prices (2 x 1,400): Live Arena fighters 82.8-82.9%, side bets 70.3-92.2%, all 81.3-81.9%; both fighters offered 99-100% of Live Arena fights; top price 3.92x | Pass |
 | npm run test:backend (10 files) x 4 runs; formulas; lint; build; bet slip in the browser (computer and phone) | Pass |
+
+## 9. Version 6.12 additions (executed)
+
+| Check | Result |
+|---|---|
+| Live Arena fight clock under slow, uneven replies (0.1-1.5 s each), in a real browser: frame steps more than 0.25 s off real time | 6.11: 17 of 288 (9 backward); 6.12: 4 of 294 (0 backward) |
+| Audio players after opening the Live Arena 6 times | 6.11: 6; 6.12: 1, running |
+| "Tap to hear the fight" shows before the first tap and goes after it | Pass |
+| Result to next betting window | about 6-8 s (was 15 s plus) |
+| Default betting time 15 s; npm run test:backend x 3; formulas; lint; build | Pass |

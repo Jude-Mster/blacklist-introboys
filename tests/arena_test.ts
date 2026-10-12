@@ -38,7 +38,7 @@ ok(r.status === 400, 'only arena emojis');
 r = await call(arena, B, { action: 'pulse', scope: 'live', here: true });
 r = await call(arena, A, { action: 'pulse', scope: 'live', here: true });
 ok(r.watching === 2 && r.reactions.length === 1 && r.reactions[0].mine, 'pulse: watching 2, one reaction');
-ok(s.table.bet_seconds === 30, 'betting time defaults to 30 s');
+ok(s.table.bet_seconds === 15, 'betting time defaults to 15 s (was 30 before 6.12)');
 r = await call(arena, A, { action: 'bet', round, lines: [{ k: fk, amount: 4000 }] });
 ok(r.status === 400, 'limit / conflict: ' + r.error);
 r = await call(arena, A, { action: 'bet', round, lines: [{ k: 'zzz', amount: 10 }] });

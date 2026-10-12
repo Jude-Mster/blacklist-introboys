@@ -27,7 +27,7 @@ export default function ArenaRules({ mode = "live", values, costs = COSTS, betSe
         {mode === "live" ? (
           <>
             <Rule title="The Live Arena">
-              <p>A new fight about every minute and a half: two members of the site picked at random, each with a random build (entries, weapon, buff skills, pet and mount). Betting is open for {betSeconds} seconds, then the fight is fought: the server picks its dice the moment betting closes (nothing is decided before), and every screen plays that same fight.</p>
+              <p>A new fight about every minute: two members of the site picked at random, each with a random build matched to the other (entries, weapon, buff skills, pet and mount). Betting is open for {betSeconds} seconds, then the fight is fought: the server picks its dice the moment betting closes (nothing is decided before), and every screen plays that same fight.</p>
             </Rule>
             <Rule title="Betting">
               <p>Bet {fmt(minBet)} to {fmt(limit)} on one fight. Back one fighter, a Draw, and any side bets. You can't back <B>both fighters</B> or <B>both over and under</B> the same line on the same fight. Bets can be taken back until betting closes.</p>

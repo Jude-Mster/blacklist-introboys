@@ -44,13 +44,13 @@ export default function LiveArena({ balance }) {
       const res = await base44.functions.invoke("arenaAction", { action: "state" });
       const d = res.data;
       if (d && d.table && asked < changedAt.current) return;
-      if (d && d.table) { sync(d.table.server_now); tableRef.current = d.table; loaded.current = true; setState(d); setLoadError(""); }
+      if (d && d.table) { sync(d.table.server_now, asked); tableRef.current = d.table; loaded.current = true; setState(d); setLoadError(""); }
     } catch (e) {
       if (!loaded.current && !(e && e.rateLimited)) setLoadError(errorText(e, "Couldn't reach the arena."));
     } finally { inFlight.current = false; }
   }, [sync]);
 
-  const jitter = useRef(400 + Math.floor(Math.random() * 1600));
+  const jitter = useRef(250 + Math.floor(Math.random() * 750));   // spreads the "next fight" requests a little
   useEffect(() => {
     refresh();
     const poll = setInterval(() => {

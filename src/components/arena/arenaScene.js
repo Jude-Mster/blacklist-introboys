@@ -1145,7 +1145,7 @@ export function createArenaScene(opts) {
     const bounce = ko > 0.75 && ko < 1.1 ? Math.sin(ramp(ko, 0.75, 1.1) * Math.PI) * 0.16 : 0;
     const sway = ko >= 0 && ko < 0.3 ? Math.sin(ko * 30) * 0.06 * (1 - ko / 0.3) : 0;
     f.koFall = tip;
-    f.root.position.set(p.x + p.dir * lunge - p.dir * ease(p.hurt) * 0.45 + kick - p.dir * thrown + sway, FLOOR, 0);
+    f.root.position.set(p.x + p.dir * lunge - p.dir * ease(p.hurt) * 0.45 + kick - p.dir * thrown + sway, FLOOR, p.z || 0);
     f.fall.position.x = 0;
     f.bill.rotation.set(0, Math.atan2(camera.position.x - f.root.position.x, camera.position.z - f.root.position.z), 0);
     f.bill.scale.set(p.dir > 0 ? -1 : 1, 1, 1);   // in the recording the spear points to the left
@@ -1258,7 +1258,7 @@ export function createArenaScene(opts) {
     const lunge = p.spin ? Math.sin(Math.min(1, p.spin) * Math.PI) * 0.55 + (p.spin > 0.85 ? 0.35 : 0) : p.follow * 0.35;
     const hop = p.spin ? Math.sin(Math.min(1, p.spin) * Math.PI) * 0.22 : 0;
     const kick = p.hurt > 0 ? Math.sin(clock * 80) * 0.05 * p.hurt : 0;
-    f.root.position.set(p.x + p.dir * lunge - p.dir * p.hurt * 0.3 + kick, FLOOR + hop, 0);
+    f.root.position.set(p.x + p.dir * lunge - p.dir * p.hurt * 0.3 + kick, FLOOR + hop, p.z || 0);
     f.bill.rotation.set(0, Math.atan2(camera.position.x - f.root.position.x, camera.position.z - f.root.position.z), 0);
     const faces = v.view.faces || -1; // a picture looking straight on is treated as looking left
     const mirror = (faces !== p.dir) !== turnFlip;
@@ -1479,6 +1479,7 @@ export function createArenaScene(opts) {
   const debugBuffs = [null, null];
   const INTRO = opts.intro || 3; // "FIGHT!" on screen before the first move (the server allows for it)
   let hitStopUntil = 0, shakeAmp = 0, shakeAt = 0;
+  let lastW = 0, lastH = 0;
   let clockT = 0, lastNow = 0, speed = 1, shownEvents = 0, flashUntil = 0;   // one camera only: the game's own, fixed overhead (as agreed for the preview)
   const camPos = new THREE.Vector3(0, 4.1, 6.9), camLook = new THREE.Vector3(0, 1.9, 0);
   camera.position.copy(camPos); camera.lookAt(camLook);   // already in place on the first frame (sprites face the camera)
@@ -1698,9 +1699,12 @@ export function createArenaScene(opts) {
       return b;
     }
     const ensure = () => {
-      if (!ctx) {
+      if (!out) {
         const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null;
-        ctx = new AC();
+        // ONE audio context for the whole page, shared by every arena stage: browsers allow only a few, and a
+        // new one per stage (live, tournament, replays) used to leave later stages silent
+        if (!window.__biAudioCtx || window.__biAudioCtx.state === "closed") window.__biAudioCtx = new AC();
+        ctx = window.__biAudioCtx;
         const limiter = ctx.createDynamicsCompressor();
         limiter.threshold.value = -6; limiter.knee.value = 4; limiter.ratio.value = 16; limiter.attack.value = 0.002; limiter.release.value = 0.12;
         const master = ctx.createGain(); master.gain.value = SOUND.master;
@@ -1711,7 +1715,7 @@ export function createArenaScene(opts) {
         // warm the audio path up with a silent buffer so the first real hit has no start-up lag
         const w = ctx.createBufferSource(); w.buffer = ctx.createBuffer(1, 1, ctx.sampleRate); w.connect(ctx.destination); w.start();
       }
-      if (ctx.state === "suspended") ctx.resume();
+      if (ctx.state !== "running") ctx.resume().catch(() => {});   // "suspended", or "interrupted" on iPhones after a call or a tab switch
       return ctx;
     };
     const env = (g, t, a, peak, dur) => { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); };
@@ -1846,8 +1850,11 @@ export function createArenaScene(opts) {
       fight: quiet, shieldCast: quiet, miss: quiet, shieldBreak: quiet, potion: quiet, ko: quiet, pop: quiet
     };
     return {
-      play(name, arg) { if (!on || !ctx) return; if (ctx.state === "suspended") ctx.resume(); try { S[name](arg); } catch (e) { /* ignore */ } },   // silent until the first tap or key
+      play(name, arg) { if (!on) return; if (!ctx || ctx.state !== "running") { ensure(); if (!ctx || ctx.state !== "running") return; } try { S[name](arg); } catch (e) { /* ignore */ } },   // silent until the browser lets sound play (after a tap or key)
       unlock() { if (on) ensure(); },
+      // sound is switched on but the browser hasn't let it start yet (needs a tap)
+      blocked: () => on && (!ctx || ctx.state !== "running"),
+      release() { try { if (masterNode) masterNode.disconnect(); } catch { /* gone */ } out = null; masterNode = null; ctx = null; },
       toggle() { on = !on; if (on) ensure(); return on; },
       // the mixed sound as a stream, for recording a replay (null when sound is off or not allowed yet)
       tap() { if (!on || !ensure() || !masterNode || !ctx.createMediaStreamDestination) return null; const d = ctx.createMediaStreamDestination(); masterNode.connect(d); return { stream: d.stream, done: () => { try { masterNode.disconnect(d); } catch { /* already gone */ } } }; },
@@ -1855,7 +1862,10 @@ export function createArenaScene(opts) {
       get on() { return on; }
     };
   })();
-  for (const evName of ["pointerdown", "keydown", "touchstart"]) on(document, evName, () => SFX.unlock(), { once: true, passive: true });
+  // Every tap or key (not just the first) wakes the sound up again: browsers suspend it after a tab switch,
+  // a phone call, or when the page started without a tap.
+  for (const evName of ["pointerdown", "keydown", "touchstart", "touchend"]) on(document, evName, () => SFX.unlock(), { passive: true });
+  on(document, "visibilitychange", () => { if (document.visibilityState === "visible") SFX.unlock(); });
 
   // Emoji floaters: members tease the fighters. Each one rises from the fighter's head with the sender's
   // name under it. The crowd (other members, made up here) joins in on misses, crits, potions and KOs.
@@ -2044,8 +2054,11 @@ export function createArenaScene(opts) {
     if (!cur) return;
     const w = stageEl.clientWidth, h = stageEl.clientHeight;
     if (!w || !h) return;
-    renderer.setSize(w, h, false); camera.aspect = w / h;
-    const dt = Math.min(0.1, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
+    // resize only when the stage size really changed: resizing a WebGL canvas every frame reallocates its
+    // drawing buffer, which made the fight stutter on some devices
+    if (w !== lastW || h !== lastH) { renderer.setSize(w, h, false); lastW = w; lastH = h; }
+    camera.aspect = w / h;
+    const rawDt = Math.min(1, Math.max(0, (now - (lastNow || now)) / 1000)), dt = Math.min(0.1, rawDt); lastNow = now;
     if (cur.setup) {
       // the Character Lab: its own practice loop, round and round
       const c = cur.ext ? cur.ext() : {};
@@ -2058,7 +2071,13 @@ export function createArenaScene(opts) {
       // a live fight: the time comes from the server's clock, so every screen is at the same moment
       const c = cur.ext();
       cur.betting = !!c.betting; cur.betLeft = c.betLeft || 0; cur.idle = !!c.idle; cur.banner = c.banner || "";
-      clockT = cur.betting || cur.idle ? 0 : Math.max(0, c.t + INTRO);
+      // follow the server clock smoothly: never step back for a small correction (hold instead), catch up a
+      // small lag quickly instead of jumping, and only jump for a big gap (a tab coming back, a late seed)
+      const target = cur.betting || cur.idle ? 0 : Math.max(0, c.t + INTRO);
+      if (cur.betting || cur.idle || target === 0) clockT = target;
+      else if (target < clockT) { if (clockT - target > 1.5) clockT = target; }
+      else if (target - clockT < 1.2) clockT = Math.min(target, clockT + rawDt * 1.5);   // real time since the last frame, so a slow device doesn't fall behind
+      else clockT = target;
     } else if (cur.betting) clockT = 0;
     else if (!seekPaused) clockT += dt * speed * (performance.now() < hitStopUntil ? 0.06 : 1);   // the game freezes for a beat when a blow lands
     const clock = now / 1000, F = cur.fight;
@@ -2081,7 +2100,13 @@ export function createArenaScene(opts) {
       const moving = Math.abs(prev.x[i] - fr.x[i]) > 0.02 && !dead && !spinK && !castK && !hurtK && !buffK;
       { const mm = cur.models[i]; if (moving && !mm.wasWalking && !seekPaused && clockT - (mm.dashSndAt || -9) > 1.2 && t < F.length) { mm.dashSndAt = clockT; SFX.play("dash", i); } mm.wasWalking = moving; }
       const done = lastEv(i, ["hit", "miss", "swing"], tc), recD = RECOVER * ((done && done.k) || 1), followK = done && tc - done.t < recD ? 1 - (tc - done.t) / recD : 0;
-      pose(cur.models[i], { x: worldX(fr.x[i]), dir: i ? -1 : 1, walk: moving ? tc * 9 : 0, cast: castK, charged: !!fr.charged[i] && !spinK, spin: spinK, follow: spinK ? 0 : followK, hurt: hurtK, dead, koT, shield: (debugBuffs[i] || fr.sk[i]).shield > 0, shieldK, shieldHit, buffK, buffs: debugBuffs[i] || fr.sk[i], reflectK: debugBuffs[i] && debugBuffs[i].reflectK != null ? debugBuffs[i].reflectK : reflectK, buff: fr.buff[i] }, clock);
+      // knock-backs ease over a few frames instead of snapping (the fight's own positions are unchanged)
+      const mx = cur.models[i], tx0 = worldX(fr.x[i]);
+      if (mx.sx == null || mx.sxKey !== cur.key || Math.abs(mx.sx - tx0) > 2.5) { mx.sx = tx0; mx.sxKey = cur.key; } else mx.sx += (tx0 - mx.sx) * (1 - Math.exp(-dt * 18));
+      // a fixed front/back order, so two fighters overlapping (both attack at once) never flicker through
+      // each other; the one swinging Skyfall comes to the front
+      const zOrder = (i === 0 ? 0.03 : -0.03) + (spinK > 0 ? 0.08 : 0);
+      pose(cur.models[i], { z: zOrder, x: mx.sx, dir: i ? -1 : 1, walk: moving ? tc * 9 : 0, cast: castK, charged: !!fr.charged[i] && !spinK, spin: spinK, follow: spinK ? 0 : followK, hurt: hurtK, dead, koT, shield: (debugBuffs[i] || fr.sk[i]).shield > 0, shieldK, shieldHit, buffK, buffs: debugBuffs[i] || fr.sk[i], reflectK: debugBuffs[i] && debugBuffs[i].reflectK != null ? debugBuffs[i].reflectK : reflectK, buff: fr.buff[i] }, clock);
     });
     for (const fl of flames) { const s = 2.4 + Math.sin(clock * 9 + fl.position.x) * 0.2; fl.scale.set(s, s * 1.3, 1); }
     for (const f of brazierFire) {
@@ -2102,7 +2127,7 @@ export function createArenaScene(opts) {
     while (!cur.betting && !cur.idle && shownEvents < F.events.length && F.events[shownEvents].t <= (t >= F.length ? 1e9 : tc)) {
       const e = F.events[shownEvents++];
       quiet = tc - e.t > 1.2 && t < F.length + 0.5;
-      const live = !seekPaused && tc - e.t < 0.3 && t < F.length + 0.5, snd = (n) => { if (live) SFX.play(n); };
+      const live = !seekPaused && tc - e.t < 0.7 && t < F.length + 0.5, snd = (n) => { if (live) SFX.play(n); };
       const S = (i) => (i ? cur.b : cur.a).name;
       const tgt = e.type === "hit" || e.type === "miss" ? 1 - e.who : e.who;
       if (e.type === "first") { /* logged below */ }
@@ -2154,6 +2179,7 @@ export function createArenaScene(opts) {
     }
     drawHud(w, h, fr, t);
     if (rec) recordFrame(t);
+    stageEl.__fightT = cur.setup ? null : t;   // the fight time on screen (read by the automated checks; no DOM write)
     if (!cur.setup && t >= F.length && !cur.ended) { cur.ended = true; if (opts.onEnd) opts.onEnd(cur.key); }
   }
 
@@ -2358,12 +2384,14 @@ export function createArenaScene(opts) {
     ready,
     show,
     canRecord: () => !!recType(),
+    soundBlocked: () => SFX.blocked(),
     startRecording,
     setSound: (want) => { if (SFX.isOn ? SFX.isOn() !== want : true) SFX.toggle(); },
     dispose() {
       alive = false;
       cancelAnimationFrame(raf);
       for (const [t, type, fn, o] of listeners) t.removeEventListener(type, fn, o);
+      SFX.release();
       scene.traverse((o) => {
         if (o.geometry) o.geometry.dispose();
         const ms = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];

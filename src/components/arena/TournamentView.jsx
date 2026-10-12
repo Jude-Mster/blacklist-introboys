@@ -187,7 +187,7 @@ export default function TournamentView({ balance, member }) {
       const res = await base44.functions.invoke("tournamentAction", { action: "state" });
       const d = res.data;
       if (d && asked < changedAt.current) return;
-      if (d) { sync(d.server_now); dataRef.current = d; loaded.current = true; setData(d); setLoadError(""); }
+      if (d) { sync(d.server_now, asked); dataRef.current = d; loaded.current = true; setData(d); setLoadError(""); }
     } catch (e) {
       if (!loaded.current && !(e && e.rateLimited)) setLoadError(errorText(e, "Couldn't load the tournament."));
     } finally { inFlight.current = false; }

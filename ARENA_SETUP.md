@@ -93,3 +93,20 @@ Fight → Tournament tab, Guild Leader only: name, start time (or the "Start in 
 - No Draw bet any more (a Draw is practically impossible now that both fighters attack at once). If a Live Arena fight ever reaches 180 s, bets on either fighter still get half back.
 - Measured (2 runs of 1,400 real fights each, real prices, 100 on every offered line): Live Arena fighter bets pay back about 83%, side bets 70-92% depending on the line, about 81-82% overall. Biggest possible win on a 5,000 bet: 20,000.
 - Tournaments use the same prices and caps. Their fighters are built by members, so a big mismatch can leave only the side bets (and the favourite, when it pays at least 1.01x).
+
+## 13. What changed in 6.12 (redeploy every function; no entity, engine or package changes)
+- Shorter waits: the Live Arena result shows for 6 s, then the next fight opens (was 15 s); tournament matches open 5 s after the last result (was 10 s). A Live Arena round is now about a minute.
+- Live Arena betting time: 15 s by default (was 30). It is a setting in the admin hall ("Live Arena betting time"); a site that saved 30 there keeps 30 until it is changed to 15.
+- Steadier fights:
+  - the page's copy of the server clock now allows for how long each reply took, trusts the quickest replies, and eases towards a correction (at most 5% faster or slower) instead of jumping. Before, every slow reply nudged the fight forward or back, which made it stutter and sometimes replay a moment;
+  - the fight on screen never steps back for a small correction, catches up a small lag smoothly, and only jumps for a big gap (a tab coming back);
+  - knock-backs ease over a few frames instead of snapping;
+  - the two fighters keep a fixed front/back order (the one swinging Skyfall in front), so they no longer flicker through each other when they overlap;
+  - the 3D canvas is only resized when the stage size changes (it was resized every frame);
+  - the page refreshes its numbers twice a second instead of four times.
+  Measured under slow, uneven replies (0.1-1.5 s): 6.11 had 17 visible jumps and 9 backward steps in 288 frame steps; 6.12 had 4 small ones and none backward.
+- Sound:
+  - one audio player for the whole page. Each stage (Live Arena, tournament, replays) used to make its own, browsers only allow a few, and later ones stayed silent (6.11 had 6 after opening the Live Arena 6 times; 6.12 has 1);
+  - every tap or key wakes the sound up again (not just the first), and it is woken when the tab comes back: phones and browsers silence it after a tab switch or a call;
+  - sounds play even when a frame is late (they were skipped when the page was 0.3 s behind);
+  - when sound is on but the browser hasn't allowed it yet, a "Tap to hear the fight" button shows next to Sound on.
