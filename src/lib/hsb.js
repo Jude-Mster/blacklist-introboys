@@ -1,5 +1,5 @@
-// HSB schedule, as published by the game: every Wednesday 16:00-19:00 and every
-// Saturday 10:00-13:00. All times are server time, which is UTC.
+// HSB (Holy Stone Battle) schedule, as published on wiki.wuxen2.com (#holy-stone): every Wednesday
+// 16:00-19:00 and every Saturday 10:00-13:00, server time (UTC), after a 10-minute countdown.
 // To change the schedule, edit this list (day: 0 = Sunday ... 6 = Saturday; hours in UTC).
 export const HSB_WINDOWS = [
   { day: 3, start: 16, end: 19 },

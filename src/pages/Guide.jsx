@@ -3,12 +3,14 @@ import { Navigate, useSearchParams } from "react-router-dom";
 import { ExternalLink } from "lucide-react";
 import LanternSpinner from "@/components/LanternSpinner";
 import WarTimer from "@/components/WarTimer";
+import HsbTimer from "@/components/HsbTimer";
+import { hsbStatus, localDayTime } from "@/lib/hsb";
 import { useGuild } from "@/lib/GuildContext";
 import { WAR, warStatus, localTime } from "@/lib/war";
 import { cn } from "@/lib/utils";
 
 const WIKI = "https://wiki.wuxen2.com/";
-// Sections of the official Wuxen2 wiki.
+// Sections of the official Wuxen2 wiki, in the wiki's own menu order (checked 12 Oct 2026).
 const PAGES = [
   { id: "outpost-war", label: "Regular Battle" },
   { id: "boxes", label: "Boxes" },
@@ -23,7 +25,14 @@ const PAGES = [
   { id: "login-reward", label: "Monthly Login Reward" },
   { id: "mount", label: "Mount" },
   { id: "pet", label: "Pets" },
+  { id: "labyrinth", label: "Labyrinth" },
   { id: "golden-charm", label: "Gold Plate Scroll" },
+  { id: "holy-stone", label: "Holy Stone Battle" },
+  { id: "rank-buff", label: "Rank Buff" },
+  { id: "tribe-leader", label: "Clan Leader" },
+  { id: "fury", label: "Rage Burst" },
+  { id: "dismantle", label: "Dismantle" },
+  { id: "pvp-rewards", label: "PvP Rewards" },
   { id: "outpost-capture", label: "Dragonfall Outpost" },
   { id: "highland-capture", label: "Highlands" },
   { id: "title", label: "Title" },
@@ -42,6 +51,7 @@ export default function Guide() {
   const url = `${WIKI}#${current.id}`;
   const s = warStatus();
   const gate = s.nextGate;
+  const h = hsbStatus();
   const min = 60000;
 
   return (
@@ -66,6 +76,17 @@ export default function Guide() {
           </dl>
         </div>
         <p className="mt-2 text-xs text-mist/80">Regular Battle runs every hour. Times are for the next war, shown in your own time zone.</p>
+      </section>
+
+      <section className="gw p-4" aria-label="Holy Stone Battle schedule">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+          <HsbTimer />
+          <dl className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
+            <Time label="Countdown" value={localDayTime(h.startsAt - 10 * min)} />
+            <Time label="Battle" value={`${localDayTime(h.startsAt)} to ${localTime(h.endsAt)}`} />
+          </dl>
+        </div>
+        <p className="mt-2 text-xs text-mist/80">Holy Stone Battle (HSB): every Wednesday 16:00 and Saturday 10:00 UTC, for 3 hours, with a 10-minute countdown first. Shown in your own time zone.</p>
       </section>
 
       <div role="tablist" aria-label="Guide sections" className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
