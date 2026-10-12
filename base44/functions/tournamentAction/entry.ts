@@ -661,7 +661,8 @@ export default async function(req) {
       return Response.json({ ok: true, status: t ? t.status : null, paid });
     }
 
-    const user = await sessionUser(b, req);
+    // 6.15: the screen's polls ('state', 'status') may reuse a member row read in the last 20 s.
+    const user = await sessionUser(b, req, p.action === 'state' || p.action === 'status' ? 20000 : 0);
     if (!user) throw new UserError('Link your Discord first.', 401);
     if (p.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION, engine: ENGINE_VERSION });
     const me = await getMemberByUserId(b, user.id);

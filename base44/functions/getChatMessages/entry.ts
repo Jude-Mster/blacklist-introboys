@@ -8,7 +8,7 @@ import { resilient } from '../../shared/points.ts';
 export default async function(req) {
   try {
     const b = resilient(createClientFromRequest(req));
-    const user = await sessionUser(b, req);
+    const user = await sessionUser(b, req, 20000); // 6.15: a read-only poll may reuse a member row from the last 20 s
     if (!user) return Response.json({ error: 'Link your Discord first.' }, { status: 401 });
     const me = await getMemberByUserId(b, user.id);
     if (!me) return Response.json({ error: 'Link your Discord first.' }, { status: 403 });

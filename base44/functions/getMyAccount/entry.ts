@@ -10,13 +10,33 @@ const PUBLIC_MEMBER_FIELDS = [
   'daily_claimed_at', 'daily_bet_total', 'daily_bet_date', 'banned', 'created_date'
 ];
 
+// 6.15: the top bar refreshes the account often, so the plain call is light (member + settings).
+// History, stats and rank are only read when a page asks for them ({ detail: true }).
+// Rank comes from a short-lived per-instance list of balances instead of a scan on every call.
+const RANK_CACHE_MS = Number((globalThis as any).__rankCacheMs ?? 60000);
+let rankCache: { at: number; rows: any[] } | null = null;
+async function rankOf(b, member) {
+  if (!rankCache || Date.now() - rankCache.at >= RANK_CACHE_MS) {
+    const { items } = await b.asServiceRole.entities.Member.filter(
+      { banned: false }, { limit: 1000, fields: ['id', 'points', 'no_access'] }
+    );
+    rankCache = { at: Date.now(), rows: items || [] };
+  }
+  const mine = member.points || 0;
+  return rankCache.rows.filter((m) => m.id !== member.id && !m.no_access && (m.points || 0) > mine).length + 1;
+}
+
 export default async function(req) {
   try {
     const b = resilient(createClientFromRequest(req));
     const user = await sessionUser(b, req);
     if (!user) return Response.json({ error: 'Link your Discord first.' }, { status: 401 });
 
-    const settings = await getSettings(b, true);
+    let body: any = {};
+    try { body = (await req.json()) || {}; } catch { body = {}; }
+    const detail = body.detail === true;
+    // { fresh: true } right after the leader saves settings; otherwise the short cache is fine.
+    const settings = await getSettings(b, body.fresh === true || body.recheck === true);
     // Keep access in step with the member's Discord role.
     const member = await refreshAccess(b, settings, user.member, false);
     if (!member || member.no_access) {
@@ -26,16 +46,22 @@ export default async function(req) {
     }
     const setup = { guild_configured: !!String(settings.guild_id || '').trim() };
 
-    const [logs, bets, above] = await Promise.all([
+    const safe = Object.fromEntries(PUBLIC_MEMBER_FIELDS.map((k) => [k, member[k]]));
+    const out: any = {
+      linked: true,
+      setup,
+      member: safe,
+      // Settings are no longer readable directly; members get them here.
+      settings,
+      version: BACKEND_VERSION
+    };
+    if (!detail) return Response.json(out);
+
+    const [logs, bets, rank] = await Promise.all([
       b.asServiceRole.entities.PointLog.filter({ member_id: member.id }, { sort: '-created_date', limit: 50 }),
       b.asServiceRole.entities.Bet.filter({ member_id: member.id }, { sort: '-created_date', limit: 50 }),
-      b.asServiceRole.entities.Member.filter(
-        { banned: false, points: { $gt: member.points || 0 } },
-        { limit: 1000, fields: ['id'] }
-      )
+      rankOf(b, member)
     ]);
-
-    const safe = Object.fromEntries(PUBLIC_MEMBER_FIELDS.map((k) => [k, member[k]]));
     const betItems = bets.items || [];
     const stats = betItems.reduce(
       (s, x) => ({
@@ -46,19 +72,7 @@ export default async function(req) {
       }),
       { played: 0, wins: 0, net: 0, best: 0 }
     );
-
-    return Response.json({
-      linked: true,
-      setup,
-      member: safe,
-      rank: (above.items || []).length + 1,
-      stats,
-      recentLogs: logs.items,
-      recentBets: betItems,
-      // Settings are no longer readable directly; members get them here.
-      settings,
-      version: BACKEND_VERSION
-    });
+    return Response.json({ ...out, detail: true, rank, stats, recentLogs: logs.items, recentBets: betItems });
   } catch (e) {
     return errorResponse(e);
   }

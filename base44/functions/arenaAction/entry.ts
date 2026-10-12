@@ -97,10 +97,20 @@ const pastOf = (t) => ({
   e: t.engine || 0   // a replay is only offered when it was fought by the engine the page runs
 });
 
+// 6.15: remember the table's id in this instance and read it by id (a single-record read is
+// lighter on the platform's request limit than a list query). Fall back to the list when unknown.
+let tableId: string | null = null;
 async function getTable(b, settings) {
+  if (tableId) {
+    try { const t = await E(b).ArenaTable.get(tableId); if (t && t.id) return t; } catch (e) {
+      if ((e as any)?.status === 429 || /rate limit/i.test(String((e as any)?.message || ''))) throw e;
+    }
+    tableId = null;
+  }
   const { items } = await E(b).ArenaTable.filter({}, { sort: 'created_date', limit: 1 });
-  if (items[0]) return items[0];
-  return await E(b).ArenaTable.create(await newRound(b, 1, [], settings, Date.now()));
+  const t = items[0] || await E(b).ArenaTable.create(await newRound(b, 1, [], settings, Date.now()));
+  tableId = t.id;
+  return t;
 }
 
 // Fight the round when betting closes; open the next round once the last result has been on show long
@@ -181,7 +191,10 @@ export default async function(req) {
       return Response.json({ ok: true, paid });
     }
 
-    const user = await sessionUser(b, req);
+    // Screens poll 'state' and 'pulse' every few seconds; they may reuse a member row read in the
+    // last 20 s. Bets and everything else read it fresh.
+    const LIGHT = p.action === 'state' || p.action === 'pulse';
+    const user = await sessionUser(b, req, LIGHT ? 20000 : 0);
     if (!user) throw new UserError('Link your Discord first.', 401);
     if (p.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION, engine: ENGINE_VERSION });
     const me = await getMemberByUserId(b, user.id);

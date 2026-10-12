@@ -4,7 +4,7 @@ import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import LanternSpinner from "@/components/LanternSpinner";
-import { useGuild, errorText } from "@/lib/GuildContext";
+import { useGuild, useAccountDetail, errorText } from "@/lib/GuildContext";
 import { Ingot } from "@/components/SealLogo";
 import RankBadge from "@/components/RankBadge";
 import Wheel, { angleFor } from "@/components/games/Wheel";
@@ -18,6 +18,7 @@ const WHEEL_COLORS = ["#C8161D", "#5C5C5C", "#3E7FB8", "#3FA796", "#7A2E5C", "#8
 
 export default function Dashboard() {
   const { account, settings, loading } = useGuild();
+  useAccountDetail();
   const [params, setParams] = useSearchParams();
   const justLinked = params.get("linked") === "1";
 

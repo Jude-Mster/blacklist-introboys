@@ -127,3 +127,13 @@ Fixes:
 - A session is remembered for 2 minutes by each running copy of a function (was 30 seconds); the member row is still read fresh every time, so a ban or a lost role still applies at once.
 - The Live Arena asks every 5 seconds while betting is open (was 4).
 Measured with 5 members on the Live Arena for 5 minutes: 642 database calls a minute and 161 function calls a minute on 6.13; 409 and 107 on 6.14 (36% and 34% fewer), without the bursts at the end of each round.
+
+## 16. What changed in 6.15: fewer database reads (redeploy every function and publish the site; no entity, engine or package changes)
+Base44's diagnosis (12 Oct): the load is reads, not play; the account refresh was the heaviest single call; a refused call was retried up to 5 times, turning one call into six.
+- **Account refresh is light.** `getMyAccount` now returns only the member and settings. History, stats and rank are read only while Dashboard or Profile is open (`{ detail: true }`). Rank comes from a balance list each copy of the function keeps for 1 minute, and skips members without guild access (same as the leaderboard).
+- **Fewer account refreshes.** The top bar refreshes at most once every 10 seconds (it was 2.5 s after every change) and once every 90 seconds while idle (was 60). A new balance still shows at once from each game's answer.
+- **Settings cached 30 s** (was 10 s). Saving settings in the admin hall still reads them fresh.
+- **Polls reuse the member row for 20 s.** Arena state and crowd, tournament state, and chat no longer re-read the member on every poll. Bets, buys and everything that moves points still read it fresh.
+- **Arena table read by id** instead of a list query.
+- **Retries: 3** (was 5). At the limit a call now gives up within about 2 seconds instead of 10-20.
+- Load simulation (5 members on the Live Arena for 5 minutes): 570 → 407 database calls a minute, and no account-refresh bursts.

@@ -38,16 +38,19 @@ async function readToken(req): Promise<string> {
 // is still read fresh on every call, so losing access or a ban applies at once.
 const SESSION_CACHE_MS = 120000;   // two minutes (was 30 s): fewer database reads on every call
 const sessionCache = new Map<string, { s: any; at: number }>();
-const memberSeen = new Map<string, { m: any; at: number }>();
+const memberSeen = new Map<string, { m: any; at: number; used: number }>();
 
 // The member row sessionUser() read a moment ago in this same request, so the
 // function doesn't have to read it a second time.
 export function recentMember(id: string) {
   const hit = memberSeen.get(id);
-  return hit && Date.now() - hit.at < 1000 ? hit.m : null;
+  return hit && Date.now() - hit.used < 1000 ? hit.m : null;
 }
 
-export async function sessionUser(b, req) {
+// 6.15: read-only screens that ask every few seconds (crowd pulse, arena state, chat) may pass
+// maxAgeMs to reuse a member row this copy read within that window instead of reading it again.
+// Anything that moves points calls without it and always reads the member fresh.
+export async function sessionUser(b, req, maxAgeMs = 0) {
   const token = await readToken(req);
   if (!TOKEN_RE.test(token)) return null;
   const hash = await sha256Hex(token);
@@ -65,11 +68,16 @@ export async function sessionUser(b, req) {
     await b.asServiceRole.entities.Session.delete(s.id).catch(() => {});
     return null;
   }
+  const seen = maxAgeMs > 0 ? memberSeen.get(s.member_id) : null;
+  if (seen && Date.now() - seen.at < maxAgeMs) {
+    seen.used = Date.now();
+    return { id: seen.m.id, member: seen.m, session: s };
+  }
   let member = null;
   try { member = await b.asServiceRole.entities.Member.get(s.member_id); } catch { member = null; }
   if (!member) { sessionCache.delete(hash); return null; }
   if (memberSeen.size > 500) memberSeen.clear();
-  memberSeen.set(member.id, { m: member, at: Date.now() });
+  memberSeen.set(member.id, { m: member, at: Date.now(), used: Date.now() });
   return { id: member.id, member, session: s };
 }
 

@@ -6,7 +6,7 @@ import LanternSpinner from "@/components/LanternSpinner";
 import NotificationSettings from "@/components/NotificationSettings";
 import MyPrizes from "@/components/prizes/MyPrizes";
 import ActivityList from "@/components/ActivityList";
-import { useGuild } from "@/lib/GuildContext";
+import { useGuild, useAccountDetail } from "@/lib/GuildContext";
 import { Points, ROLE_TITLE } from "@/components/SealLogo";
 import { GAME_NAME, FACTIONS } from "@/lib/games";
 import { lineLabel } from "@/lib/arenaEngine";
@@ -59,6 +59,7 @@ function describe(b) {
 
 export default function Profile() {
   const { account, loading } = useGuild();
+  useAccountDetail();
   const [logFilter, setLogFilter] = useState("all");
 
   if (loading) return <LanternSpinner label="Opening your scroll" className="py-24" />;

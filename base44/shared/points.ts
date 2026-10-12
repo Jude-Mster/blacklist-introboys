@@ -48,7 +48,7 @@ export const GAME_NAMES = {
 
 // Settings change rarely but are needed by every request, so each running copy of a
 // function remembers them for a few seconds instead of reading them every time.
-const SETTINGS_CACHE_MS = Number((globalThis as any).__settingsCacheMs ?? 10000); // tests set this to 0
+const SETTINGS_CACHE_MS = Number((globalThis as any).__settingsCacheMs ?? 30000); // tests set this to 0
 let settingsCache: { v: any; at: number } | null = null;
 export function clearSettingsCache() { settingsCache = null; }
 
@@ -129,7 +129,9 @@ export function errorResponse(e) {
 // resilient(client) makes every entity call do that, instead of failing the whole
 // request (and showing the member an error) because of one busy moment.
 const RETRY_BASE_MS = Number((globalThis as any).__retryBaseMs ?? 250); // tests set this lower
-const RETRIES = 5;
+// 6.15: 3 tries after the first (was 5). At the limit, more retries only add calls and make
+// the member wait 10-20 s; 3 rides out a busy second and gives up within about 2 s.
+const RETRIES = 3;
 const isRateLimit = (e) => {
   const status = e && (e.status || (e.response && e.response.status));
   const text = `${(e && e.message) || ""} ${(e && e.response && e.response.data && e.response.data.error) || ""}`;
