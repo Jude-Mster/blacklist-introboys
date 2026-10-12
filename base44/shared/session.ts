@@ -36,7 +36,7 @@ async function readToken(req): Promise<string> {
 // To stay under the platform's request limit, a session that was just looked up is
 // remembered for a short while by this running copy of the function. The member row
 // is still read fresh on every call, so losing access or a ban applies at once.
-const SESSION_CACHE_MS = 30000;
+const SESSION_CACHE_MS = 120000;   // two minutes (was 30 s): fewer database reads on every call
 const sessionCache = new Map<string, { s: any; at: number }>();
 const memberSeen = new Map<string, { m: any; at: number }>();
 

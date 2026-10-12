@@ -5,13 +5,13 @@ import { UserError } from './points.ts';
 export const EMOJIS = ['😂', '🤡', '💀', '🔥', '😤', '🐔', '🧂', '🍼', '😭', '🫵', '💩', '👑'];
 const SEEN_MS = 60000;        // watching = seen in the last minute
 const KEEP_MS = 120000;       // reactions are kept two minutes
-const SHOW_MS = 15000;        // a screen is sent the reactions of the last 15 seconds
+const SHOW_MS = 20000;        // a screen is sent the reactions of the last 20 seconds (screens ask every 12)
 const GAP_MS = 1200;          // one emoji per member every 1.2 seconds
 
 const E = (b) => b.asServiceRole.entities;
 export const cleanScope = (v) => { const s = String(v || 'live'); return s === 'live' || /^tour:[A-Za-z0-9_-]{1,64}$/.test(s) ? s : 'live'; };
 
-// here = true: count this member as watching (screens send it every ~20 s, not on every pulse).
+// here = true: count this member as watching (screens send it every ~30 s, not on every pulse).
 export async function pulse(b, me, scope: string, here: boolean) {
   const now = Date.now();
   if (here) {

@@ -172,7 +172,8 @@ export function ArenaStage({ spec, clock, className, showLog = true, logTitle = 
 }
 
 // The crowd for one screen ("live", or "tour:<id>"): how many are watching and the emojis they throw.
-// Asks every 5 seconds while the tab is open; counts this member as watching every 20 seconds.
+// Asks every 12 seconds while the tab is open (it was 5: the crowd was the busiest caller of all);
+// counts this member as watching every 30 seconds.
 export function useArenaCrowd(scope, enabled = true) {
   const [state, setState] = useState({ watching: 0, reactions: [] });
   const lastHere = useRef(0);
@@ -181,7 +182,7 @@ export function useArenaCrowd(scope, enabled = true) {
     let alive = true;
     const ask = async () => {
       if (typeof document !== "undefined" && document.hidden) return;
-      const here = Date.now() - lastHere.current > 20000;
+      const here = Date.now() - lastHere.current > 30000;
       try {
         const res = await base44.functions.invoke("arenaAction", { action: "pulse", scope, ...(here ? { here: true } : {}) });
         if (here) lastHere.current = Date.now();
@@ -189,7 +190,7 @@ export function useArenaCrowd(scope, enabled = true) {
       } catch { /* the crowd is a nicety: try again next time */ }
     };
     ask();
-    const t = setInterval(ask, 5000);
+    const t = setInterval(ask, 12000);
     return () => { alive = false; clearInterval(t); };
   }, [scope, enabled]);
   const send = useCallback(async (emoji) => {

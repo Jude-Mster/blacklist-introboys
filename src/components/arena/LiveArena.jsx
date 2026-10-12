@@ -61,7 +61,7 @@ export default function LiveArena({ balance }) {
         const end = t.fight ? Date.parse(t.fight.ends_at) : 0, next = t.fight ? Date.parse(t.fight.next_at) : 0;
         // Before the close we don't know when the fight ends (that would give a Draw away): ask right after the close.
         const until = sn < close ? close : end && sn < end ? end : next || close;
-        const every = sn < close ? 4000 : end && sn < end ? 15000 : 6000;
+        const every = sn < close ? 5000 : end && sn < end ? 15000 : 6000;
         const left = until - sn;
         wait = left > 0 ? Math.min(every, left + (until === next ? jitter.current : 300)) : 1500;
         // the fight is over on screen but the result hasn't been fetched yet

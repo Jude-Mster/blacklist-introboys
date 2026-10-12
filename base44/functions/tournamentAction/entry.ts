@@ -457,7 +457,8 @@ async function tick(b, t) {
     || needsWork(t, now) || t.status === 'paying';
   if (!due) return t;
   try {
-    return await lockTour(b, t.id, async () => {
+    // only one request moves the tournament on; the others don't queue (see withRecordLock's waitMs)
+    return await withRecordLock(b, 'Tournament', t.id, async () => {
       const cur = await E(b).Tournament.get(t.id);
       const left = tms(cur.starts_at) - Date.now();
       if (cur.status === 'signup' && cur.starts_at && !cur.reminded_at && left > 0 && left <= REMIND_MS) {
@@ -475,9 +476,9 @@ async function tick(b, t) {
         if (next.ends_at && Date.now() >= tms(next.ends_at)) await finishTour(b, next);
       } else if (cur.status === 'paying') await finishTour(b, cur);
       return await E(b).Tournament.get(t.id);
-    });
+    }, TOUR_LOCK_MS, 0);
   } catch (e) {
-    if (e instanceof UserError) return await E(b).Tournament.get(t.id); // someone else is moving it on
+    if (e instanceof UserError) return (e as any).busy ? t : await E(b).Tournament.get(t.id); // someone else is moving it on
     throw e;
   }
 }

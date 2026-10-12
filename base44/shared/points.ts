@@ -233,7 +233,10 @@ export async function withMemberLock(b, memberId: string, fn: () => Promise<any>
 
 // ttlMs: the longest the work inside may take. If the holder crashes, the lock is
 // ignored after that. Give long jobs (settling a full table) a long ttl.
-export async function withRecordLock(b, entity: string, id: string, fn: () => Promise<any>, ttlMs = 15000) {
+// waitMs: how long to queue for the lock. 0 = don't queue at all: if someone else holds it, throw a
+// UserError with busy = true straight away (for work any one request can do for everyone, like moving the
+// arena on to the next round: the others just read what is there and ask again a moment later).
+export async function withRecordLock(b, entity: string, id: string, fn: () => Promise<any>, ttlMs = 15000, waitMs = LOCK_WAIT_MS) {
   if (!id) throw new UserError("Not found.", 404);
   const L = b.asServiceRole.entities.Lock;
   const key = `${entity}:${id}`;
@@ -252,15 +255,18 @@ export async function withRecordLock(b, entity: string, id: string, fn: () => Pr
     const number = 1 + seen.reduce((m, r) => Math.max(m, Number(r.number) || 0), 0);
     await L.update(mine.id, { number, choosing: false });
     const ahead = (r) => r.choosing || (Number(r.number) || 0) < number || ((Number(r.number) || 0) === number && String(r.id) < String(mine.id));
-    // Waiting politely matters: checking many times a second is itself what trips the
-    // platform's request limit. Start quick and ease off to about 3 checks a second.
-    let pause = 70;
+    // Waiting politely matters: every check is a database call, and checking many times a second
+    // is itself what trips the platform's request limit (and then everything slows down, so more
+    // requests wait, and check, and so on). Start at about 5 checks a second and ease off to 1.
+    let pause = 150;
+    let rows = seen;
     while (true) {
-      const rows = await others(mine.id);
-      if (!rows.some(ahead)) break;
-      if (Date.now() - started > LOCK_WAIT_MS) throw new UserError("Your last action is still finishing. Try again in a moment.", 409);
-      await sleep(pause + randInt(60));
-      pause = Math.min(300, Math.round(pause * 1.4));
+      if (!rows.some(ahead)) { rows = await others(mine.id); if (!rows.some(ahead)) break; }
+      if (waitMs <= 0) throw Object.assign(new UserError("Busy, try again in a moment.", 409), { busy: true });
+      if (Date.now() - started > waitMs) throw new UserError("Your last action is still finishing. Try again in a moment.", 409);
+      await sleep(pause + randInt(100));
+      pause = Math.min(1000, Math.round(pause * 1.5));
+      rows = await others(mine.id);
     }
     entered = true;
     return await fn();

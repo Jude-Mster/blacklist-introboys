@@ -160,3 +160,12 @@ Not verifiable here: the Discord DM with the code (needs the bot) and the live B
 | Leader raises, lowers (nothing taken back), removes the limit; a member can't change it | Pass |
 | Ledger holds; npm run test:backend (11 files); formulas; lint; build | Pass |
 | Browser: leader field, member "total spent X of Y", greyed-out buttons | Pass |
+
+## 11. Version 6.14 additions (executed)
+
+| Check | Result |
+|---|---|
+| Live site before the fix (in the browser, 12 Oct): arena "state" 9-21 s, many 500 "Rate limit exceeded"; getChatMessages 500s too | Found |
+| 5 members on the Live Arena for 5 minutes (simulated on the page's own schedule): database calls a minute 642 -> 409, function calls a minute 161 -> 107 | Pass |
+| Advancing the arena/tournament no longer queues (busy requests answer at once); all money locks still serialise (every race test in test:backend) | Pass |
+| npm run test:backend x 3; formulas; lint; build | Pass |

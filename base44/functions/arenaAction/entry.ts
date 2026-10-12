@@ -119,10 +119,16 @@ async function current(b, settings) {
       .map((x, i) => (i < REPLAYS ? x : { ...x, seed: undefined, builds: undefined }));
     return await E(b).ArenaTable.update(t.id, await newRound(b, (t.round_no || 0) + 1, recent, settings, Date.now()));
   };
+  // Only the first request to notice does the work; the others don't queue behind it (queuing meant
+  // every waiting request checking the lock several times a second, which tripped the platform's
+  // request limit). They answer with the table as it is, and the screen asks again a moment later.
   try {
-    return await withRecordLock(b, 'ArenaTable', t0.id, open, 10000);
+    return await withRecordLock(b, 'ArenaTable', t0.id, open, 10000, 0);
   } catch (e) {
-    if (e instanceof UserError) { const t = await E(b).ArenaTable.get(t0.id); if (!stale(t) && !due(t)) return t; if (usable(t)) return t; }
+    if (e instanceof UserError) {
+      if ((e as any).busy && usable(t0)) return t0;
+      const t = await E(b).ArenaTable.get(t0.id); if (!stale(t) && !due(t)) return t; if (usable(t)) return t;
+    }
     throw e;
   }
 }

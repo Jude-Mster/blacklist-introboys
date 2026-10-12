@@ -115,3 +115,15 @@ Fight → Tournament tab, Guild Leader only: name, start time (or the "Start in 
 - Spending limit per member, set by the Guild Leader for each tournament ("Spending limit" in the leader panel, when opening or editing; empty or 0 = no limit). It counts everything bought for the fighter: entries, skills, weapon tries (failed ones too), Iron Condor growth, mount levels and resets. Bets on matches are not counted (they keep the per-match and daily limits). The free re-roll is always allowed.
 - A purchase that would go over the limit is refused before any points move, with how much is left. It is checked under the member's lock on a fresh read of the tournament, so several clicks at once can't pass it, and a limit the leader just changed applies to the next purchase. Lowering it below what someone has already spent takes nothing back; it only stops further buying. A repeating tournament keeps the limit.
 - Members see the limit before their first entry, in the rules, and under "Your fighter" as "total spent X of Y" with a bar and what is left. Buttons that would go over it are greyed out.
+
+## 15. What changed in 6.14: speed and "server busy" (redeploy every function; no entity, engine or package changes)
+Found on the live site (11-12 Oct): the Arena's "state" call took 9 to 21 seconds and many calls failed with "Rate limit exceeded" from Base44's database, with fewer than 5 members on. Base44 limits how many database calls one app may make, and the site was going over it:
+- When a round (or a tournament match) was due to move on, every screen that asked at that moment queued for the same lock, and each waiting request checked the lock several times a second for up to 20 seconds. Each check is a database call, so a few screens made hundreds of calls in a burst; that tripped the limit, the work slowed down, more requests queued, and so on.
+- The crowd ("watching" count and emojis) was the busiest caller of all: every screen every 5 seconds, 4 to 6 database calls each time.
+Fixes:
+- Moving the Live Arena or a tournament on is done by the first request that notices; the others no longer queue: they answer with what is there and the screen asks again a moment later.
+- Every other lock (bets, purchases, payouts) checks gently: about 5 times a second at first, easing to once a second (was up to 14 a second).
+- The crowd asks every 12 seconds (was 5) and counts a member as watching every 30 seconds (was 20).
+- A session is remembered for 2 minutes by each running copy of a function (was 30 seconds); the member row is still read fresh every time, so a ban or a lost role still applies at once.
+- The Live Arena asks every 5 seconds while betting is open (was 4).
+Measured with 5 members on the Live Arena for 5 minutes: 642 database calls a minute and 161 function calls a minute on 6.13; 409 and 107 on 6.14 (36% and 34% fewer), without the bursts at the end of each round.
