@@ -53,7 +53,7 @@ export default function ArenaRules({ mode = "live", values, costs = COSTS, betSe
           <p>Everyone starts the same: HP {fmt(BASE.hp)} · ATK {fmt(BASE.atk)} · DEF {fmt(BASE.def)} · Crit rate {BASE.crit}% · Crit defense {BASE.critdef}% · Accuracy {BASE.acc}% · Evasion {BASE.eva}% · Speed {BASE.spd}% · {BASE.pots} HP potions that heal {BASE.potheal}%.</p>
         </Rule>
         <Rule title="Entry upgrades">
-          <p>Each entry after the first rolls one: {UPGRADES.map((u) => `${u.name} +${fmt(V.ups[u.id])}${u.unit}`).join(" · ")}. Crit rate comes up 1 roll in 15, Crit defense 1 in 9, the others about 1 in 10 each. Up to {PER_STAT} per stat and {TOTAL_CAP} in all; entries after that still raise the halo.</p>
+          <p>Each entry after the first rolls one: {UPGRADES.map((u) => `${u.name} +${fmt(V.ups[u.id])}${u.unit}`).join(" · ")}. Crit rate comes up 1 roll in 15, Crit defense 1 in 9, the others about 1 in 8.5 each. Potions always heal 100% (there is no Potion heal upgrade). Up to {PER_STAT} per stat and {TOTAL_CAP} in all; entries after that still raise the halo.</p>
         </Rule>
         <Rule title="Weapon upgrade">
           <p>{fmt(costs.weaponTry)} points per try, {Math.round(V.weapon.chance * 100)}% success rate. A failed try is not credited as an entry, but its points count toward the fighter's total spent. Each level adds {Math.round(V.weapon.atk * 100)}% ATK and {V.weapon.crit}% Crit rate and lights the weapon: {WEAPON.looks.map((l) => l.name.toLowerCase()).join(", ")}. Up to +{WEAPON.max}.</p>

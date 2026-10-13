@@ -22,24 +22,23 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // ---------- the fighter sheet ----------
 // Every fighter starts from the same base. Each entry after the first rolls one upgrade on top.
 export const BASE = { hp: 50000, mp: 13153, atk: 17500, def: 9000, crit: 15, critdef: 0, acc: 100, eva: 10, pots: 7, potheal: 100, spd: 100 };
-// w = how likely an entry is to roll this stat (6.18): Crit rate 1 in 15, Crit defense 1 in 9, the other eight
-// share the rest (about 1 in 9.7 each).
+// w = how likely an entry is to roll this stat (6.18): Crit rate 1 in 15, Crit defense 1 in 9, the other seven
+// share the rest (about 1 in 8.5 each). Potion heal is no longer an upgrade: every potion heals 100%.
 export const UPGRADES = [
-  { id: "hp", name: "HP", unit: "", w: 0.1028 },
-  { id: "atk", name: "ATK", unit: "", w: 0.1028 },
-  { id: "def", name: "DEF", unit: "", w: 0.1028 },
+  { id: "hp", name: "HP", unit: "", w: 0.1175 },
+  { id: "atk", name: "ATK", unit: "", w: 0.1175 },
+  { id: "def", name: "DEF", unit: "", w: 0.1175 },
   { id: "crit", name: "Crit rate", unit: "%", w: 1 / 15 },
   { id: "critdef", name: "Crit defense", unit: "%", w: 1 / 9 },
-  { id: "acc", name: "Accuracy", unit: "%", w: 0.1028 },
-  { id: "eva", name: "Evasion", unit: "%", w: 0.1028 },
-  { id: "pots", name: "HP potions", unit: "", w: 0.1028 },
-  { id: "potheal", name: "Potion heal", unit: "%", w: 0.1028 },
-  { id: "spd", name: "Speed", unit: "%", w: 0.1028 }
+  { id: "acc", name: "Accuracy", unit: "%", w: 0.1175 },
+  { id: "eva", name: "Evasion", unit: "%", w: 0.1175 },
+  { id: "pots", name: "HP potions", unit: "", w: 0.1175 },
+  { id: "spd", name: "Speed", unit: "%", w: 0.1175 }
 ];
 export const PER_STAT = 9, TOTAL_CAP = 50;
 // What each upgrade gives. The Guild Leader can change these for a tournament (saved on it).
 export const DEFAULT_VALUES = {
-  ups: { hp: 8500, atk: 1150, def: 900, crit: 3.5, critdef: 5, acc: 10, eva: 10, pots: 2, potheal: 3, spd: 10 },
+  ups: { hp: 8500, atk: 1150, def: 900, crit: 3.5, critdef: 3.5, acc: 10, eva: 5, pots: 2, spd: 10 },
   weapon: { atk: 0.15, crit: 5, chance: 0.35 }
 };
 // Keep only sane numbers; anything missing falls back to the default.
