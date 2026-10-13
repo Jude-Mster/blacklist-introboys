@@ -178,3 +178,11 @@ Two stress rigs ran the real server code with 5 to 50 simulated members (watchin
 - Final 6.19 values (Guild Leader): base Crit rate 10%, base Crit defense 4%, Crit defense +10% per upgrade.
 - Bet prices better again: house edge 6% on the favourite, 10% on the other fighter and on side bets (6.18: 8% / 12% / 12%). Measured: about 86% of all stakes paid back. Caps unchanged (4× fighters, 3× side bets).
 - Measured on 400 fights each: Live Arena typical fight about 35 s (6.18: 8 s), tournament about 15 s (6.18: 6.5 s); no draws.
+
+## 21. What changed in 6.20 (engine 11; redeploy every function and publish)
+- Accuracy +5% per upgrade (was +10%).
+- Base Crit defense 10% (was 4%); still +10% per upgrade, up to 80%.
+- Criticals do 2× to 10× (was 2× to 6×): 2× to 7× come up 15% each, 8× 5%, 9× 3%, 10× 2%.
+- Side bets: offered when they come up 25% to 75% of the time (was 30-70%), up to 3.5× (was 3×), house edge 7% (was 10%). The fight-length line is now priced from the real fight length it is settled on (before, "over" was slightly under-counted, so it paid more than the other lines).
+- Fighter bets: house edge 5% on the favourite, 8% on the other (6.19: 6% / 10%). Caps unchanged (4×).
+- Measured on 1,600 fights (two runs): about 88.5-89% of all stakes paid back (6.19: 86%), every bet type under 100%. Live Arena average fight about 37 s, tournament about 21-25 s; no draws.

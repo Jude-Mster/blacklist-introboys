@@ -10,7 +10,7 @@
 // Plain JavaScript on purpose: the backend functions (Deno) and the page (Vite) both import this
 // one file, so the rules can never drift apart. Change ENGINE_VERSION whenever a rule changes.
 
-export const ENGINE_VERSION = 10;   // 10: 6.19 (ATK/DEF/crit retune, Crit defense cuts crit damage) · 9: 6.18 balance (stronger base, potions at 85%, crits 2x-8x, weapon 35%, mount pairs) · 8: priced from real fights, tighter caps, length line, Live Arena matchmaking (7: both attack at once)
+export const ENGINE_VERSION = 11;   // 11: 6.20 (crits 2x-10x weighted, Crit defense base 10%, Accuracy +5%) · 10: 6.19 (ATK/DEF/crit retune, Crit defense cuts crit damage) · 9: 6.18 balance (stronger base, potions at 85%, crits 2x-8x, weapon 35%, mount pairs) · 8: priced from real fights, tighter caps, length line, Live Arena matchmaking (7: both attack at once)
 export const ENGINE_VERSION_NOTES = 5;   // 2: tighter prices, no near-certain or long-shot side bets
                                    // 4: Speed sets the pace of every move, MP only spent by skills, the Draw always offered
                                    // 5: new upgrade values (see DEFAULT_VALUES), stronger weapon levels, pet and mount, Spirits Within +20% Speed
@@ -21,7 +21,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 // ---------- the fighter sheet ----------
 // Every fighter starts from the same base. Each entry after the first rolls one upgrade on top.
-export const BASE = { hp: 50000, mp: 13153, atk: 15500, def: 7000, crit: 10, critdef: 4, acc: 100, eva: 10, pots: 7, potheal: 100, spd: 100 };
+export const BASE = { hp: 50000, mp: 13153, atk: 15500, def: 7000, crit: 10, critdef: 10, acc: 100, eva: 10, pots: 7, potheal: 100, spd: 100 };
 // w = how likely an entry is to roll this stat (6.18): Crit rate 1 in 15, Crit defense 1 in 9, the other seven
 // share the rest (about 1 in 8.5 each). Potion heal is no longer an upgrade: every potion heals 100%.
 export const UPGRADES = [
@@ -38,7 +38,7 @@ export const UPGRADES = [
 export const PER_STAT = 9, TOTAL_CAP = 50;
 // What each upgrade gives. The Guild Leader can change these for a tournament (saved on it).
 export const DEFAULT_VALUES = {
-  ups: { hp: 8500, atk: 650, def: 900, crit: 3.5, critdef: 10, acc: 10, eva: 5, pots: 2, spd: 10 },
+  ups: { hp: 8500, atk: 650, def: 900, crit: 3.5, critdef: 10, acc: 5, eva: 5, pots: 2, spd: 10 },
   weapon: { atk: 0.15, crit: 5, chance: 0.35 }
 };
 // Keep only sane numbers; anything missing falls back to the default.
@@ -136,7 +136,10 @@ export const LIMIT = 180;   // a fight lasts at most 3 minutes
 // the larger share of HP left wins, and an exact tie is settled by the fight's own coin toss.
 export const OT = { max: 90, start: 2, every: 5 };
 export const otMult = (sinceLimit) => OT.start + Math.floor(Math.max(0, sinceLimit) / OT.every);
-const DMG_K = 0.46, CRIT_MIN = 2, CRIT_MAX = 6, POT_AT = 0.85;   // 6.19: crits 2x-6x (6.18: 2x-8x); potions at 85% HP (was 70%)
+const DMG_K = 0.46, POT_AT = 0.85;   // potions at 85% HP (was 70%)
+// 6.20: a critical does 2x to 10x. 2x-7x are common (15% each); 8x 5%, 9x 3%, 10x 2% (6.19: 2x-6x even).
+export const CRIT_ROLLS = [[2, 0.15], [3, 0.15], [4, 0.15], [5, 0.15], [6, 0.15], [7, 0.15], [8, 0.05], [9, 0.03], [10, 0.02]];
+export const critMult = (u) => { let acc = 0; for (const [m, w] of CRIT_ROLLS) { acc += w; if (u < acc) return m; } return CRIT_ROLLS[CRIT_ROLLS.length - 1][0]; };
 // 6.19: Crit defense no longer lowers the chance of a critical: it cuts the damage of criticals taken by that
 // many % (at most CRIT_CUT_MAX). Crit chance is the attacker's Crit rate alone (1% to 60%).
 export const CRIT_CUT_MAX = 80;
@@ -222,7 +225,7 @@ function landStrike(me, foe, r, used) {
   const atk = effAtk(me);
   let dmg = Math.max(atk * 0.2, atk - foe.s.def * 0.5) * DMG_K * power;
   const crit = r() < critChance(effCrit(me));
-  const mult = crit ? CRIT_MIN + Math.floor(r() * (CRIT_MAX - CRIT_MIN + 1)) : 1;
+  const mult = crit ? critMult(r()) : 1;
   const cut = crit ? critCut(effCritdef(foe)) : 0;   // the target's Crit defense softens the critical
   dmg = Math.max(1, Math.round(dmg * mult * (1 - cut) * (me.ot || 1)));
   let shielded = 0;
@@ -393,15 +396,15 @@ export function quickFight(fa, fb, seed, opts = {}) {
 // level, skill, pet and mount), fought by simulate() itself, so the practice is the real thing. To keep the
 // house safe and the wins sensible:
 //   * each line is priced from the top of its likely range (its rate plus two standard errors);
-//   * every line carries a house edge: 10% on the favourite, 15% on the outsider and on the side bets;
+//   * every line carries a house edge: 5% on the favourite, 8% on the outsider, 7% on the side bets;
 //   * a fighter whose fair price would be over 4x is not offered at all (no long shots), and a side bet is
-//     only offered when it comes up between 30% and 70% of the time, at most 3x;
+//     only offered when it comes up between 25% and 75% of the time, at most 3.5x;
 //   * side bets: ends without a critical, potions over/under, criticals over/under, fight length over/under;
 //   * no Draw bet (a Draw is practically impossible now that both fighters attack at once); if one ever
 //     happens in the Live Arena, bets on either fighter get half back, and their prices allow for that;
 //   * nobody can hold both fighters or both sides of an over/under on one fight.
-export const DEFAULT_EDGES = { fav: 0.06, dog: 0.10, side: 0.10, draw: 0.15,   // 6.19: better for players (6.18: 8% / 12% / 12%; before: 10% / 15% / 15%)
-  maxPrice: 4, maxSide: 3, minP: 0.30, maxP: 0.70 };
+export const DEFAULT_EDGES = { fav: 0.05, dog: 0.08, side: 0.07, draw: 0.15,   // 6.20: better for players (6.19: 6% / 10% / 10%; 6.18: 8% / 12% / 12%)
+  maxPrice: 4, maxSide: 3.5, minP: 0.25, maxP: 0.75 };   // 6.20: side bets offered from 25% to 75% (was 30-70%), up to 3.5x (was 3x)
 export const DRAW_REFUND = 0.5;
 export const PRACTICE_FIGHTS = 2000;
 const floor2 = (x) => Math.floor(x * 100) / 100;
@@ -413,6 +416,14 @@ const safeP = (p, N) => Math.min(1, p + 2 * Math.sqrt(Math.max(p * (1 - p), 1 / 
 function overUnder(counts, N) {
   counts.sort((x, y) => x - y);
   const line = counts[N >> 1] + 0.5, over = counts.filter((x) => x > line).length / N;
+  return { line, over, under: 1 - over };
+}
+// The fight-length line: a whole second plus a half, at the middle of the practice fights, and how often
+// the real length (as the bet is settled) goes over it. (Before 6.20 the rate came from whole seconds,
+// which under-counted "over".)
+function lengthLine(lens, N) {
+  lens.sort((x, y) => x - y);
+  const line = Math.floor(lens[N >> 1]) + 0.5, over = lens.filter((x) => x > line).length / N;
   return { line, over, under: 1 - over };
 }
 // What one fight gives the bets, from simulate() (frames off).
@@ -456,7 +467,7 @@ export function priceMatch(fa, fb, seed, opts = {}) {
     const q = practice(fa, fb, ((seed >>> 0) * 7919 + k * 104729) >>> 0, { draws, values: opts.values, limit: opts.limit });
     if (q.winner === 0) wa++; else if (q.winner === 1) wb++; else dr++;
     if (q.critko) critKo++;
-    potsN.push(q.pots); critsN.push(q.crits); lensN.push(Math.floor(q.length));
+    potsN.push(q.pots); critsN.push(q.crits); lensN.push(q.length);
   }
   const pa = wa / N, pb = wb / N, pd = dr / N;
   const sideP = (q) => (q < E.minP || q > E.maxP ? 0 : offer((1 - E.side) / safeP(q, N), E.maxSide));
@@ -467,7 +478,7 @@ export function priceMatch(fa, fb, seed, opts = {}) {
     return p <= 0 ? 0 : offer(((1 - edge) - back) / safeP(p, N), E.maxPrice);
   };
   const favA = pa >= pb;
-  const po = overUnder(potsN, N), co = overUnder(critsN, N), lo = overUnder(lensN, N);
+  const po = overUnder(potsN, N), co = overUnder(critsN, N), lo = lengthLine(lensN, N);
   const side = [
     { id: "nocritko", name: "Ends without a critical", p: 1 - critKo / N },
     { id: "over", name: `Over ${po.line} potions drunk`, p: po.over, line: po.line },

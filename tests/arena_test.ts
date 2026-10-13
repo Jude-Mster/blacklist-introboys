@@ -12,7 +12,7 @@ ok(s.status === 200 && s.table.status === 'betting', 'state opens a round in bet
 ok(s.table.fight === null && s.table.outcome === null, 'no seed or result before close');
 ok(!JSON.stringify(s).includes('"seed"') && !JSON.stringify(s.table).includes('fight_ends_at'), 'seed and end time not leaked');
 ok(s.table.fighters.length === 2 && s.table.fighters[0].look !== s.table.fighters[1].look, 'two fighters with different looks');
-ok((s.table.odds.a > 1 || s.table.odds.b > 1) && s.table.odds.a <= 4 && s.table.odds.b <= 4 && s.table.odds.draw === 0, 'prices capped: ' + JSON.stringify([s.table.odds.a, s.table.odds.b, s.table.odds.draw]));
+ok(s.table.odds.a <= 4 && s.table.odds.b <= 4 && s.table.odds.draw === 0, 'prices capped (about 1 matchup in 50 offers neither fighter): ' + JSON.stringify([s.table.odds.a, s.table.odds.b, s.table.odds.draw]));
 ok(s.table.odds.side.every((x) => x.price === 0 || x.price <= 5), 'side bets capped at 5x');
 const round = s.table.round_no;
 

@@ -8,7 +8,7 @@ const L = await member('Juts', 100000, 'leader'), A = await member('A'), B = awa
 // prices (engine 8): fighters at most 4x, side bets at most 3x, no Draw bet
 const r = Eng.mulberry32(9); let maxF = 0, maxS = 0, maxD = 0, draws = 0;
 for (let i = 0; i < 200; i++) { const o = Eng.priceMatch(Eng.randomBuild(r), Eng.randomBuild(r), i, { draws: true }); maxF = Math.max(maxF, o.a, o.b); maxD = Math.max(maxD, o.draw); if (o.draw) draws++; for (const s of o.side) maxS = Math.max(maxS, s.price); }
-ok(maxF <= 4 && maxS <= 3 && maxD === 0, `caps: fighter ${maxF}, side ${maxS}, draw ${maxD}, draw offered in ${draws}/200`);
+ok(maxF <= 4 && maxS <= 3.5 && maxD === 0, `caps: fighter ${maxF}, side ${maxS}, draw ${maxD}, draw offered in ${draws}/200`);
 let s = await call(arena, A, { action: 'state' });
 const round = s.table.round_no;
 let row = (await E.ArenaTable.filter({}, {})).items[0];

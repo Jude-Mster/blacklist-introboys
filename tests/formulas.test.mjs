@@ -7,8 +7,8 @@ const R = { rows: [], fail: 0 };
 const check = (name, formula, inputs, expected, actual, pass) => { R.rows.push({ name, formula, inputs, expected, actual, pass }); if (!pass) R.fail++; };
 
 // ---- the rules as stated (not imported) ----
-const BASE = { hp: 50000, mp: 13153, atk: 15500, def: 7000, crit: 10, critdef: 4, acc: 100, eva: 10, pots: 7, potheal: 100, spd: 100 };   // 6.18
-const PER = { hp: 8500, atk: 650, def: 900, crit: 3.5, critdef: 10, acc: 10, eva: 5, pots: 2, spd: 10 };   // no Potion heal upgrade
+const BASE = { hp: 50000, mp: 13153, atk: 15500, def: 7000, crit: 10, critdef: 10, acc: 100, eva: 10, pots: 7, potheal: 100, spd: 100 };   // 6.20
+const PER = { hp: 8500, atk: 650, def: 900, crit: 3.5, critdef: 10, acc: 5, eva: 5, pots: 2, spd: 10 };   // no Potion heal upgrade
 const W = { atk: 0.15, crit: 5 };
 const PET_FULL = { hp: 4400, atk: 2700, def: 4400 }, PET_LV = 8;
 const MOUNT_PER = 3, PAIRS = [["atk", "def"], ["atk", "acc"], ["def", "hp"], ["crit", "eva"], ["def", "eva"], ["critdef", "def"], ["atk", "crit"]];
@@ -24,6 +24,7 @@ function myStats(f) {
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 let potEarly = 0, cutBad = 0;
+const multSeen = {};
 let fights = 0, hits = 0, misses = 0, crits = 0, expHit = 0, expCrit = 0, dmgBad = 0, dmgN = 0, hpBad = 0, koBad = 0, multBad = 0, potBad = 0, mpBad = 0, barBad = 0, statBad = 0, overkill = 0, afterKo = 0;
 let worstDmg = null;
 const r = E.mulberry32(20261011);
@@ -49,8 +50,8 @@ for (let i = 0; i < 1500; i++) {
       const critP = clamp(me.crit + (e.blow ? 20 : 0), 1, 60) / 100;   // 6.19: Crit defense no longer changes the chance
       const cutWant = e.crit ? clamp(foe.critdef + (e.nirvana ? 20 : 0), 0, 80) / 100 : 0;
       if (Math.abs((e.cut || 0) - cutWant) > 1e-9) cutBad++;
-      expCrit += critP; if (e.crit) crits++;
-      if (e.crit !== (e.mult >= 2) || (e.crit && (e.mult < 2 || e.mult > 6 || !Number.isInteger(e.mult))) || (!e.crit && e.mult !== 1)) multBad++;
+      expCrit += critP; if (e.crit) { crits++; multSeen[e.mult] = (multSeen[e.mult] || 0) + 1; }
+      if (e.crit !== (e.mult >= 2) || (e.crit && (e.mult < 2 || e.mult > 10 || !Number.isInteger(e.mult))) || (!e.crit && e.mult !== 1)) multBad++;
       // damage: max(ATK x 0.2, ATK - DEF x 0.5) x 0.46 x charge x crit, rounded; a shield halves it
       const base = Math.max(atk * 0.2, atk - foe.def * 0.5) * 0.46 * e.power * e.mult * (1 - cutWant) * (e.ot || 1);
       const full = Math.max(1, Math.round(base));
@@ -161,7 +162,12 @@ check("Overtime ends", "always a winner; at most 90 s of overtime", "300 fights"
 check("Fighter stats", "base + rolls x per-roll + pet (full x lv/8) + mount (lv x 3%) + weapon (+15% ATK, +5 crit a level)", "1,500 fights, 3,000 builds", "0 differences", `${statBad} differences`, statBad === 0);
 check("Damage", "round(max(ATK x 0.2, ATK - DEF x 0.5) x 0.46 x charge x crit), ATK +15% Spirits, +25% Blood Lust", `${dmgN} hits`, "every hit within rounding", `${dmgBad} off${worstDmg ? ` (worst ${worstDmg.ref} vs ${worstDmg.full})` : ""}`, dmgBad === 0);
 check("Shield", "a shielded hit = round(full x 0.5), at least 1", "all shielded hits", "exact", dmgBad === 0 ? "exact" : "see damage", dmgBad === 0);
-check("Crit multiplier", "x3 to x7 whole numbers, only on a crit, applied once", `${hits} hits`, "0 wrong", `${multBad} wrong`, multBad === 0);
+check("Crit multiplier", "x2 to x10 whole numbers, only on a crit, applied once", `${hits} hits`, "0 wrong", `${multBad} wrong`, multBad === 0);
+{ // 6.20: 2x-7x 15% each, 8x 5%, 9x 3%, 10x 2%
+  const want = { 2: .15, 3: .15, 4: .15, 5: .15, 6: .15, 7: .15, 8: .05, 9: .03, 10: .02 }, tot = Object.values(multSeen).reduce((a, b) => a + b, 0);
+  const off = Object.keys(want).filter((m) => { const q = want[m], got = (multSeen[m] || 0) / tot; return Math.abs(got - q) > 4 * Math.sqrt(q * (1 - q) / tot) + 0.002; });
+  check("Crit multiplier odds", "2x-7x 15% each, 8x 5%, 9x 3%, 10x 2%", `${tot} criticals`, "all within noise", off.length ? `off: ${off.map((m) => m + "x " + ((multSeen[m] || 0) / tot * 100).toFixed(1) + "%").join(", ")}` : `8x-10x ${(((multSeen[8] || 0) + (multSeen[9] || 0) + (multSeen[10] || 0)) / tot * 100).toFixed(1)}%`, off.length === 0);
+}
 check("HP after a hit", "HP - damage, never below 0", `${hits} hits`, "0 wrong", `${hpBad} wrong, ${overkill} below 0`, hpBad === 0 && overkill === 0);
 check("KO", "KO exactly when HP reaches 0; nothing happens after it", `${fights} fights`, "0 wrong", `${koBad} wrong, ${afterKo} events after a KO`, koBad === 0 && afterKo === 0);
 check("Potion heal", "min(max HP - HP, round(max HP x heal%))", "all potions", "exact", `${potBad} wrong`, potBad === 0);
@@ -214,18 +220,18 @@ check("Crit chance", "clamp(CRIT (+20 Blow), 1, 60)%", `${hits} hits`, `${(ec * 
     for (let k = 0; k < N; k++) { const q = E.simulate(a, b, ((seed >>> 0) * 7919 + k * 104729) >>> 0, { draws: true, frames: false }); if (q.winner === 0) wa++; else if (q.winner === 1) wb++; else dr++; }
     const pa = wa / N, pb = wb / N, pd = dr / N, favA = pa >= pb;
     const fp = (p, edge) => (p <= 0 ? 0 : offer(((1 - edge) - 0.5 * pd) / safeP(p, N), 4));
-    const want = { a: fp(pa, favA ? 0.06 : 0.10), b: fp(pb, favA ? 0.10 : 0.06), draw: 0 };
+    const want = { a: fp(pa, favA ? 0.05 : 0.08), b: fp(pb, favA ? 0.08 : 0.05), draw: 0 };
     n++;
     if (want.a !== o.a || want.b !== o.b || want.draw !== o.draw) bad++;
     // the house's margin on the two fighters: implied probability of the offered prices
     // what each fighter bet is expected to pay back, from the practice fights (a Draw gives half back)
     for (const [pr, p] of [[o.a, pa], [o.b, pb]]) if (pr > 1) overRound.push(p * pr + pd * 0.5);
-    for (const s of o.side) if (s.price && (s.price > 3 || s.p < 0.30 || s.p > 0.70)) bad++;
+    for (const s of o.side) if (s.price && (s.price > 3.5 || s.p < 0.25 || s.p > 0.75)) bad++;
     if (o.side.some((s) => /buff/.test(s.id)) || !o.side.some((s) => s.id === 'lenover')) bad++;
     if (o.a > 4 || o.b > 4) bad++;
   }
   const avgOR = overRound.reduce((x, y) => x + y, 0) / overRound.length;
-  check("Fighter prices and side bets", "floor2((1 - edge - 0.5 x P(draw)) / cautious P), not offered over 4x or under 1.01; edge 6% favourite / 10% other; no Draw bet; side bets only at 30-70%, at most 3x, no buff lines, a length line", `${n} matchups re-counted`, "identical", `${bad} different`, bad === 0);
+  check("Fighter prices and side bets", "floor2((1 - edge - 0.5 x P(draw)) / cautious P), not offered over 4x or under 1.01; edge 5% favourite / 8% other; no Draw bet; side bets only at 25-75%, at most 3.5x, no buff lines, a length line", `${n} matchups re-counted`, "identical", `${bad} different`, bad === 0);
   check("Fighter bets' expected return", "P(win) x price + P(draw) x 0.5, from the practice fights: under 1 means the house keeps a margin", `${overRound.length} offered fighter bets`, "under 1.00 every time", `${avgOR.toFixed(3)} on average (max ${Math.max(...overRound).toFixed(3)})`, Math.max(...overRound) < 1);
 }
 
