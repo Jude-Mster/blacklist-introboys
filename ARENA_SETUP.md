@@ -186,3 +186,13 @@ Two stress rigs ran the real server code with 5 to 50 simulated members (watchin
 - Side bets: offered when they come up 25% to 75% of the time (was 30-70%), up to 3.5× (was 3×), house edge 7% (was 10%). The fight-length line is now priced from the real fight length it is settled on (before, "over" was slightly under-counted, so it paid more than the other lines).
 - Fighter bets: house edge 5% on the favourite, 8% on the other (6.19: 6% / 10%). Caps unchanged (4×).
 - Measured on 1,600 fights (two runs): about 88.5-89% of all stakes paid back (6.19: 86%), every bet type under 100%. Live Arena average fight about 37 s, tournament about 21-25 s; no draws.
+
+## 22. What changed in 6.21: Clutch and slow motion (engine 12; redeploy every function and publish)
+- **Clutch**: the first time a fighter is left one hit from death (HP at or under one fully charged, non-critical Skyfall from the other fighter), they clutch, once per fight, one of two ways (50% each):
+  - **Clutch Guard**: an instant defence buff; the next 2 hits they take do 60% less damage (before a Heavenly Shield halves what is left).
+  - **Clutch Counter**: they drop what they were doing and swing a fast Skyfall (35% of the usual time) that always lands, fully charged (×2) and always critical (multiplier rolled as usual; the target's Crit defense still cuts it).
+  - Tuning lives in `CLUTCH` in the engine (`counter`, `guardCut`, `guardHits`, `counterPace`).
+- **Slow motion**: the clutch moment (1 s of fight time) and the last 0.6 s before a knockout play 3× slower. It is part of the fight's timeline: `fight.length` includes it, so the server's end time, every screen and the fight-length bet agree. Events keep `st` (the fight's own time) and `k0` (pace before stretching); frames carry `st` and `slow`; `fight.slow` lists the windows. The round timer and overtime use `st`.
+- The stage shows CLUTCH GUARD / CLUTCH COUNTER banners, a GUARD ×n chip under the fighter, letterbox bars and a cold vignette during slow motion, and log lines for both.
+- Measured: a clutch happens in about 1 fight in 3; the clutching fighter goes on to win about 36% (Guard) / 49% (Counter) of those fights. Prices still come from practice fights of the real fighters: about 88% of all stakes paid back, every bet type under 100%. Tournament matches with no fighter bet offered fell from about 65% to about 51% (comebacks make long shots possible).
+- Replays from before (engine 11) are not offered.

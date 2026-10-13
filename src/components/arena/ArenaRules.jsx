@@ -1,6 +1,6 @@
 import React from "react";
 import {
-  BASE, UPGRADES, PER_STAT, TOTAL_CAP, SKILLS, MAX_SKILLS, WEAPON, PET, MOUNT, STAT_NAME, LIMIT, OT, DRAW_REFUND, DEFAULT_EDGES, COSTS, PRACTICE_FIGHTS, normValues, petGrowth
+  CLUTCH, BASE, UPGRADES, PER_STAT, TOTAL_CAP, SKILLS, MAX_SKILLS, WEAPON, PET, MOUNT, STAT_NAME, LIMIT, OT, DRAW_REFUND, DEFAULT_EDGES, COSTS, PRACTICE_FIGHTS, normValues, petGrowth
 } from "@/lib/arenaEngine";
 
 // How the arena works, written from the same numbers the fights use (the preview's rules, made live).
@@ -70,6 +70,10 @@ export default function ArenaRules({ mode = "live", values, costs = COSTS, betSe
         </Rule>
         <Rule title="Combat">
           <p><B>Skyfall</B> (the 360° slash) lands with Accuracy − the target's Evasion. <B>Crimson LightningCharger</B>, the buff every fighter casts before each Skyfall, charges it for 1× to 2× damage (it costs MP but isn't counted in the buff side bets). MP only goes down when a skill or buff is cast. A <B>critical</B> (chance = Crit rate, at most 60%) does 2× to 10×: 2× to 7× are the usual rolls (15% each), while the big ones are rare (8× 5%, 9× 3%, 10× 2%). That is less the target's <B>Crit defense</B>: each % of Crit defense takes 1% off the critical's damage (up to 80%). An <B>HP potion</B> is drunk at the start of the fighter's next attack after a hit leaves them at 85% HP or less. Both fighters attack at the same time, each at their own pace: nobody waits for a turn. <B>Speed</B> sets that pace: a faster fighter casts, charges and swings quicker, so it attacks more often (up to about twice as often at 182% Speed). Spirits Within adds {Math.round(SKILLS.spirits.spd * 100)}% Speed from the moment it is cast.</p>
+        </Rule>
+        <Rule title="Clutch and slow motion">
+          <p>The first time a fighter is left <B>one hit from death</B> (HP at or under one fully charged, non-critical Skyfall from the other fighter), they <B>clutch</B>, once per fight, one of two ways ({Math.round(CLUTCH.counter * 100)}% each): <B>Clutch Guard</B>, an instant defence buff, so the next {CLUTCH.guardHits} hits they take do {Math.round(CLUTCH.guardCut * 100)}% less damage; or <B>Clutch Counter</B>, a fast Skyfall straight back that always lands, fully charged and always critical (the multiplier is rolled as usual and the target's Crit defense still cuts it).</p>
+          <p>The clutch moment and the final blow of every fight play in <B>slow motion</B> ({CLUTCH.slow}× slower). Slow motion is part of the fight's own clock: every screen sees it at the same moment, and the fight-length side bet counts it.</p>
         </Rule>
         <Rule title="Halo">
           <p>The ring of light over a fighter's head: one level per entry, and its look changes every 8 levels. It is for show only.</p>

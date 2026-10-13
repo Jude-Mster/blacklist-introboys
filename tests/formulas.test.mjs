@@ -25,6 +25,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 let potEarly = 0, cutBad = 0;
 const multSeen = {};
+let counters = 0, counterBad = 0, guardedN = 0;
 let fights = 0, hits = 0, misses = 0, crits = 0, expHit = 0, expCrit = 0, dmgBad = 0, dmgN = 0, hpBad = 0, koBad = 0, multBad = 0, potBad = 0, mpBad = 0, barBad = 0, statBad = 0, overkill = 0, afterKo = 0;
 let worstDmg = null;
 const r = E.mulberry32(20261011);
@@ -43,20 +44,25 @@ for (let i = 0; i < 1500; i++) {
       const me = S[e.who], foe = S[1 - e.who];
       const before = fr(e.t - E.DT);
       const eva = foe.eva + (e.type === "miss" ? (e.dodge ? 25 : 0) : 0);
-      expHit += clamp(me.acc - foe.eva - (before.sk[1 - e.who].garuda > 0 ? 25 : 0), 25, 97) / 100;
+      if (!e.counter) expHit += clamp(me.acc - foe.eva - (before.sk[1 - e.who].garuda > 0 ? 25 : 0), 25, 97) / 100;
       if (e.type === "miss") { misses++; continue; }
       hits++;
       const atk = me.atk * (1 + (e.spirits ? 0.15 : 0) + (e.blood ? 0.25 : 0));
       const critP = clamp(me.crit + (e.blow ? 20 : 0), 1, 60) / 100;   // 6.19: Crit defense no longer changes the chance
       const cutWant = e.crit ? clamp(foe.critdef + (e.nirvana ? 20 : 0), 0, 80) / 100 : 0;
       if (Math.abs((e.cut || 0) - cutWant) > 1e-9) cutBad++;
-      expCrit += critP; if (e.crit) { crits++; multSeen[e.mult] = (multSeen[e.mult] || 0) + 1; }
+      if (e.counter) { counters++; if (!e.crit || e.power !== 2) counterBad++; } else expCrit += critP;
+      if (e.crit && !e.counter) crits++;
+      if (e.crit) { multSeen[e.mult] = (multSeen[e.mult] || 0) + 1; }
       if (e.crit !== (e.mult >= 2) || (e.crit && (e.mult < 2 || e.mult > 10 || !Number.isInteger(e.mult))) || (!e.crit && e.mult !== 1)) multBad++;
       // damage: max(ATK x 0.2, ATK - DEF x 0.5) x 0.46 x charge x crit, rounded; a shield halves it
       const base = Math.max(atk * 0.2, atk - foe.def * 0.5) * 0.46 * e.power * e.mult * (1 - cutWant) * (e.ot || 1);
       const full = Math.max(1, Math.round(base));
+      // 6.21: Clutch Guard takes 60% off first, then a shield halves what is left
+      const afterGuard = e.guarded ? Math.max(1, Math.round(e.guarded * 0.4)) : null;
+      if (e.guarded) { guardedN++; if ((e.shielded || e.dmg) !== afterGuard) dmgBad++; }
       const want = e.shielded ? Math.max(1, Math.round(e.shielded * 0.5)) : full;
-      const ref = e.shielded ? e.shielded : e.dmg;
+      const ref = e.guarded ? e.guarded : e.shielded ? e.shielded : e.dmg;
       dmgN++;
       // the event shows the charge rounded to 2 decimals, so allow for that (+/- 0.005 of the charge) and the rounding to whole points
       const perPower = base / e.power, tol = perPower * 0.005 + 1;
@@ -101,17 +107,19 @@ for (let i = 0; i < 300; i++) {
   const a = mixed ? E.randomBuild(rt) : tank(), b = tank();
   const f = E.simulate(a, b, (rt() * 2 ** 32) >>> 0, { draws: false, frames: false });
   if (f.winner !== 0 && f.winner !== 1) otNoWinner++;
-  if (f.length > 180 + 90 + 0.06) otLong++;
+  const last = f.events[f.events.length - 1], simLen = last.st ?? last.t;   // 6.21: event st = the fight's own time (before slow motion)
+  if (simLen > 180 + 90 + 0.06) otLong++;
   const start = f.events.find((e) => e.type === "overtime");
-  if (f.length > 180 + 1e-6 && !start) otMissing++;
-  if (start && Math.abs(start.t - 180) > 0.051) otEarly++;
+  if (simLen > 180 + 1e-6 && !start) otMissing++;
+  if (start && Math.abs((start.st ?? start.t) - 180) > 0.051) otEarly++;
   if (!start) continue;
   otFights++;
   if (f.how === "time") otHpEnd++;
   for (const e of f.events) {
-    if (e.t < 180 - 1e-9) { if (e.type === "hit" && e.ot) otMultBad++; continue; }
+    const et = e.st ?? e.t;
+    if (et < 180 - 1e-9) { if (e.type === "hit" && e.ot) otMultBad++; continue; }
     if (e.type === "potion") otPot++;
-    if (e.type === "hit") { otHits++; const want = 2 + Math.floor((e.t - 180 + 1e-9) / 5); if (e.ot !== want) otMultBad++; }
+    if (e.type === "hit") { otHits++; const want = 2 + Math.floor((et - 180 + 1e-9) / 5); if (e.ot !== want) otMultBad++; }
   }
 }
 check("Overtime starts", "tournament fight with no KO at 180 s goes to overtime at 180 s", "300 long fights", "every one", `${otFights} went to overtime, ${otMissing} missing, ${otEarly} at the wrong time`, otMissing === 0 && otEarly === 0 && otFights > 150);
@@ -184,10 +192,32 @@ check("Potion trigger", "drunk only at 85% HP or less", "all potions", "0 early"
 }
 check("HP / MP bars", "0 <= value <= max in every frame (bar = value / max)", `${fights} fights`, "0 out of range", `${barBad} out of range`, barBad === 0);
 check("MP", "only goes down (skills and buffs); never refills", `${fights} fights`, "0 rises", `${mpBad} rises`, mpBad === 0);
-const hitRate = hits / (hits + misses), critRate = crits / hits, eh = expHit / (hits + misses), ec = expCrit / hits;
+const hitRate = (hits - counters) / (hits - counters + misses), critRate = crits / (hits - counters), eh = expHit / (hits - counters + misses), ec = expCrit / (hits - counters);   // Clutch Counters always land and always crit
 const seH = Math.sqrt(eh * (1 - eh) / (hits + misses)), seC = Math.sqrt(ec * (1 - ec) / hits);
 check("Hit chance", "clamp(ACC - EVA (+25 Garuda), 25, 97)%", `${hits + misses} swings`, `${(eh * 100).toFixed(2)}%`, `${(hitRate * 100).toFixed(2)}%`, Math.abs(hitRate - eh) < 4 * seH);
 check("Crit chance", "clamp(CRIT (+20 Blow), 1, 60)%", `${hits} hits`, `${(ec * 100).toFixed(2)}%`, `${(critRate * 100).toFixed(2)}%`, Math.abs(critRate - ec) < 4 * seC);
+check("Clutch Counter", "always lands, fully charged (x2) and critical", `${counters} counters`, "0 wrong", `${counterBad} wrong`, counterBad === 0 && counters > 0);
+{ // 6.21 Clutch: once per fighter per fight, only when one full-charge non-critical hit from death; slow motion stretches the clock
+  const rc = E.mulberry32(4242); let bad = 0, n = 0, kinds = { guard: 0, counter: 0 }, slowBad = 0, lenBad = 0;
+  for (let i = 0; i < 300; i++) {
+    const a = E.randomBuild(rc), b = E.randomBuild(rc), f = E.simulate(a, b, (rc() * 2 ** 32) >>> 0, { draws: i % 2 === 0 });
+    const S = [myStats(a), myStats(b)], seen = [0, 0];
+    for (const e of f.events.filter((x) => x.type === "clutch")) {
+      n++; kinds[e.kind]++; if (++seen[e.who] > 1) bad++;
+      const foe = S[1 - e.who], me = S[e.who], prev = [...f.events].reverse().find((x) => x.type === "hit" && x.who === 1 - e.who && x.t <= e.t);
+      const atk = foe.atk * (1 + (prev && prev.spirits ? 0.15 : 0) + (prev && prev.blood ? 0.25 : 0));
+      const line = Math.max(atk * 0.2, atk - me.def * 0.5) * 0.46 * 2 * ((prev && prev.ot) || 1);
+      if (!(e.hp <= line + 1e-6) || e.hp <= 0) bad++;
+      if (!f.slow.some((w) => e.t >= w.from - 0.06 && e.t <= w.to)) slowBad++;   // windows can merge (a clutch in the very instant of the knockout shares its window)
+    }
+    const ko = f.events.find((x) => x.type === "ko");
+    if (ko && !f.slow.some((w) => Math.abs(w.to - ko.t) < 0.06 && w.to - w.from >= E.CLUTCH.koSlow * E.CLUTCH.slow - 0.11)) slowBad++;
+    const stretched = f.slow.reduce((s, w) => s + (w.to - w.from), 0), last = f.events[f.events.length - 1];
+    if (Math.abs(f.length - ((last.st ?? last.t) + stretched * (1 - 1 / E.CLUTCH.slow))) > 0.1 && f.how === "ko") lenBad++;
+  }
+  check("Clutch trigger", "once per fighter, at or under one full-charge non-critical hit, Guard or Counter half the time each", `${n} clutches in 300 fights`, "0 wrong, both kinds", `${bad} wrong · guard ${kinds.guard} / counter ${kinds.counter}`, bad === 0 && kinds.guard > 0 && kinds.counter > 0 && Math.abs(kinds.guard - kinds.counter) < 4 * Math.sqrt(n) / 2);
+  check("Slow motion", "the clutch moment and the final blow play 3x slower; fight.length includes it", "300 fights", "0 wrong", `${slowBad} missing windows, ${lenBad} wrong lengths`, slowBad === 0 && lenBad === 0);
+}
 
 // ---- speed and pace ----
 {
@@ -195,10 +225,12 @@ check("Crit chance", "clamp(CRIT (+20 Blow), 1, 60)%", `${hits} hits`, `${(ec * 
   for (let i = 0; i < 300; i++) {
     const a = E.randomBuild(r), b = E.randomBuild(r), f = E.simulate(a, b, i + 1, { draws: true });
     for (const e of f.events) if (e.type === "cast" || e.type === "spin" || e.type === "buff") {
+      const k = e.k0 ?? e.k;   // 6.21: k0 = the pace before slow motion stretched it
+      if (e.counter) { n++; if (Math.abs(k - E.CLUTCH.counterPace) > 1e-9) bad++; continue; }   // a Clutch Counter's fast swing
       n++;
       const s = myStats(e.who ? b : a), fr = f.frames[Math.round(e.t / E.DT)];
       const want = Math.max(0.55, Math.min(1, 100 / fr.spd[e.who]));
-      if (Math.abs(want - e.k) > 1e-9 && Math.abs(Math.max(0.55, Math.min(1, 100 / (s.spd * 1.2))) - e.k) > 1e-9) bad++;
+      if (Math.abs(want - k) > 1e-9 && Math.abs(Math.max(0.55, Math.min(1, 100 / (s.spd * 1.2))) - k) > 1e-9) bad++;
     }
   }
   check("Speed pace", "each move takes 100 / Speed of its time, at least 0.55; Spirits Within adds 20%", `${n} moves`, "0 wrong", `${bad} wrong`, bad === 0);

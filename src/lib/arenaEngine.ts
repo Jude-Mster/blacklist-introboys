@@ -10,7 +10,7 @@
 // Plain JavaScript on purpose: the backend functions (Deno) and the page (Vite) both import this
 // one file, so the rules can never drift apart. Change ENGINE_VERSION whenever a rule changes.
 
-export const ENGINE_VERSION = 11;   // 11: 6.20 (crits 2x-10x weighted, Crit defense base 10%, Accuracy +5%) · 10: 6.19 (ATK/DEF/crit retune, Crit defense cuts crit damage) · 9: 6.18 balance (stronger base, potions at 85%, crits 2x-8x, weapon 35%, mount pairs) · 8: priced from real fights, tighter caps, length line, Live Arena matchmaking (7: both attack at once)
+export const ENGINE_VERSION = 12;   // 12: 6.21 (clutch guard / clutch counter, slow motion) · 11: 6.20 (crits 2x-10x weighted, Crit defense base 10%, Accuracy +5%) · 10: 6.19 (ATK/DEF/crit retune, Crit defense cuts crit damage) · 9: 6.18 balance (stronger base, potions at 85%, crits 2x-8x, weapon 35%, mount pairs) · 8: priced from real fights, tighter caps, length line, Live Arena matchmaking (7: both attack at once)
 export const ENGINE_VERSION_NOTES = 5;   // 2: tighter prices, no near-certain or long-shot side bets
                                    // 4: Speed sets the pace of every move, MP only spent by skills, the Draw always offered
                                    // 5: new upgrade values (see DEFAULT_VALUES), stronger weapon levels, pet and mount, Spirits Within +20% Speed
@@ -135,6 +135,16 @@ export const LIMIT = 180;   // a fight lasts at most 3 minutes
 // more for every OT.every seconds of overtime. If nobody is down after OT.max seconds (practically never),
 // the larger share of HP left wins, and an exact tie is settled by the fight's own coin toss.
 export const OT = { max: 90, start: 2, every: 5 };
+// 6.21 Clutch: the first time a fighter is left one hit from death (HP at or under one full-charge, non-critical
+// Skyfall from the other fighter), they clutch, once per fight, one of two ways (half the time each):
+//   Clutch Guard: an instant defence buff: the next guardHits hits they take do guardCut less damage.
+//   Clutch Counter: they drop what they were doing and swing a fast Skyfall (counterPace of the usual time) that
+//                   always lands, fully charged and always critical (the multiplier is rolled as usual; the target's
+//                   Crit defense still cuts it).
+// Slow motion: the clutch moment and the last blow of the fight play slowSpeed times slower. It is part of the
+// fight's own timeline (fight.length includes it), so every screen, the server's end time and the fight-length
+// bets all see the same clock.
+export const CLUTCH = { counter: 0.5, guardCut: 0.6, guardHits: 2, counterPace: 0.35, slow: 3, clutchSlow: 1.0, koSlow: 0.6 };
 export const otMult = (sinceLimit) => OT.start + Math.floor(Math.max(0, sinceLimit) / OT.every);
 const DMG_K = 0.46, POT_AT = 0.85;   // potions at 85% HP (was 70%)
 // 6.20: a critical does 2x to 10x. 2x-7x are common (15% each); 8x 5%, 9x 3%, 10x 2% (6.19: 2x-6x even).
@@ -210,24 +220,26 @@ function castBuffs(me, r) {
   return cast;
 }
 // One Skyfall. The same dice, in the same order, for the watched fight and the practice fights.
-function strike(me, foe, r) {
+function strike(me, foe, r, counter) {
   me.stepSpd = effSpd(me);
   const used = { blow: me.buf.blow > 0, spirits: me.buf.spirits > 0, blood: me.buf.blood > 0, garuda: foe.buf.garuda > 0, nirvana: foe.buf.nirvana > 0 };
-  const res = landStrike(me, foe, r, used);
+  const res = landStrike(me, foe, r, used, counter);
   for (const id of OWN_BUFFS) if (me.buf[id] > 0) me.buf[id]--;
   for (const id of GUARD_BUFFS) if (foe.buf[id] > 0) foe.buf[id]--;
   for (const id in me.cd) if (me.cd[id] > 0) me.cd[id]--;
   return res;
 }
-function landStrike(me, foe, r, used) {
-  if (r() > hitChance(me.s.acc, effEva(foe))) return { miss: true, dodge: used.garuda, used };
-  const power = 1 + r() * (CHARGE.upTo - 1);
+function landStrike(me, foe, r, used, counter) {
+  if (!counter && r() > hitChance(me.s.acc, effEva(foe))) return { miss: true, dodge: used.garuda, used };
+  const power = counter ? CHARGE.upTo : 1 + r() * (CHARGE.upTo - 1);
   const atk = effAtk(me);
   let dmg = Math.max(atk * 0.2, atk - foe.s.def * 0.5) * DMG_K * power;
-  const crit = r() < critChance(effCrit(me));
+  const crit = counter || r() < critChance(effCrit(me));
   const mult = crit ? critMult(r()) : 1;
   const cut = crit ? critCut(effCritdef(foe)) : 0;   // the target's Crit defense softens the critical
   dmg = Math.max(1, Math.round(dmg * mult * (1 - cut) * (me.ot || 1)));
+  let guarded = 0;
+  if (foe.guard > 0) { guarded = dmg; dmg = Math.max(1, Math.round(dmg * (1 - CLUTCH.guardCut))); foe.guard--; }
   let shielded = 0;
   if (foe.buf.shield > 0) { shielded = dmg; dmg = Math.max(1, Math.round(dmg * SKILLS.shield.cut)); foe.buf.shield--; }
   const before = foe.hp;
@@ -238,15 +250,43 @@ function landStrike(me, foe, r, used) {
     reflect = Math.max(1, Math.round(dmg * SKILLS.bullet.reflect)); me.hp = Math.max(0, me.hp - reflect); reflectKo = me.hp <= 0;
   }
   return {
-    dmg, shielded, crit, mult, cut, power: Math.round(power * 100) / 100, used, reflect, reflectKo, dead,
+    dmg, guarded, counter: !!counter, shielded, crit, mult, cut, power: Math.round(power * 100) / 100, used, reflect, reflectKo, dead,
     oneHit: dead && before >= foe.s.hp * 0.95,
     drink: !dead && !foe.ot && foe.hp <= foe.s.hp * POT_AT && foe.pots > 0,
     drinkMe: reflect > 0 && !reflectKo && !me.ot && me.hp <= me.s.hp * POT_AT && me.pots > 0
   };
 }
 const drinkPot = (d) => { const heal = Math.min(d.s.hp - d.hp, Math.round(d.s.hp * d.s.potheal / 100)); d.hp += heal; d.pots--; return heal; };
-const mkSide = (f, x, dir, values) => { const s = statsOf(f, values); return { f, s, x, dir, hp: s.hp, mp: s.mp, pots: s.pots, charged: false, dead: false, ot: 0, sk: (f.skills || []).filter((id) => SKILLS[id]).slice(0, MAX_SKILLS), buf: noBuffs(), cd: noBuffs(), stepSpd: s.spd }; };
+const mkSide = (f, x, dir, values) => { const s = statsOf(f, values); return { f, s, x, dir, hp: s.hp, mp: s.mp, pots: s.pots, charged: false, dead: false, ot: 0, sk: (f.skills || []).filter((id) => SKILLS[id]).slice(0, MAX_SKILLS), buf: noBuffs(), cd: noBuffs(), stepSpd: s.spd, guard: 0, clutched: false }; };
+// One full-charge, non-critical Skyfall from att on foe right now (the clutch line).
+const oneHitOf = (att, foe) => Math.max(effAtk(att) * 0.2, effAtk(att) - foe.s.def * 0.5) * DMG_K * CHARGE.upTo * (att.ot || 1);
 const round2 = (n) => Math.round(n * 100) / 100;
+
+// Slow motion: stretch the fight's timeline CLUTCH.slow times inside each window (merged), so the screen plays
+// those moments slower. Event times and paces (k) move to the stretched clock; frames are re-sampled every DT of
+// the stretched clock and keep the fight time they show as st (the round timer and overtime use st).
+const MOVE_D = { buff: BUFF_CAST, cast: CAST, spin: SPIN, hit: RECOVER, miss: RECOVER };
+function slowMotion(slowAt, end, events, frames) {
+  const win = slowAt.map(([a, b]) => [Math.max(0, a), Math.min(end, b)]).filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0]), ws = [];
+  for (const w of win) { const l = ws[ws.length - 1]; if (l && w[0] <= l[1]) l[1] = Math.max(l[1], w[1]); else ws.push([...w]); }
+  const k = CLUTCH.slow;
+  const W = (x) => { let y = x; for (const [a, b] of ws) if (x > a) y += (k - 1) * (Math.min(x, b) - a); return y; };
+  const Winv = (y) => { let x = y; for (const [a, b] of ws) { const ya = W(a); if (y <= ya) break; const yb = ya + k * (b - a); x = y <= yb ? a + (y - ya) / k : y - (W(b) - b); if (y <= yb) return x; } return x; };
+  const length = round2(W(end)), slow = ws.map(([a, b]) => ({ from: round2(W(a)), to: round2(W(b)) }));
+  if (!ws.length) return { length: round2(end), slow, frames: null };
+  for (const e of events) {
+    const D = MOVE_D[e.type];
+    if (D && e.k) { const k2 = Math.round(((W(e.t + D * e.k) - W(e.t)) / D) * 1000) / 1000; if (k2 !== e.k) { e.k0 = e.k; e.k = k2; } }
+    e.st = e.t; e.t = round2(W(e.t));   // st: the fight's own time (overtime, the round timer)
+  }
+  if (!frames) return { length, slow, frames: null };
+  const out = [], n = Math.round(length / DT);
+  for (let j = 0; j <= n; j++) {
+    const y = j * DT, x = Winv(y), f = frames[Math.min(frames.length - 1, Math.max(0, Math.round(x / DT)))];
+    out.push({ ...f, t: round2(y), st: round2(x), slow: ws.some(([a, b]) => x > a && x < b) ? k : 1 });
+  }
+  return { length, slow, frames: out };
+}
 
 // One fight, frame by frame. Both fighters attack at the same time, each on their own clock: every
 // fighter runs its own round of buff casts, Crimson LightningCharger, Skyfall and recovery, and never
@@ -266,10 +306,22 @@ export function simulate(fa, fb, seed, opts = {}) {
   const frames = [], events = [];
   const toss = r() < 0.5 ? 0 : 1, order = [toss, 1 - toss];
   // each fighter's own round: phase, time left in it, buffs still to cast, its pace, a potion waiting
-  const A = [0, 1].map(() => ({ phase: "gap", left: GAP, casting: [], pace: 1, drink: false }));
+  const A = [0, 1].map(() => ({ phase: "gap", left: GAP, casting: [], pace: 1, drink: false, counter: false }));
   let t = 0, winner = -1, how = "", walking = true, done = false;
+  const slowAt = [];   // [from, to] in fight time, played CLUTCH.slow times slower
   const ev = (who, type, extra) => events.push({ t: round2(t), who, type, ...extra });
-  const ko = (loser, extra) => { F[loser].dead = true; winner = 1 - loser; how = "ko"; done = true; ev(loser, "ko", extra); };
+  const ko = (loser, extra) => { F[loser].dead = true; winner = 1 - loser; how = "ko"; done = true; ev(loser, "ko", extra); slowAt.push([Math.max(0, t - CLUTCH.koSlow), t]); };
+  // one hit from death for the first time: Clutch Guard or Clutch Counter (see CLUTCH)
+  const clutch = (j) => {
+    const me = F[j], a = A[j];
+    me.clutched = true;
+    slowAt.push([t, t + CLUTCH.clutchSlow]);
+    if (r() >= CLUTCH.counter) { me.guard = CLUTCH.guardHits; ev(j, "clutch", { kind: "guard", hp: me.hp }); return; }
+    ev(j, "clutch", { kind: "counter", hp: me.hp });
+    const k = CLUTCH.counterPace, left = SPIN * k;
+    a.casting = []; a.counter = true; me.charged = true;
+    if (!(a.phase === "spin" && a.left < left)) { a.phase = "spin"; a.left = left; ev(j, "spin", { k, counter: true }); }
+  };
   // the start of a fighter's round: a waiting potion first, then the buff rolls
   const begin = (i) => {
     const me = F[i], a = A[i];
@@ -287,14 +339,18 @@ export function simulate(fa, fb, seed, opts = {}) {
   };
   const blow = (i) => {
     const me = F[i], foe = F[1 - i], a = A[i];
+    const counter = a.counter; a.counter = false;
     me.charged = false; a.phase = "recover"; a.left = RECOVER * a.pace;
-    const s = strike(me, foe, r), u = s.used;
+    const s = strike(me, foe, r, counter), u = s.used;
     if (s.miss) { ev(i, "miss", { dodge: u.garuda, k: a.pace }); return; }
     foe.x = clamp(foe.x - foe.dir * (s.crit ? 0.9 : 0.35), 0.8, 11.2);
-    ev(i, "hit", { k: a.pace, ot: me.ot, dmg: s.dmg, shielded: s.shielded, crit: s.crit, mult: s.mult, cut: s.cut, power: s.power, oneHit: s.oneHit, reflect: s.reflect, reflectKo: s.reflectKo, blow: u.blow, spirits: u.spirits, blood: u.blood, nirvana: u.nirvana });
+    ev(i, "hit", { k: a.pace, ot: me.ot, dmg: s.dmg, counter: s.counter, guarded: s.guarded, shielded: s.shielded, crit: s.crit, mult: s.mult, cut: s.cut, power: s.power, oneHit: s.oneHit, reflect: s.reflect, reflectKo: s.reflectKo, blow: u.blow, spirits: u.spirits, blood: u.blood, nirvana: u.nirvana });
     if (s.dead) ko(1 - i, { crit: s.crit, oneHit: s.oneHit });
     else if (s.reflectKo) ko(i, { crit: false, oneHit: false, reflect: true });
-    else { if (s.drink) A[1 - i].drink = true; if (s.drinkMe) a.drink = true; }
+    else {
+      if (s.drink) A[1 - i].drink = true; if (s.drinkMe) a.drink = true;
+      if (!foe.clutched && foe.hp <= oneHitOf(me, foe)) clutch(1 - i);
+    }
   };
   while (t < end - 1e-9 && !done) {
     if (t >= limit - 1e-9) {   // overtime (never in the Live Arena: its loop ends at the limit)
@@ -322,7 +378,7 @@ export function simulate(fa, fb, seed, opts = {}) {
         else if (a.phase === "recover") { a.phase = "gap"; a.left = GAP; }
       }
     }
-    if (keepFrames) frames.push({ t: round2(t), x: [F[0].x, F[1].x], hp: [F[0].hp, F[1].hp], mp: [F[0].mp, F[1].mp], pots: [F[0].pots, F[1].pots], charged: [F[0].charged, F[1].charged], spd: [effSpd(F[0]), effSpd(F[1])], sk: [{ ...F[0].buf }, { ...F[1].buf }], cd: [{ ...F[0].cd }, { ...F[1].cd }], ot: F[0].ot, buff: F.map((m) => (m.charged ? { lightning: 1 } : {})) });
+    if (keepFrames) frames.push({ t: round2(t), x: [F[0].x, F[1].x], hp: [F[0].hp, F[1].hp], mp: [F[0].mp, F[1].mp], pots: [F[0].pots, F[1].pots], charged: [F[0].charged, F[1].charged], guard: [F[0].guard, F[1].guard], spd: [effSpd(F[0]), effSpd(F[1])], sk: [{ ...F[0].buf }, { ...F[1].buf }], cd: [{ ...F[0].cd }, { ...F[1].cd }], ot: F[0].ot, buff: F.map((m) => (m.charged ? { lightning: 1 } : {})) });
     t += DT;
   }
   if (!done) {
@@ -330,7 +386,9 @@ export function simulate(fa, fb, seed, opts = {}) {
     else { const pa = F[0].hp / F[0].s.hp, pb = F[1].hp / F[1].s.hp; winner = pa > pb ? 0 : pb > pa ? 1 : toss; how = "time"; ev(winner, "time", {}); }
   }
   if (keepFrames && frames.length) frames.push({ ...frames[frames.length - 1], t: round2(t) });
-  return { frames, events, winner, how, length: round2(t), maxhp: [F[0].s.hp, F[1].s.hp], maxmp: [F[0].s.mp, F[1].s.mp], maxpots: [F[0].s.pots, F[1].s.pots], skills: [F[0].sk, F[1].sk], stats: [F[0].s, F[1].s] };
+  const koT = done ? events.find((e) => e.type === "ko").t : t;
+  const w = slowMotion(slowAt.map(([x, y]) => [x, Math.min(y, koT)]), t, events, keepFrames ? frames : null);   // slow motion stops at the knockout
+  return { frames: w.frames || frames, events, winner, how, length: w.length, slow: w.slow, maxhp: [F[0].s.hp, F[1].s.hp], maxmp: [F[0].s.mp, F[1].s.mp], maxpots: [F[0].s.pots, F[1].s.pots], skills: [F[0].sk, F[1].sk], stats: [F[0].s, F[1].s] };
 }
 
 // What a finished fight means for the bets.

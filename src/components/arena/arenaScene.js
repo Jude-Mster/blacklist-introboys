@@ -15,7 +15,7 @@
 /* eslint-disable */
 import * as THREE from "three";
 import {
-  SKILLS, WEAPON, MOUNT, PET, petGrowth, CHARGE, BUFF_STACK, BUFF_CAST, CAST, SPIN, RECOVER, POTION, DT, LIMIT, OT, mulberry32, speedNow, paceOf, statsOf as engineStats
+  SKILLS, WEAPON, MOUNT, PET, petGrowth, CHARGE, BUFF_STACK, BUFF_CAST, CAST, SPIN, RECOVER, POTION, DT, LIMIT, OT, CLUTCH, mulberry32, speedNow, paceOf, statsOf as engineStats
 } from "@/lib/arenaEngine";
 
 const A = "/arena/";
@@ -1490,6 +1490,8 @@ export function createArenaScene(opts) {
   for (const k in IMG_SRC) { const im = new Image(); im.src = IMG_SRC[k]; IMG[k] = im; }
   const drawImg = (k, x, y, w, h) => { const im = IMG[k]; if (im && im.complete && im.naturalWidth) hctx.drawImage(im, x, y, w, h); };
   function frameAt(t) { const fs = cur.fight.frames; return fs[Math.min(fs.length - 1, Math.max(0, Math.round(t / DT)))]; }
+  const otEvent = () => cur.fight.events.find((e) => e.type === "overtime");
+  const clutchNow = (t) => cur.fight.events.find((e) => e.type === "clutch" && t >= e.t && t < e.t + CLUTCH.clutchSlow * CLUTCH.slow);
   function lastEv(i, types, t) { const evs = cur.fight.events; for (let k = evs.length - 1; k >= 0; k--) { const e = evs[k]; if (e.t <= t && e.who === i && types.includes(e.type)) return e; } return null; }
   function lastHitOn(i, t) { const evs = cur.fight.events; for (let k = evs.length - 1; k >= 0; k--) { const e = evs[k]; if (e.t <= t && e.who === 1 - i && e.type === "hit") return e; } return null; }
 
@@ -1998,6 +2000,10 @@ export function createArenaScene(opts) {
       const bw = narrow ? 52 : Math.round(70 * S), x0 = feet[0] - bw / 2, y0 = feet[1] + 4;
       bar(x0, y0, bw, 6, fr.hp[i] / cur.fight.maxhp[i], "#e0383e", "#8c1418", "", "left");
       bar(x0, y0 + 7, bw, 5, fr.mp[i] / cur.fight.maxmp[i], "#3f8fd8", "#173f74", "", "left");
+      if (fr.guard && fr.guard[i] > 0) {   // 6.21 Clutch Guard still up
+        hctx.font = `700 ${narrow ? 10 : 12}px 'Barlow Condensed', sans-serif`; hctx.textAlign = "center"; hctx.textBaseline = "top"; hctx.lineWidth = 3; hctx.strokeStyle = "rgba(0,0,0,.85)";
+        const gt = `🛡 GUARD ×${fr.guard[i]}`; hctx.strokeText(gt, feet[0], y0 + 15); hctx.fillStyle = "#a8d4ff"; hctx.fillText(gt, feet[0], y0 + 15);
+      }
     });
     playerFrame("left", w, h, fr, 0, S);
     playerFrame("right", w, h, fr, 1, S);
@@ -2009,7 +2015,16 @@ export function createArenaScene(opts) {
         // overtime: a wider crimson box with the damage it is at now
         const ow = narrow ? 64 : 92 * tS; hctx.fillStyle = "rgba(120,8,14,.85)"; hctx.fillRect(w / 2 - ow / 2, 8, ow, th); hctx.strokeStyle = "rgba(255,90,90,.9)"; hctx.strokeRect(w / 2 - ow / 2 + 0.5, 8.5, ow - 1, th - 1);
         hctx.fillStyle = "#fff"; hctx.fillText(narrow ? `OT ×${fr.ot}` : `OT · ×${fr.ot}`, w / 2, 8 + th / 2 + 0.5);
-      } else hctx.fillText(String(Math.max(0, Math.ceil(LIMIT - fr.t))), w / 2, 8 + th / 2 + 0.5); }
+      } else hctx.fillText(String(Math.max(0, Math.ceil(LIMIT - (fr.st ?? fr.t)))), w / 2, 8 + th / 2 + 0.5); }
+    // 6.21 slow motion: letterbox bars and a cold vignette while the fight's clock is stretched
+    if (!cur.betting && !cur.idle && fr.slow > 1 && t < cur.fight.length) {
+      const sw = (cur.fight.slow || []).find((x) => t >= x.from && t <= x.to), edge = sw ? Math.min(1, (t - sw.from) / 0.25, (sw.to - t) / 0.25) : 1, bh = Math.round(h * 0.075 * edge);
+      const g = hctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.25, w / 2, h / 2, Math.max(w, h) * 0.75);
+      g.addColorStop(0, "rgba(20,30,60,0)"); g.addColorStop(1, `rgba(10,16,40,${0.55 * edge})`); hctx.fillStyle = g; hctx.fillRect(0, 0, w, h);
+      hctx.fillStyle = "rgba(0,0,0,.92)"; hctx.fillRect(0, 0, w, bh); hctx.fillRect(0, h - bh, w, bh);
+      hctx.globalAlpha = edge; hctx.font = `700 ${narrow ? 11 : 13}px 'Barlow Condensed', sans-serif`; hctx.textAlign = "right"; hctx.textBaseline = "middle"; hctx.fillStyle = "#cfe0ff";
+      hctx.fillText(`SLOW MOTION ×1/${CLUTCH.slow}`, w - 12, h - bh / 2); hctx.globalAlpha = 1;
+    }
     // floating numbers
     for (let k = pops.length - 1; k >= 0; k--) {
       const p = pops[k], age = clockT - p.born;
@@ -2031,7 +2046,17 @@ export function createArenaScene(opts) {
       const sub = left ? `Bets close in ${left} s` : "Place your bets · this fight starts when its turn comes";
       hctx.lineWidth = 4; hctx.strokeText(sub, w / 2, h * 0.68 + 34); hctx.fillText(sub, w / 2, h * 0.68 + 34);
     }
-    else if (cur.fight.length > LIMIT && t >= LIMIT && t < LIMIT + 2.2 && t < cur.fight.length) {
+    else if (clutchNow(t)) {
+      const e = clutchNow(t), S_ = (i) => (i ? cur.b : cur.a).name, guard = e.kind === "guard", age = t - e.t, a = Math.min(1, age / 0.2, (CLUTCH.clutchSlow * CLUTCH.slow - age) / 0.4);
+      hctx.globalAlpha = Math.max(0, a); hctx.textAlign = "center"; hctx.textBaseline = "middle"; hctx.lineJoin = "round";
+      hctx.font = `900 ${Math.min(54, w * 0.08)}px Cinzel, Georgia, serif`; hctx.lineWidth = 6; hctx.strokeStyle = "rgba(0,0,0,.8)";
+      const big = guard ? "CLUTCH GUARD" : "CLUTCH COUNTER";
+      hctx.save(); hctx.shadowColor = guard ? "rgba(90,170,255,.9)" : "rgba(255,190,60,.9)"; hctx.shadowBlur = 18; hctx.strokeText(big, w / 2, h * 0.4); hctx.fillStyle = guard ? "#a8d4ff" : "#ffd34d"; hctx.fillText(big, w / 2, h * 0.4); hctx.restore();
+      hctx.font = `600 ${Math.min(18, w * 0.035)}px 'Barlow Condensed', sans-serif`; hctx.fillStyle = "#fff"; hctx.lineWidth = 4;
+      const sub = `${S_(e.who)} is one hit from death · ${guard ? `next ${CLUTCH.guardHits} hits do ${Math.round(CLUTCH.guardCut * 100)}% less` : "a fast critical strike back"}`;
+      hctx.strokeText(sub, w / 2, h * 0.4 + 34); hctx.fillText(sub, w / 2, h * 0.4 + 34); hctx.globalAlpha = 1;
+    }
+    else if (otEvent() && t >= otEvent().t && t < otEvent().t + 2.2 && t < cur.fight.length) {
       hctx.font = `900 ${Math.min(58, w * 0.085)}px Cinzel, Georgia, serif`; hctx.fillStyle = "#ff3b3b"; hctx.strokeStyle = "rgba(0,0,0,.75)"; hctx.lineWidth = 5; hctx.textAlign = "center"; hctx.textBaseline = "middle";
       hctx.strokeText("OVERTIME", w / 2, h * 0.42); hctx.fillText("OVERTIME", w / 2, h * 0.42);
       hctx.font = `600 ${Math.min(18, w * 0.035)}px 'Barlow Condensed', sans-serif`; hctx.fillStyle = "#fff"; hctx.lineWidth = 4;
@@ -2040,7 +2065,7 @@ export function createArenaScene(opts) {
     }
     else if (t < 0) { hctx.font = `900 ${Math.min(58, w * 0.085)}px Cinzel, Georgia, serif`; hctx.fillStyle = "#ca1622"; hctx.strokeStyle = "rgba(0,0,0,.7)"; hctx.lineWidth = 5; hctx.textAlign = "center"; hctx.strokeText("FIGHT!", w / 2, h * 0.42); hctx.fillText("FIGHT!", w / 2, h * 0.42); }
     if (t >= cur.fight.length) {
-      const W = cur.fight.winner === 1 ? cur.b : cur.a; const txt = cur.fight.winner === -1 ? `DRAW · NO KO IN ${LIMIT} SECONDS` : `${W.name.toUpperCase()} WINS${cur.fight.how === "time" ? " ON HP AFTER OVERTIME" : cur.fight.length > LIMIT ? " BY KO IN OVERTIME" : " BY KO"}`;
+      const W = cur.fight.winner === 1 ? cur.b : cur.a; const txt = cur.fight.winner === -1 ? `DRAW · NO KO IN ${LIMIT} SECONDS` : `${W.name.toUpperCase()} WINS${cur.fight.how === "time" ? " ON HP AFTER OVERTIME" : otEvent() ? " BY KO IN OVERTIME" : " BY KO"}`;
       // no box behind it: gold letters with a dark edge, so the arena shows through
       hctx.font = `800 ${Math.round(Math.min(34, Math.max(20, w * 0.036)))}px 'Barlow Condensed', sans-serif`; hctx.textAlign = "center"; hctx.textBaseline = "middle";
       hctx.lineJoin = "round"; hctx.lineWidth = 5; hctx.strokeStyle = "rgba(0,0,0,.8)"; hctx.strokeText(txt, w / 2, h * 0.3 + 18);
@@ -2152,6 +2177,8 @@ export function createArenaScene(opts) {
         if (e.crit) { spawnFx("shock", tx, 0xffd34d); flashUntil = clockT + (kill ? 0.08 : 0.14); }
         line = `<b>${S(e.who)}</b> Skyfall hits ${S(1 - e.who)} for <span class="${e.crit ? "crit" : ""}">${fmt(e.dmg)}${e.crit ? ` (critical ×${e.mult})` : ""}</span> <span class="t">×${e.power} charge</span>${e.ot ? ` <span class="crit">×${e.ot} overtime</span>` : ""}${e.oneHit ? ' <span class="crit">ONE HIT</span>' : ""}`;
         if (e.oneHit) pushPop({ x: tx, txt: "ONE HIT KO!", col: "#ff5a3a", big: true, born: clockT + 0.25, off: 0.9 });
+        if (e.counter) line = `<span class="crit">CLUTCH COUNTER</span> · ` + line;
+        if (e.guarded) { pushPop({ x: tx, txt: `GUARD −${Math.round(CLUTCH.guardCut * 100)}%`, col: "#a8d4ff", big: false, born: clockT + 0.1, off: 0.7 }); spawnFx("shock", tx, 0x5aa8ff); line += ` <span class="buff">· Clutch Guard takes ${Math.round(CLUTCH.guardCut * 100)}% off (${fmt(e.guarded)} → ${fmt(e.shielded || e.dmg)})</span>`; }
         if (e.shielded) { pushPop({ x: tx, txt: "SHIELD ½", col: "#9fd4ff", big: false, born: clockT + 0.1, off: 0.45 }); spawnFx("burst", tx, 0x5aa8ff); spawnFx("shock", tx, 0x5aa8ff); line += ` <span class="buff">· Heavenly Shield takes half (${fmt(e.shielded)} → ${fmt(e.dmg)})</span>`; }
         const boosted = [e.blow && "Heavenly Blow", e.spirits && "Spirits Within", e.blood && "Blood Lust"].filter(Boolean);
         if (boosted.length) line += ` <span class="buff">· with ${boosted.join(" and ")}</span>`;
@@ -2168,6 +2195,15 @@ export function createArenaScene(opts) {
       else if (e.type === "miss") { if (!cur.models[e.who].flip) spawnFx("arc", worldX(fr.x[e.who]), 0x6a7aa0); txt = e.dodge ? "DODGE" : "MISS"; col = e.dodge ? "#d8b8ff" : "#9fd0ff"; line = `<b>${S(e.who)}</b>'s Skyfall misses ${S(1 - e.who)} (charge spent)${e.dodge ? ' <span class="buff">· dodged under Garuda\'s Prayer</span>' : ""}`; }
       else if (e.type === "ko" && (crowd(e.who, ["💀", "👋", "😂", "🤡"], 4), crowd(1 - e.who, ["👑", "🔥"], 2), snd("ko"), false)) {}
       else if (e.type === "ko") { if (!e.oneHit) pushPop({ x: worldX(fr.x[e.who]), txt: "K.O.", col: "#ff3b2a", big: true, born: clockT + 0.35, off: 0.9 }); spawnFx("dust", worldX(fr.x[e.who]) - (e.who ? -1 : 1) * 0.9, 0x8a7f70, 0.75); line = `<b>${S(e.who)}</b> is knocked out${e.reflect ? " by their own blow, sent back by Extreme Bullet Proof" : ""}`; }
+      else if (e.type === "clutch") {
+        const guard = e.kind === "guard", ex = worldX(fr.x[e.who]);
+        if (live) SFX.play("koStinger");
+        spawnFx("shock", ex, guard ? 0x5aa8ff : 0xffc040); spawnFx("burst", ex, guard ? 0x5aa8ff : 0xffc040);
+        txt = guard ? "CLUTCH GUARD" : "CLUTCH!"; col = guard ? "#a8d4ff" : "#ffd34d"; big = true; off = 1.2;
+        crowd(e.who, guard ? ["🛡️", "😤", "🙏"] : ["😤", "🔥", "⚡"], 3);
+        line = guard ? `<span class="buff"><b>${S(e.who)}</b> is one hit from death: <b>Clutch Guard</b>! The next ${CLUTCH.guardHits} hits do ${Math.round(CLUTCH.guardCut * 100)}% less</span>`
+          : `<span class="crit"><b>${S(e.who)}</b> is one hit from death: <b>Clutch Counter</b>! A fast, fully charged critical strike back</span>`;
+      }
       else if (e.type === "again") { txt = "AGAIN!"; col = "#ffe08a"; off = 1.1; line = `<span class="skill"><b>${S(e.who)}</b> is faster and attacks again</span>`; }
       else if (e.type === "overtime") { snd("koStinger"); line = `<span class="crit">Time! No knockout in ${LIMIT} seconds: <b>OVERTIME</b>.</span> Sudden death: no more potions, every hit does ×${e.mult} damage, rising by one every ${OT.every} seconds`; }
       else if (e.type === "otup") { txt = `×${e.mult} DAMAGE`; col = "#ff8a6a"; off = -0.9; line = `<span class="crit">Overtime: every hit now does ×${e.mult} damage</span>`; }
