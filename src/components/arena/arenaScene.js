@@ -1491,7 +1491,8 @@ export function createArenaScene(opts) {
   const drawImg = (k, x, y, w, h) => { const im = IMG[k]; if (im && im.complete && im.naturalWidth) hctx.drawImage(im, x, y, w, h); };
   function frameAt(t) { const fs = cur.fight.frames; return fs[Math.min(fs.length - 1, Math.max(0, Math.round(t / DT)))]; }
   const otEvent = () => cur.fight.events.find((e) => e.type === "overtime");
-  const clutchNow = (t) => cur.fight.events.find((e) => e.type === "clutch" && t >= e.t && t < e.t + CLUTCH.clutchSlow * CLUTCH.slow);
+  const CLUTCH_BANNER = 1.8;   // seconds on screen, and never over the result
+  const clutchNow = (t) => (t < cur.fight.length - 0.15 ? cur.fight.events.find((e) => e.type === "clutch" && t >= e.t && t < e.t + CLUTCH_BANNER) : null);
   function lastEv(i, types, t) { const evs = cur.fight.events; for (let k = evs.length - 1; k >= 0; k--) { const e = evs[k]; if (e.t <= t && e.who === i && types.includes(e.type)) return e; } return null; }
   function lastHitOn(i, t) { const evs = cur.fight.events; for (let k = evs.length - 1; k >= 0; k--) { const e = evs[k]; if (e.t <= t && e.who === 1 - i && e.type === "hit") return e; } return null; }
 
@@ -1982,6 +1983,15 @@ export function createArenaScene(opts) {
     // S: the size of the HUD. On a computer it grows with the stage (bigger text and skill icons); on a phone
     // it shrinks just enough to fit the two player frames side by side.
     const narrow = w < 640, S = narrow ? Math.max(0.55, Math.min(0.8, w / 620)) : Math.max(0.9, Math.min(1.45, w / 680));
+    // 6.21 slow motion: letterbox bars and a cold vignette while the fight's clock is stretched (drawn first: the HUD stays on top)
+    if (!cur.betting && !cur.idle && fr.slow > 1 && t < cur.fight.length) {
+      const sw = (cur.fight.slow || []).find((x) => t >= x.from && t <= x.to), edge = sw ? Math.min(1, (t - sw.from) / 0.25, (sw.to - t) / 0.25) : 1, bh = Math.round(h * 0.075 * edge);
+      const g = hctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.25, w / 2, h / 2, Math.max(w, h) * 0.75);
+      g.addColorStop(0, "rgba(20,30,60,0)"); g.addColorStop(1, `rgba(10,16,40,${0.55 * edge})`); hctx.fillStyle = g; hctx.fillRect(0, 0, w, h);
+      hctx.fillStyle = "rgba(0,0,0,.92)"; hctx.fillRect(0, 0, w, bh); hctx.fillRect(0, h - bh, w, bh);
+      hctx.globalAlpha = edge; hctx.font = `700 ${narrow ? 11 : 13}px 'Barlow Condensed', sans-serif`; hctx.textAlign = "right"; hctx.textBaseline = "middle"; hctx.fillStyle = "#cfe0ff";
+      hctx.fillText(`SLOW MOTION ×1/${CLUTCH.slow}`, w - 12, h - bh / 2); hctx.globalAlpha = 1;
+    }
     if (cur.setup) { drawLabHud(w, h, fr, S, narrow); return; }
     // name plates over heads and the red/blue bars at the feet
     [0, 1].forEach((i) => {
@@ -2016,15 +2026,6 @@ export function createArenaScene(opts) {
         const ow = narrow ? 64 : 92 * tS; hctx.fillStyle = "rgba(120,8,14,.85)"; hctx.fillRect(w / 2 - ow / 2, 8, ow, th); hctx.strokeStyle = "rgba(255,90,90,.9)"; hctx.strokeRect(w / 2 - ow / 2 + 0.5, 8.5, ow - 1, th - 1);
         hctx.fillStyle = "#fff"; hctx.fillText(narrow ? `OT ×${fr.ot}` : `OT · ×${fr.ot}`, w / 2, 8 + th / 2 + 0.5);
       } else hctx.fillText(String(Math.max(0, Math.ceil(LIMIT - (fr.st ?? fr.t)))), w / 2, 8 + th / 2 + 0.5); }
-    // 6.21 slow motion: letterbox bars and a cold vignette while the fight's clock is stretched
-    if (!cur.betting && !cur.idle && fr.slow > 1 && t < cur.fight.length) {
-      const sw = (cur.fight.slow || []).find((x) => t >= x.from && t <= x.to), edge = sw ? Math.min(1, (t - sw.from) / 0.25, (sw.to - t) / 0.25) : 1, bh = Math.round(h * 0.075 * edge);
-      const g = hctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.25, w / 2, h / 2, Math.max(w, h) * 0.75);
-      g.addColorStop(0, "rgba(20,30,60,0)"); g.addColorStop(1, `rgba(10,16,40,${0.55 * edge})`); hctx.fillStyle = g; hctx.fillRect(0, 0, w, h);
-      hctx.fillStyle = "rgba(0,0,0,.92)"; hctx.fillRect(0, 0, w, bh); hctx.fillRect(0, h - bh, w, bh);
-      hctx.globalAlpha = edge; hctx.font = `700 ${narrow ? 11 : 13}px 'Barlow Condensed', sans-serif`; hctx.textAlign = "right"; hctx.textBaseline = "middle"; hctx.fillStyle = "#cfe0ff";
-      hctx.fillText(`SLOW MOTION ×1/${CLUTCH.slow}`, w - 12, h - bh / 2); hctx.globalAlpha = 1;
-    }
     // floating numbers
     for (let k = pops.length - 1; k >= 0; k--) {
       const p = pops[k], age = clockT - p.born;
@@ -2047,14 +2048,14 @@ export function createArenaScene(opts) {
       hctx.lineWidth = 4; hctx.strokeText(sub, w / 2, h * 0.68 + 34); hctx.fillText(sub, w / 2, h * 0.68 + 34);
     }
     else if (clutchNow(t)) {
-      const e = clutchNow(t), S_ = (i) => (i ? cur.b : cur.a).name, guard = e.kind === "guard", age = t - e.t, a = Math.min(1, age / 0.2, (CLUTCH.clutchSlow * CLUTCH.slow - age) / 0.4);
+      const e = clutchNow(t), S_ = (i) => (i ? cur.b : cur.a).name, guard = e.kind === "guard", age = t - e.t, a = Math.min(1, age / 0.2, (CLUTCH_BANNER - age) / 0.4, (cur.fight.length - t) / 0.3);
       hctx.globalAlpha = Math.max(0, a); hctx.textAlign = "center"; hctx.textBaseline = "middle"; hctx.lineJoin = "round";
       hctx.font = `900 ${Math.min(54, w * 0.08)}px Cinzel, Georgia, serif`; hctx.lineWidth = 6; hctx.strokeStyle = "rgba(0,0,0,.8)";
       const big = guard ? "CLUTCH GUARD" : "CLUTCH COUNTER";
-      hctx.save(); hctx.shadowColor = guard ? "rgba(90,170,255,.9)" : "rgba(255,190,60,.9)"; hctx.shadowBlur = 18; hctx.strokeText(big, w / 2, h * 0.4); hctx.fillStyle = guard ? "#a8d4ff" : "#ffd34d"; hctx.fillText(big, w / 2, h * 0.4); hctx.restore();
+      hctx.save(); hctx.shadowColor = guard ? "rgba(90,170,255,.9)" : "rgba(255,190,60,.9)"; hctx.shadowBlur = 18; hctx.strokeText(big, w / 2, h * 0.66); hctx.fillStyle = guard ? "#a8d4ff" : "#ffd34d"; hctx.fillText(big, w / 2, h * 0.66); hctx.restore();
       hctx.font = `600 ${Math.min(18, w * 0.035)}px 'Barlow Condensed', sans-serif`; hctx.fillStyle = "#fff"; hctx.lineWidth = 4;
       const sub = `${S_(e.who)} is one hit from death · ${guard ? `next ${CLUTCH.guardHits} hits do ${Math.round(CLUTCH.guardCut * 100)}% less` : "a fast critical strike back"}`;
-      hctx.strokeText(sub, w / 2, h * 0.4 + 34); hctx.fillText(sub, w / 2, h * 0.4 + 34); hctx.globalAlpha = 1;
+      hctx.strokeText(sub, w / 2, h * 0.66 + 34); hctx.fillText(sub, w / 2, h * 0.66 + 34); hctx.globalAlpha = 1;
     }
     else if (otEvent() && t >= otEvent().t && t < otEvent().t + 2.2 && t < cur.fight.length) {
       hctx.font = `900 ${Math.min(58, w * 0.085)}px Cinzel, Georgia, serif`; hctx.fillStyle = "#ff3b3b"; hctx.strokeStyle = "rgba(0,0,0,.75)"; hctx.lineWidth = 5; hctx.textAlign = "center"; hctx.textBaseline = "middle";
@@ -2199,7 +2200,6 @@ export function createArenaScene(opts) {
         const guard = e.kind === "guard", ex = worldX(fr.x[e.who]);
         if (live) SFX.play("koStinger");
         spawnFx("shock", ex, guard ? 0x5aa8ff : 0xffc040); spawnFx("burst", ex, guard ? 0x5aa8ff : 0xffc040);
-        txt = guard ? "CLUTCH GUARD" : "CLUTCH!"; col = guard ? "#a8d4ff" : "#ffd34d"; big = true; off = 1.2;
         crowd(e.who, guard ? ["🛡️", "😤", "🙏"] : ["😤", "🔥", "⚡"], 3);
         line = guard ? `<span class="buff"><b>${S(e.who)}</b> is one hit from death: <b>Clutch Guard</b>! The next ${CLUTCH.guardHits} hits do ${Math.round(CLUTCH.guardCut * 100)}% less</span>`
           : `<span class="crit"><b>${S(e.who)}</b> is one hit from death: <b>Clutch Counter</b>! A fast, fully charged critical strike back</span>`;
