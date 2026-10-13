@@ -21,7 +21,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 // ---------- the fighter sheet ----------
 // Every fighter starts from the same base. Each entry after the first rolls one upgrade on top.
-export const BASE = { hp: 50000, mp: 13153, atk: 15500, def: 7000, crit: 5, critdef: 0, acc: 100, eva: 10, pots: 7, potheal: 100, spd: 100 };
+export const BASE = { hp: 50000, mp: 13153, atk: 15500, def: 7000, crit: 10, critdef: 4, acc: 100, eva: 10, pots: 7, potheal: 100, spd: 100 };
 // w = how likely an entry is to roll this stat (6.18): Crit rate 1 in 15, Crit defense 1 in 9, the other seven
 // share the rest (about 1 in 8.5 each). Potion heal is no longer an upgrade: every potion heals 100%.
 export const UPGRADES = [
@@ -38,7 +38,7 @@ export const UPGRADES = [
 export const PER_STAT = 9, TOTAL_CAP = 50;
 // What each upgrade gives. The Guild Leader can change these for a tournament (saved on it).
 export const DEFAULT_VALUES = {
-  ups: { hp: 8500, atk: 650, def: 900, crit: 3.5, critdef: 8, acc: 10, eva: 5, pots: 2, spd: 10 },
+  ups: { hp: 8500, atk: 650, def: 900, crit: 3.5, critdef: 10, acc: 10, eva: 5, pots: 2, spd: 10 },
   weapon: { atk: 0.15, crit: 5, chance: 0.35 }
 };
 // Keep only sane numbers; anything missing falls back to the default.
@@ -188,7 +188,7 @@ export function randomBuild(rnd, near = 0) {
 }
 
 const hitChance = (acc, eva) => clamp(acc - eva, 25, 97) / 100;          // base 100 − 10 = 90% (6.18)
-const critChance = (crit) => clamp(crit, 1, 60) / 100;                  // 6.19: base 5%, at most 60%
+const critChance = (crit) => clamp(crit, 1, 60) / 100;                  // 6.19: base 10%, at most 60%
 const effAtk = (m) => m.s.atk * (1 + (m.buf.spirits > 0 ? SKILLS.spirits.atk : 0) + (m.buf.blood > 0 ? SKILLS.blood.atk : 0));
 const effSpd = (m) => m.s.spd * (m.buf.spirits > 0 ? 1 + SKILLS.spirits.spd : 1);
 // the Speed a fighter has right now (with Spirits Within up or not), as a whole %
@@ -400,7 +400,7 @@ export function quickFight(fa, fb, seed, opts = {}) {
 //   * no Draw bet (a Draw is practically impossible now that both fighters attack at once); if one ever
 //     happens in the Live Arena, bets on either fighter get half back, and their prices allow for that;
 //   * nobody can hold both fighters or both sides of an over/under on one fight.
-export const DEFAULT_EDGES = { fav: 0.08, dog: 0.12, side: 0.12, draw: 0.15,   // 6.18: a little better for players (was 10% / 15% / 15%)
+export const DEFAULT_EDGES = { fav: 0.06, dog: 0.10, side: 0.10, draw: 0.15,   // 6.19: better for players (6.18: 8% / 12% / 12%; before: 10% / 15% / 15%)
   maxPrice: 4, maxSide: 3, minP: 0.30, maxP: 0.70 };
 export const DRAW_REFUND = 0.5;
 export const PRACTICE_FIGHTS = 2000;

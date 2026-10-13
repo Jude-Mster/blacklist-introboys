@@ -7,8 +7,8 @@ const R = { rows: [], fail: 0 };
 const check = (name, formula, inputs, expected, actual, pass) => { R.rows.push({ name, formula, inputs, expected, actual, pass }); if (!pass) R.fail++; };
 
 // ---- the rules as stated (not imported) ----
-const BASE = { hp: 50000, mp: 13153, atk: 15500, def: 7000, crit: 5, critdef: 0, acc: 100, eva: 10, pots: 7, potheal: 100, spd: 100 };   // 6.18
-const PER = { hp: 8500, atk: 650, def: 900, crit: 3.5, critdef: 8, acc: 10, eva: 5, pots: 2, spd: 10 };   // no Potion heal upgrade
+const BASE = { hp: 50000, mp: 13153, atk: 15500, def: 7000, crit: 10, critdef: 4, acc: 100, eva: 10, pots: 7, potheal: 100, spd: 100 };   // 6.18
+const PER = { hp: 8500, atk: 650, def: 900, crit: 3.5, critdef: 10, acc: 10, eva: 5, pots: 2, spd: 10 };   // no Potion heal upgrade
 const W = { atk: 0.15, crit: 5 };
 const PET_FULL = { hp: 4400, atk: 2700, def: 4400 }, PET_LV = 8;
 const MOUNT_PER = 3, PAIRS = [["atk", "def"], ["atk", "acc"], ["def", "hp"], ["crit", "eva"], ["def", "eva"], ["critdef", "def"], ["atk", "crit"]];
@@ -214,7 +214,7 @@ check("Crit chance", "clamp(CRIT (+20 Blow), 1, 60)%", `${hits} hits`, `${(ec * 
     for (let k = 0; k < N; k++) { const q = E.simulate(a, b, ((seed >>> 0) * 7919 + k * 104729) >>> 0, { draws: true, frames: false }); if (q.winner === 0) wa++; else if (q.winner === 1) wb++; else dr++; }
     const pa = wa / N, pb = wb / N, pd = dr / N, favA = pa >= pb;
     const fp = (p, edge) => (p <= 0 ? 0 : offer(((1 - edge) - 0.5 * pd) / safeP(p, N), 4));
-    const want = { a: fp(pa, favA ? 0.08 : 0.12), b: fp(pb, favA ? 0.12 : 0.08), draw: 0 };
+    const want = { a: fp(pa, favA ? 0.06 : 0.10), b: fp(pb, favA ? 0.10 : 0.06), draw: 0 };
     n++;
     if (want.a !== o.a || want.b !== o.b || want.draw !== o.draw) bad++;
     // the house's margin on the two fighters: implied probability of the offered prices
@@ -225,7 +225,7 @@ check("Crit chance", "clamp(CRIT (+20 Blow), 1, 60)%", `${hits} hits`, `${(ec * 
     if (o.a > 4 || o.b > 4) bad++;
   }
   const avgOR = overRound.reduce((x, y) => x + y, 0) / overRound.length;
-  check("Fighter prices and side bets", "floor2((1 - edge - 0.5 x P(draw)) / cautious P), not offered over 4x or under 1.01; edge 8% favourite / 12% other; no Draw bet; side bets only at 30-70%, at most 3x, no buff lines, a length line", `${n} matchups re-counted`, "identical", `${bad} different`, bad === 0);
+  check("Fighter prices and side bets", "floor2((1 - edge - 0.5 x P(draw)) / cautious P), not offered over 4x or under 1.01; edge 6% favourite / 10% other; no Draw bet; side bets only at 30-70%, at most 3x, no buff lines, a length line", `${n} matchups re-counted`, "identical", `${bad} different`, bad === 0);
   check("Fighter bets' expected return", "P(win) x price + P(draw) x 0.5, from the practice fights: under 1 means the house keeps a margin", `${overRound.length} offered fighter bets`, "under 1.00 every time", `${avgOR.toFixed(3)} on average (max ${Math.max(...overRound).toFixed(3)})`, Math.max(...overRound) < 1);
 }
 

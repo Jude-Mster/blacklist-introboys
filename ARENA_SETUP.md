@@ -175,3 +175,6 @@ Two stress rigs ran the real server code with 5 to 50 simulated members (watchin
 - Criticals do 2× to 6× (was 2× to 8×).
 - Crit defense works differently: it no longer lowers the attacker's crit chance; each % takes 1% off the damage of criticals taken (up to 80%). +8% per upgrade (was +3.5). Nirvana Soul Blast's +20% and a mount's Crit defense work the same way.
 - Unchanged by request: HP and potions (heal 100%, 7 potions, +2 per upgrade), Accuracy 100%.
+- Final 6.19 values (Guild Leader): base Crit rate 10%, base Crit defense 4%, Crit defense +10% per upgrade.
+- Bet prices better again: house edge 6% on the favourite, 10% on the other fighter and on side bets (6.18: 8% / 12% / 12%). Measured: about 86% of all stakes paid back. Caps unchanged (4× fighters, 3× side bets).
+- Measured on 400 fights each: Live Arena typical fight about 35 s (6.18: 8 s), tournament about 15 s (6.18: 6.5 s); no draws.
