@@ -395,7 +395,8 @@ export function quickFight(fa, fb, seed, opts = {}) {
 //   * no Draw bet (a Draw is practically impossible now that both fighters attack at once); if one ever
 //     happens in the Live Arena, bets on either fighter get half back, and their prices allow for that;
 //   * nobody can hold both fighters or both sides of an over/under on one fight.
-export const DEFAULT_EDGES = { fav: 0.10, dog: 0.15, side: 0.15, draw: 0.15, maxPrice: 4, maxSide: 3, minP: 0.30, maxP: 0.70 };
+export const DEFAULT_EDGES = { fav: 0.08, dog: 0.12, side: 0.12, draw: 0.15,   // 6.18: a little better for players (was 10% / 15% / 15%)
+  maxPrice: 4, maxSide: 3, minP: 0.30, maxP: 0.70 };
 export const DRAW_REFUND = 0.5;
 export const PRACTICE_FIGHTS = 2000;
 const floor2 = (x) => Math.floor(x * 100) / 100;

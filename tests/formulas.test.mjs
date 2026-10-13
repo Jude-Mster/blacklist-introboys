@@ -211,7 +211,7 @@ check("Crit chance", "clamp(CRIT (+20 Blow) - CRIT DEF (+20 Nirvana), 1, 60)%", 
     for (let k = 0; k < N; k++) { const q = E.simulate(a, b, ((seed >>> 0) * 7919 + k * 104729) >>> 0, { draws: true, frames: false }); if (q.winner === 0) wa++; else if (q.winner === 1) wb++; else dr++; }
     const pa = wa / N, pb = wb / N, pd = dr / N, favA = pa >= pb;
     const fp = (p, edge) => (p <= 0 ? 0 : offer(((1 - edge) - 0.5 * pd) / safeP(p, N), 4));
-    const want = { a: fp(pa, favA ? 0.10 : 0.15), b: fp(pb, favA ? 0.15 : 0.10), draw: 0 };
+    const want = { a: fp(pa, favA ? 0.08 : 0.12), b: fp(pb, favA ? 0.12 : 0.08), draw: 0 };
     n++;
     if (want.a !== o.a || want.b !== o.b || want.draw !== o.draw) bad++;
     // the house's margin on the two fighters: implied probability of the offered prices
@@ -222,7 +222,7 @@ check("Crit chance", "clamp(CRIT (+20 Blow) - CRIT DEF (+20 Nirvana), 1, 60)%", 
     if (o.a > 4 || o.b > 4) bad++;
   }
   const avgOR = overRound.reduce((x, y) => x + y, 0) / overRound.length;
-  check("Fighter prices and side bets", "floor2((1 - edge - 0.5 x P(draw)) / cautious P), not offered over 4x or under 1.01; edge 10% favourite / 15% other; no Draw bet; side bets only at 30-70%, at most 3x, no buff lines, a length line", `${n} matchups re-counted`, "identical", `${bad} different`, bad === 0);
+  check("Fighter prices and side bets", "floor2((1 - edge - 0.5 x P(draw)) / cautious P), not offered over 4x or under 1.01; edge 8% favourite / 12% other; no Draw bet; side bets only at 30-70%, at most 3x, no buff lines, a length line", `${n} matchups re-counted`, "identical", `${bad} different`, bad === 0);
   check("Fighter bets' expected return", "P(win) x price + P(draw) x 0.5, from the practice fights: under 1 means the house keeps a margin", `${overRound.length} offered fighter bets`, "under 1.00 every time", `${avgOR.toFixed(3)} on average (max ${Math.max(...overRound).toFixed(3)})`, Math.max(...overRound) < 1);
 }
 
