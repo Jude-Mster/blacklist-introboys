@@ -169,3 +169,9 @@ Two stress rigs ran the real server code with 5 to 50 simulated members (watchin
 - Replays from before (engine 8) are not offered (they would play differently).
 - Measured on 400 Live Arena and 400 tournament fights: fights are about twice as fast (Live Arena median 17 s → 9 s; tournament 12 s → 7 s), mostly from Accuracy 100% (+10 per upgrade): hits land 90-97% of the time instead of about 70%. Prices still come from practice fights of the real fighters, so the house edge is unchanged (about 82% paid back on all bets, as before).
 - Bet prices a little better for players: the house edge on fighter bets is 8% on the favourite and 12% on the other (was 10% / 15%), 12% on side bets (was 15%). Caps unchanged (fighters at most 4×, side bets 3×). Measured: about 85% of all stakes paid back (was about 82%).
+
+## 20. What changed in 6.19 (engine 10; redeploy every function and publish)
+- Base ATK 15,500 (was 17,500), ATK +650 per upgrade (was +1,150), base DEF 7,000 (was 9,000), base Crit rate 5% (was 15%).
+- Criticals do 2× to 6× (was 2× to 8×).
+- Crit defense works differently: it no longer lowers the attacker's crit chance; each % takes 1% off the damage of criticals taken (up to 80%). +8% per upgrade (was +3.5). Nirvana Soul Blast's +20% and a mount's Crit defense work the same way.
+- Unchanged by request: HP and potions (heal 100%, 7 potions, +2 per upgrade), Accuracy 100%.

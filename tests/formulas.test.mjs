@@ -7,8 +7,8 @@ const R = { rows: [], fail: 0 };
 const check = (name, formula, inputs, expected, actual, pass) => { R.rows.push({ name, formula, inputs, expected, actual, pass }); if (!pass) R.fail++; };
 
 // ---- the rules as stated (not imported) ----
-const BASE = { hp: 50000, mp: 13153, atk: 17500, def: 9000, crit: 15, critdef: 0, acc: 100, eva: 10, pots: 7, potheal: 100, spd: 100 };   // 6.18
-const PER = { hp: 8500, atk: 1150, def: 900, crit: 3.5, critdef: 3.5, acc: 10, eva: 5, pots: 2, spd: 10 };   // no Potion heal upgrade
+const BASE = { hp: 50000, mp: 13153, atk: 15500, def: 7000, crit: 5, critdef: 0, acc: 100, eva: 10, pots: 7, potheal: 100, spd: 100 };   // 6.18
+const PER = { hp: 8500, atk: 650, def: 900, crit: 3.5, critdef: 8, acc: 10, eva: 5, pots: 2, spd: 10 };   // no Potion heal upgrade
 const W = { atk: 0.15, crit: 5 };
 const PET_FULL = { hp: 4400, atk: 2700, def: 4400 }, PET_LV = 8;
 const MOUNT_PER = 3, PAIRS = [["atk", "def"], ["atk", "acc"], ["def", "hp"], ["crit", "eva"], ["def", "eva"], ["critdef", "def"], ["atk", "crit"]];
@@ -23,7 +23,7 @@ function myStats(f) {
 }
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-let potEarly = 0;
+let potEarly = 0, cutBad = 0;
 let fights = 0, hits = 0, misses = 0, crits = 0, expHit = 0, expCrit = 0, dmgBad = 0, dmgN = 0, hpBad = 0, koBad = 0, multBad = 0, potBad = 0, mpBad = 0, barBad = 0, statBad = 0, overkill = 0, afterKo = 0;
 let worstDmg = null;
 const r = E.mulberry32(20261011);
@@ -46,11 +46,13 @@ for (let i = 0; i < 1500; i++) {
       if (e.type === "miss") { misses++; continue; }
       hits++;
       const atk = me.atk * (1 + (e.spirits ? 0.15 : 0) + (e.blood ? 0.25 : 0));
-      const critP = clamp(me.crit + (e.blow ? 20 : 0) - foe.critdef - (e.nirvana ? 20 : 0), 1, 60) / 100;
+      const critP = clamp(me.crit + (e.blow ? 20 : 0), 1, 60) / 100;   // 6.19: Crit defense no longer changes the chance
+      const cutWant = e.crit ? clamp(foe.critdef + (e.nirvana ? 20 : 0), 0, 80) / 100 : 0;
+      if (Math.abs((e.cut || 0) - cutWant) > 1e-9) cutBad++;
       expCrit += critP; if (e.crit) crits++;
-      if (e.crit !== (e.mult >= 2) || (e.crit && (e.mult < 2 || e.mult > 8 || !Number.isInteger(e.mult))) || (!e.crit && e.mult !== 1)) multBad++;
+      if (e.crit !== (e.mult >= 2) || (e.crit && (e.mult < 2 || e.mult > 6 || !Number.isInteger(e.mult))) || (!e.crit && e.mult !== 1)) multBad++;
       // damage: max(ATK x 0.2, ATK - DEF x 0.5) x 0.46 x charge x crit, rounded; a shield halves it
-      const base = Math.max(atk * 0.2, atk - foe.def * 0.5) * 0.46 * e.power * e.mult * (e.ot || 1);
+      const base = Math.max(atk * 0.2, atk - foe.def * 0.5) * 0.46 * e.power * e.mult * (1 - cutWant) * (e.ot || 1);
       const full = Math.max(1, Math.round(base));
       const want = e.shielded ? Math.max(1, Math.round(e.shielded * 0.5)) : full;
       const ref = e.shielded ? e.shielded : e.dmg;
@@ -163,6 +165,7 @@ check("Crit multiplier", "x3 to x7 whole numbers, only on a crit, applied once",
 check("HP after a hit", "HP - damage, never below 0", `${hits} hits`, "0 wrong", `${hpBad} wrong, ${overkill} below 0`, hpBad === 0 && overkill === 0);
 check("KO", "KO exactly when HP reaches 0; nothing happens after it", `${fights} fights`, "0 wrong", `${koBad} wrong, ${afterKo} events after a KO`, koBad === 0 && afterKo === 0);
 check("Potion heal", "min(max HP - HP, round(max HP x heal%))", "all potions", "exact", `${potBad} wrong`, potBad === 0);
+check("Crit defense", "a critical loses Crit defense % of its damage (+20 Nirvana), at most 80%", "all criticals", "exact", `${cutBad} wrong`, cutBad === 0);
 check("Potion trigger", "drunk only at 85% HP or less", "all potions", "0 early", `${potEarly} early`, potEarly === 0);
 { // 6.18 roll chances: Crit rate 1 in 15, Crit defense 1 in 9; mount pairs 4-7 1 in 12 each, 1-3 2 in 9 each
   const rr = E.mulberry32(99), N = 120000, cnt = {}, pc = Array(7).fill(0);
@@ -178,7 +181,7 @@ check("MP", "only goes down (skills and buffs); never refills", `${fights} fight
 const hitRate = hits / (hits + misses), critRate = crits / hits, eh = expHit / (hits + misses), ec = expCrit / hits;
 const seH = Math.sqrt(eh * (1 - eh) / (hits + misses)), seC = Math.sqrt(ec * (1 - ec) / hits);
 check("Hit chance", "clamp(ACC - EVA (+25 Garuda), 25, 97)%", `${hits + misses} swings`, `${(eh * 100).toFixed(2)}%`, `${(hitRate * 100).toFixed(2)}%`, Math.abs(hitRate - eh) < 4 * seH);
-check("Crit chance", "clamp(CRIT (+20 Blow) - CRIT DEF (+20 Nirvana), 1, 60)%", `${hits} hits`, `${(ec * 100).toFixed(2)}%`, `${(critRate * 100).toFixed(2)}%`, Math.abs(critRate - ec) < 4 * seC);
+check("Crit chance", "clamp(CRIT (+20 Blow), 1, 60)%", `${hits} hits`, `${(ec * 100).toFixed(2)}%`, `${(critRate * 100).toFixed(2)}%`, Math.abs(critRate - ec) < 4 * seC);
 
 // ---- speed and pace ----
 {

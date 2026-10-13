@@ -10,7 +10,7 @@
 // Plain JavaScript on purpose: the backend functions (Deno) and the page (Vite) both import this
 // one file, so the rules can never drift apart. Change ENGINE_VERSION whenever a rule changes.
 
-export const ENGINE_VERSION = 9;   // 9: 6.18 balance (stronger base, potions at 85%, crits 2x-8x, weapon 35%, mount pairs) · 8: priced from real fights, tighter caps, length line, Live Arena matchmaking (7: both attack at once)
+export const ENGINE_VERSION = 10;   // 10: 6.19 (ATK/DEF/crit retune, Crit defense cuts crit damage) · 9: 6.18 balance (stronger base, potions at 85%, crits 2x-8x, weapon 35%, mount pairs) · 8: priced from real fights, tighter caps, length line, Live Arena matchmaking (7: both attack at once)
 export const ENGINE_VERSION_NOTES = 5;   // 2: tighter prices, no near-certain or long-shot side bets
                                    // 4: Speed sets the pace of every move, MP only spent by skills, the Draw always offered
                                    // 5: new upgrade values (see DEFAULT_VALUES), stronger weapon levels, pet and mount, Spirits Within +20% Speed
@@ -21,7 +21,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 // ---------- the fighter sheet ----------
 // Every fighter starts from the same base. Each entry after the first rolls one upgrade on top.
-export const BASE = { hp: 50000, mp: 13153, atk: 17500, def: 9000, crit: 15, critdef: 0, acc: 100, eva: 10, pots: 7, potheal: 100, spd: 100 };
+export const BASE = { hp: 50000, mp: 13153, atk: 15500, def: 7000, crit: 5, critdef: 0, acc: 100, eva: 10, pots: 7, potheal: 100, spd: 100 };
 // w = how likely an entry is to roll this stat (6.18): Crit rate 1 in 15, Crit defense 1 in 9, the other seven
 // share the rest (about 1 in 8.5 each). Potion heal is no longer an upgrade: every potion heals 100%.
 export const UPGRADES = [
@@ -38,7 +38,7 @@ export const UPGRADES = [
 export const PER_STAT = 9, TOTAL_CAP = 50;
 // What each upgrade gives. The Guild Leader can change these for a tournament (saved on it).
 export const DEFAULT_VALUES = {
-  ups: { hp: 8500, atk: 1150, def: 900, crit: 3.5, critdef: 3.5, acc: 10, eva: 5, pots: 2, spd: 10 },
+  ups: { hp: 8500, atk: 650, def: 900, crit: 3.5, critdef: 8, acc: 10, eva: 5, pots: 2, spd: 10 },
   weapon: { atk: 0.15, crit: 5, chance: 0.35 }
 };
 // Keep only sane numbers; anything missing falls back to the default.
@@ -115,7 +115,7 @@ export const SKILLS = {
   spirits: { name: "Spirits Within", chance: 0.2, cd: 0, attacks: 3, atk: 0.15, spd: 0.20, mp: 108.75, color: 0xa8e4ff, text: "+15% ATK and +20% Speed for 3 attacks" },
   blood: { name: "Blood Lust", chance: 0.2, cd: 0, attacks: 3, atk: 0.25, mp: 415.14, color: 0xff5a1a, text: "+25% ATK for 3 attacks, and the blade catches fire" },
   garuda: { name: "Garuda's Prayer", chance: 0.15, cd: 0, guards: 3, eva: 25, mp: 1144.43, color: 0xc9a0ff, text: "+25% Evasion against the next 3 attacks" },
-  nirvana: { name: "Nirvana Soul Blast", chance: 0.25, cd: 4, guards: 3, critdef: 20, mp: 1821.04, color: 0xb060ff, text: "+20% Crit defense against the next 3 attacks, then 4 attacks to cool down" },
+  nirvana: { name: "Nirvana Soul Blast", chance: 0.25, cd: 4, guards: 3, critdef: 20, mp: 1821.04, color: 0xb060ff, text: "+20% Crit defense (criticals do 20% less) against the next 3 attacks, then 4 attacks to cool down" },
   bullet: { name: "Extreme Bullet Proof", passive: true, chance: 0.1, reflect: 0.5, color: 0x40e070, text: "passive: 10% chance on every hit taken to send 50% of it back at the attacker" }
 };
 export const SKILL_IDS = Object.keys(SKILLS), MAX_SKILLS = 2, BUFF_CAST = 0.6;
@@ -136,7 +136,11 @@ export const LIMIT = 180;   // a fight lasts at most 3 minutes
 // the larger share of HP left wins, and an exact tie is settled by the fight's own coin toss.
 export const OT = { max: 90, start: 2, every: 5 };
 export const otMult = (sinceLimit) => OT.start + Math.floor(Math.max(0, sinceLimit) / OT.every);
-const DMG_K = 0.46, CRIT_MIN = 2, CRIT_MAX = 8, POT_AT = 0.85;   // 6.18: crits 2x-8x (was 3x-7x), potions at 85% HP (was 70%)
+const DMG_K = 0.46, CRIT_MIN = 2, CRIT_MAX = 6, POT_AT = 0.85;   // 6.19: crits 2x-6x (6.18: 2x-8x); potions at 85% HP (was 70%)
+// 6.19: Crit defense no longer lowers the chance of a critical: it cuts the damage of criticals taken by that
+// many % (at most CRIT_CUT_MAX). Crit chance is the attacker's Crit rate alone (1% to 60%).
+export const CRIT_CUT_MAX = 80;
+export const critCut = (critdef) => clamp(critdef, 0, CRIT_CUT_MAX) / 100;
 // Speed is one stat: it sets the pace of the fighter's own moves, and so how often they attack. At 100% a buff
 // cast, the charge, Skyfall and the recovery take their full time; faster fighters do them quicker (down to
 // PACE_MIN of the time). Spirits Within adds its Speed the moment it is cast. MP only goes down when a skill
@@ -184,7 +188,7 @@ export function randomBuild(rnd, near = 0) {
 }
 
 const hitChance = (acc, eva) => clamp(acc - eva, 25, 97) / 100;          // base 100 − 10 = 90% (6.18)
-const critChance = (crit, critdef) => clamp(crit - critdef, 1, 60) / 100; // base 15%, at most 60%
+const critChance = (crit) => clamp(crit, 1, 60) / 100;                  // 6.19: base 5%, at most 60%
 const effAtk = (m) => m.s.atk * (1 + (m.buf.spirits > 0 ? SKILLS.spirits.atk : 0) + (m.buf.blood > 0 ? SKILLS.blood.atk : 0));
 const effSpd = (m) => m.s.spd * (m.buf.spirits > 0 ? 1 + SKILLS.spirits.spd : 1);
 // the Speed a fighter has right now (with Spirits Within up or not), as a whole %
@@ -217,9 +221,10 @@ function landStrike(me, foe, r, used) {
   const power = 1 + r() * (CHARGE.upTo - 1);
   const atk = effAtk(me);
   let dmg = Math.max(atk * 0.2, atk - foe.s.def * 0.5) * DMG_K * power;
-  const crit = r() < critChance(effCrit(me), effCritdef(foe));
+  const crit = r() < critChance(effCrit(me));
   const mult = crit ? CRIT_MIN + Math.floor(r() * (CRIT_MAX - CRIT_MIN + 1)) : 1;
-  dmg = Math.max(1, Math.round(dmg * mult * (me.ot || 1)));
+  const cut = crit ? critCut(effCritdef(foe)) : 0;   // the target's Crit defense softens the critical
+  dmg = Math.max(1, Math.round(dmg * mult * (1 - cut) * (me.ot || 1)));
   let shielded = 0;
   if (foe.buf.shield > 0) { shielded = dmg; dmg = Math.max(1, Math.round(dmg * SKILLS.shield.cut)); foe.buf.shield--; }
   const before = foe.hp;
@@ -230,7 +235,7 @@ function landStrike(me, foe, r, used) {
     reflect = Math.max(1, Math.round(dmg * SKILLS.bullet.reflect)); me.hp = Math.max(0, me.hp - reflect); reflectKo = me.hp <= 0;
   }
   return {
-    dmg, shielded, crit, mult, power: Math.round(power * 100) / 100, used, reflect, reflectKo, dead,
+    dmg, shielded, crit, mult, cut, power: Math.round(power * 100) / 100, used, reflect, reflectKo, dead,
     oneHit: dead && before >= foe.s.hp * 0.95,
     drink: !dead && !foe.ot && foe.hp <= foe.s.hp * POT_AT && foe.pots > 0,
     drinkMe: reflect > 0 && !reflectKo && !me.ot && me.hp <= me.s.hp * POT_AT && me.pots > 0
@@ -283,7 +288,7 @@ export function simulate(fa, fb, seed, opts = {}) {
     const s = strike(me, foe, r), u = s.used;
     if (s.miss) { ev(i, "miss", { dodge: u.garuda, k: a.pace }); return; }
     foe.x = clamp(foe.x - foe.dir * (s.crit ? 0.9 : 0.35), 0.8, 11.2);
-    ev(i, "hit", { k: a.pace, ot: me.ot, dmg: s.dmg, shielded: s.shielded, crit: s.crit, mult: s.mult, power: s.power, oneHit: s.oneHit, reflect: s.reflect, reflectKo: s.reflectKo, blow: u.blow, spirits: u.spirits, blood: u.blood, nirvana: u.nirvana });
+    ev(i, "hit", { k: a.pace, ot: me.ot, dmg: s.dmg, shielded: s.shielded, crit: s.crit, mult: s.mult, cut: s.cut, power: s.power, oneHit: s.oneHit, reflect: s.reflect, reflectKo: s.reflectKo, blow: u.blow, spirits: u.spirits, blood: u.blood, nirvana: u.nirvana });
     if (s.dead) ko(1 - i, { crit: s.crit, oneHit: s.oneHit });
     else if (s.reflectKo) ko(i, { crit: false, oneHit: false, reflect: true });
     else { if (s.drink) A[1 - i].drink = true; if (s.drinkMe) a.drink = true; }
