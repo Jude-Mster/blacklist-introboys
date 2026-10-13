@@ -10,7 +10,7 @@
 // Plain JavaScript on purpose: the backend functions (Deno) and the page (Vite) both import this
 // one file, so the rules can never drift apart. Change ENGINE_VERSION whenever a rule changes.
 
-export const ENGINE_VERSION = 8;   // 8: priced from real fights, tighter caps, length line, Live Arena matchmaking (7: both attack at once)
+export const ENGINE_VERSION = 9;   // 9: 6.18 balance (stronger base, potions at 85%, crits 2x-8x, weapon 35%, mount pairs) · 8: priced from real fights, tighter caps, length line, Live Arena matchmaking (7: both attack at once)
 export const ENGINE_VERSION_NOTES = 5;   // 2: tighter prices, no near-certain or long-shot side bets
                                    // 4: Speed sets the pace of every move, MP only spent by skills, the Draw always offered
                                    // 5: new upgrade values (see DEFAULT_VALUES), stronger weapon levels, pet and mount, Spirits Within +20% Speed
@@ -21,25 +21,26 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 // ---------- the fighter sheet ----------
 // Every fighter starts from the same base. Each entry after the first rolls one upgrade on top.
-export const BASE = { hp: 40000, mp: 13153, atk: 15000, def: 6000, crit: 15, critdef: 0, acc: 80, eva: 10, pots: 5, potheal: 80, spd: 100 };
-// w = how likely an entry is to roll this stat: Crit defense 1 in 5, the other nine about 1 in 11 each.
+export const BASE = { hp: 50000, mp: 13153, atk: 17500, def: 9000, crit: 15, critdef: 0, acc: 100, eva: 10, pots: 7, potheal: 100, spd: 100 };
+// w = how likely an entry is to roll this stat (6.18): Crit rate 1 in 15, Crit defense 1 in 9, the other eight
+// share the rest (about 1 in 9.7 each).
 export const UPGRADES = [
-  { id: "hp", name: "HP", unit: "", w: 0.0889 },
-  { id: "atk", name: "ATK", unit: "", w: 0.0889 },
-  { id: "def", name: "DEF", unit: "", w: 0.0889 },
-  { id: "crit", name: "Crit rate", unit: "%", w: 0.0889 },
-  { id: "critdef", name: "Crit defense", unit: "%", w: 0.20 },
-  { id: "acc", name: "Accuracy", unit: "%", w: 0.0889 },
-  { id: "eva", name: "Evasion", unit: "%", w: 0.0889 },
-  { id: "pots", name: "HP potions", unit: "", w: 0.0889 },
-  { id: "potheal", name: "Potion heal", unit: "%", w: 0.0889 },
-  { id: "spd", name: "Speed", unit: "%", w: 0.0889 }
+  { id: "hp", name: "HP", unit: "", w: 0.1028 },
+  { id: "atk", name: "ATK", unit: "", w: 0.1028 },
+  { id: "def", name: "DEF", unit: "", w: 0.1028 },
+  { id: "crit", name: "Crit rate", unit: "%", w: 1 / 15 },
+  { id: "critdef", name: "Crit defense", unit: "%", w: 1 / 9 },
+  { id: "acc", name: "Accuracy", unit: "%", w: 0.1028 },
+  { id: "eva", name: "Evasion", unit: "%", w: 0.1028 },
+  { id: "pots", name: "HP potions", unit: "", w: 0.1028 },
+  { id: "potheal", name: "Potion heal", unit: "%", w: 0.1028 },
+  { id: "spd", name: "Speed", unit: "%", w: 0.1028 }
 ];
 export const PER_STAT = 9, TOTAL_CAP = 50;
 // What each upgrade gives. The Guild Leader can change these for a tournament (saved on it).
 export const DEFAULT_VALUES = {
-  ups: { hp: 7000, atk: 950, def: 900, crit: 1.5, critdef: 3, acc: 5, eva: 8, pots: 2, potheal: 3, spd: 10 },
-  weapon: { atk: 0.15, crit: 5, chance: 0.20 }
+  ups: { hp: 8500, atk: 1150, def: 900, crit: 3.5, critdef: 5, acc: 10, eva: 10, pots: 2, potheal: 3, spd: 10 },
+  weapon: { atk: 0.15, crit: 5, chance: 0.35 }
 };
 // Keep only sane numbers; anything missing falls back to the default.
 export function normValues(v) {
@@ -73,9 +74,23 @@ export const PET = { name: "Iron Condor (Epic)", levels: 8, full: { hp: 4400, at
 export const petGrowth = (lv) => lv * 25;
 export const petBonus = (lv, id) => Math.round((PET.full[id] || 0) * lv / PET.levels);
 // Mount: the first level draws one pair at random; every level after adds MOUNT.per % more to the same pair.
-// HP, ATK and DEF grow by that % of the fighter's total; Crit rate, Dodge and Crit defense by that many points.
-export const MOUNT = { levels: 10, per: 3, pairs: [["atk", "def"], ["atk", "hp"], ["def", "hp"], ["crit", "eva"], ["def", "eva"], ["critdef", "def"]] };
-export const STAT_NAME = { hp: "HP", atk: "ATK", def: "DEF", crit: "Crit rate", eva: "Dodge", critdef: "Crit defense" };
+// HP, ATK and DEF grow by that % of the fighter's total; Crit rate, Dodge, Crit defense and Accuracy by that many points.
+// 6.18: pair 2 is ATK + Accuracy (was ATK + HP) and pair 7 (ATK + Crit rate) is new. w = how likely the draw is:
+// pairs 4 to 7 1 in 12 each, pairs 1 to 3 share the rest (2 in 9 each).
+export const MOUNT = {
+  levels: 10, per: 3,
+  pairs: [["atk", "def"], ["atk", "acc"], ["def", "hp"], ["crit", "eva"], ["def", "eva"], ["critdef", "def"], ["atk", "crit"]],
+  w: [2 / 9, 2 / 9, 2 / 9, 1 / 12, 1 / 12, 1 / 12, 1 / 12]
+};
+// Draw a mount pair by its weight; `not` = a pair to leave out (a reset never gives the same pair back).
+export function drawPair(rnd, not = -1) {
+  const ids = MOUNT.pairs.map((_, i) => i).filter((i) => i !== not);
+  const total = ids.reduce((a, i) => a + MOUNT.w[i], 0);
+  let x = rnd() * total;
+  for (const i of ids) { x -= MOUNT.w[i]; if (x < 0) return i; }
+  return ids[ids.length - 1];
+}
+export const STAT_NAME = { hp: "HP", atk: "ATK", def: "DEF", crit: "Crit rate", eva: "Dodge", critdef: "Crit defense", acc: "Accuracy" };
 export const mountPct = (lv) => lv * MOUNT.per;
 export const mountText = (m, lv = m.lv) => MOUNT.pairs[m.pair].map((id) => `${STAT_NAME[id]} +${mountPct(lv)}%`).join(" · ");
 // Weapon: each try works the tournament's chance; each level adds ATK % and Crit rate, and an aura.
@@ -122,7 +137,7 @@ export const LIMIT = 180;   // a fight lasts at most 3 minutes
 // the larger share of HP left wins, and an exact tie is settled by the fight's own coin toss.
 export const OT = { max: 90, start: 2, every: 5 };
 export const otMult = (sinceLimit) => OT.start + Math.floor(Math.max(0, sinceLimit) / OT.every);
-const DMG_K = 0.46, CRIT_MIN = 3, CRIT_MAX = 7, POT_AT = 0.7;
+const DMG_K = 0.46, CRIT_MIN = 2, CRIT_MAX = 8, POT_AT = 0.85;   // 6.18: crits 2x-8x (was 3x-7x), potions at 85% HP (was 70%)
 // Speed is one stat: it sets the pace of the fighter's own moves, and so how often they attack. At 100% a buff
 // cast, the charge, Skyfall and the recovery take their full time; faster fighters do them quicker (down to
 // PACE_MIN of the time). Spirits Within adds its Speed the moment it is cast. MP only goes down when a skill
@@ -165,11 +180,11 @@ export function randomBuild(rnd, near = 0) {
   const ns = rnd() < 0.4 ? 0 : rnd() < 0.58 ? 1 : 2, pool = SKILL_IDS.slice(), skills = [];
   for (let j = 0; j < ns; j++) skills.push(pool.splice(Math.floor(rnd() * pool.length), 1)[0]);
   const pet = rnd() < 0.3 ? 1 + Math.floor(rnd() * PET.levels) : 0;
-  const mount = rnd() < 0.35 ? { lv: 1 + Math.floor(rnd() * MOUNT.levels), pair: Math.floor(rnd() * MOUNT.pairs.length) } : null;
+  const mount = rnd() < 0.35 ? { lv: 1 + Math.floor(rnd() * MOUNT.levels), pair: drawPair(rnd) } : null;
   return { entries, ups, weapon, skills, pet, mount };
 }
 
-const hitChance = (acc, eva) => clamp(acc - eva, 25, 97) / 100;          // base 80 − 10 = 70%
+const hitChance = (acc, eva) => clamp(acc - eva, 25, 97) / 100;          // base 100 − 10 = 90% (6.18)
 const critChance = (crit, critdef) => clamp(crit - critdef, 1, 60) / 100; // base 15%, at most 60%
 const effAtk = (m) => m.s.atk * (1 + (m.buf.spirits > 0 ? SKILLS.spirits.atk : 0) + (m.buf.blood > 0 ? SKILLS.blood.atk : 0));
 const effSpd = (m) => m.s.spd * (m.buf.spirits > 0 ? 1 + SKILLS.spirits.spd : 1);

@@ -123,6 +123,33 @@ function ConfirmChange({ confirm, me, costs, balance, onCancel, onConfirm }) {
   const [sure, setSure] = useState(false);
   useEffect(() => { setSure(false); }, [confirm]);
   if (!confirm || !me) return null;
+  // 6.18: the weapon try's wall is a simple "are you sure" with its success chance (no checkbox)
+  if (confirm.item === "weapon") {
+    const wcost = costs.weaponTry, wshort = wcost > (balance || 0);
+    return (
+      <AlertDialog open onOpenChange={(o) => { if (!o) onCancel(); }}>
+        <AlertDialogContent className="max-w-md border-bronze bg-panel">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-heading text-gold">Try a weapon upgrade?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-mist">
+                <p className="font-heading text-2xl font-bold text-white">{confirm.chance}% chance of success</p>
+                <p>Weapon +{me.weapon} → +{me.weapon + 1}. Cost: <b className="text-white">{fmt(wcost)} points</b>, paid win or lose.</p>
+                <p>A failed try is not credited as an entry, but its points count toward your total spent.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {wshort && <p className="text-sm text-ember">You need {fmt(wcost - (balance || 0))} more points.</p>}
+          <AlertDialogFooter className="gap-2 sm:gap-2">
+            <AlertDialogCancel className="btn-bronze h-10 px-4 text-sm">Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={wshort} onClick={() => onConfirm("weapon")} className="btn-seal h-10 px-4 text-sm disabled:cursor-not-allowed disabled:opacity-45">
+              Try it · {fmt(wcost)} pts
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    );
+  }
   const reroll = confirm.item === "reroll", mt = me.mount;
   const cost = reroll ? 0 : costs.mountReset, short = cost > (balance || 0);
   return (
@@ -368,6 +395,8 @@ function SignUp({ data, t, sn, balance, member, setBalance, onChanged, onBought,
     const cost = item === "reroll" ? 0 : (COST_OF[item] || 0) * (item === "entry" ? count : 1);
     if (cost && over(cost)) { const m = capText(cost); setError(m); setFlash({ text: m, error: true, at: Date.now() }); return undefined; }
     if (item === "reroll" || item === "mountReset") { if (!busy) setConfirm({ item }); return undefined; }
+    // 6.18: a weapon try asks first too, showing its success chance
+    if (item === "weapon") { if (!busy) setConfirm({ item, chance: Math.round(values.weapon.chance * 100) }); return undefined; }
     return doBuy(item, count);
   };
   const doBuy = async (item, count = 1) => {

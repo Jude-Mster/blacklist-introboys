@@ -4,7 +4,7 @@ import {
   getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, UserError, errorResponse, resilient
 } from '../../shared/points.ts';
 import {
-  ENGINE_VERSION, LOOK_KEYS, LIMIT, WEAPON, PET, MOUNT, SKILLS, SKILL_IDS, MAX_SKILLS, UPGRADES,
+  ENGINE_VERSION, LOOK_KEYS, LIMIT, WEAPON, PET, MOUNT, drawPair, SKILLS, SKILL_IDS, MAX_SKILLS, UPGRADES,
   DEFAULT_VALUES, normValues, normCosts, rollUpgrade, simulate, outcomeOf, priceMatch
 } from '../../shared/arenaEngine.ts';
 import { placeBets, removeBets, payMine, payOthers, betBoard, arenaLimit, arenaMin, type Resolve } from '../../shared/arenaBets.ts';
@@ -611,14 +611,14 @@ async function buy(b, t, me, item: string, count: number, shown?: number) {
       cost = COSTS.pet; what = `pet growth to ${next.pet * 25}%`;
     } else if (item === 'mount') {
       if (next.mount && next.mount.lv >= MOUNT.levels) throw new UserError(`Your mount is already level ${MOUNT.levels}.`);
-      if (!next.mount) { next.mount = { lv: 1, pair: Math.floor(rand() * MOUNT.pairs.length) }; rolled.drew = true; }
+      if (!next.mount) { next.mount = { lv: 1, pair: drawPair(rand) }; rolled.drew = true; }
       else next.mount.lv++;
       rolled.mount = { ...next.mount };
       cost = COSTS.mountLevel; what = `mount level ${next.mount.lv}`;
     } else if (item === 'mountReset') {
       if (!next.mount) throw new UserError('Buy a mount first.');
       const old = next.mount.pair;
-      let p; do { p = Math.floor(rand() * MOUNT.pairs.length); } while (p === old);
+      const p = drawPair(rand, old);
       next.mount.pair = p; next.mount_resets++;
       rolled.old = old; rolled.mount = { ...next.mount };
       cost = COSTS.mountReset; what = 'a mount stat reset';

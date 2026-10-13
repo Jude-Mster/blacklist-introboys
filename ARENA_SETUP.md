@@ -157,3 +157,13 @@ Two stress rigs ran the real server code with 5 to 50 simulated members (watchin
 - **Screens spread out**: each screen waits its own extra 0.25-1.1 s after a round or match change.
 - **Crowd**: shared 8 s; screens say "I'm watching" every 45 s and count as watching for 90 s.
 - Tournament, 20 members watching and betting: 6.15 about 5,300 database calls a minute (fails at once); 6.17 about 200 (one copy) to 450 (three copies).
+
+## 19. What changed in 6.18: the Guild Leader's balance changes (engine 9; redeploy every function and publish)
+- Base fighter: HP 50,000 (was 40,000), ATK 17,500 (15,000), DEF 9,000 (6,000), Accuracy 100% (80%), HP potions 7 (5), Potion heal 100% (80%).
+- Each upgrade: HP +8,500 (7,000), ATK +1,150 (950), Accuracy +10% (5%), Evasion +10% (8%), Crit rate +3.5% (1.5%), Crit defense +5% (3%).
+- Roll chances: Crit rate 1 in 15, Crit defense 1 in 9 (was 1 in 5), the other eight about 1 in 9.7 each.
+- Potions are drunk at 85% HP or less (was 70%). A critical does 2× to 8× (was 3× to 7×).
+- Weapon: 35% success per try (was 20%); a try now asks first ("35% chance of success"). Tournaments opened earlier keep the rate saved on them.
+- Mount: pair 2 is ATK + Accuracy (was ATK + HP); new pair 7, ATK + Crit rate. Pairs 4 to 7 come up 1 in 12 each, pairs 1 to 3 2 in 9 each. Accuracy and Crit rate from a mount are flat points. A fighter who already drew pair 2 now gets ATK + Accuracy.
+- Replays from before (engine 8) are not offered (they would play differently).
+- Measured on 400 Live Arena and 400 tournament fights: fights are about twice as fast (Live Arena median 17 s → 9 s; tournament 12 s → 7 s), mostly from Accuracy 100% (+10 per upgrade): hits land 90-97% of the time instead of about 70%. Prices still come from practice fights of the real fighters, so the house edge is unchanged (about 82% paid back on all bets, as before).

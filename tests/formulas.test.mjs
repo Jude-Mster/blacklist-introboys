@@ -7,11 +7,11 @@ const R = { rows: [], fail: 0 };
 const check = (name, formula, inputs, expected, actual, pass) => { R.rows.push({ name, formula, inputs, expected, actual, pass }); if (!pass) R.fail++; };
 
 // ---- the rules as stated (not imported) ----
-const BASE = { hp: 40000, mp: 13153, atk: 15000, def: 6000, crit: 15, critdef: 0, acc: 80, eva: 10, pots: 5, potheal: 80, spd: 100 };
-const PER = { hp: 7000, atk: 950, def: 900, crit: 1.5, critdef: 3, acc: 5, eva: 8, pots: 2, potheal: 3, spd: 10 };
+const BASE = { hp: 50000, mp: 13153, atk: 17500, def: 9000, crit: 15, critdef: 0, acc: 100, eva: 10, pots: 7, potheal: 100, spd: 100 };   // 6.18
+const PER = { hp: 8500, atk: 1150, def: 900, crit: 3.5, critdef: 5, acc: 10, eva: 10, pots: 2, potheal: 3, spd: 10 };
 const W = { atk: 0.15, crit: 5 };
 const PET_FULL = { hp: 4400, atk: 2700, def: 4400 }, PET_LV = 8;
-const MOUNT_PER = 3, PAIRS = [["atk", "def"], ["atk", "hp"], ["def", "hp"], ["crit", "eva"], ["def", "eva"], ["critdef", "def"]];
+const MOUNT_PER = 3, PAIRS = [["atk", "def"], ["atk", "acc"], ["def", "hp"], ["crit", "eva"], ["def", "eva"], ["critdef", "def"], ["atk", "crit"]];
 function myStats(f) {
   const s = { ...BASE };
   for (const k in PER) s[k] += ((f.ups || {})[k] || 0) * PER[k];
@@ -23,6 +23,7 @@ function myStats(f) {
 }
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
+let potEarly = 0;
 let fights = 0, hits = 0, misses = 0, crits = 0, expHit = 0, expCrit = 0, dmgBad = 0, dmgN = 0, hpBad = 0, koBad = 0, multBad = 0, potBad = 0, mpBad = 0, barBad = 0, statBad = 0, overkill = 0, afterKo = 0;
 let worstDmg = null;
 const r = E.mulberry32(20261011);
@@ -47,7 +48,7 @@ for (let i = 0; i < 1500; i++) {
       const atk = me.atk * (1 + (e.spirits ? 0.15 : 0) + (e.blood ? 0.25 : 0));
       const critP = clamp(me.crit + (e.blow ? 20 : 0) - foe.critdef - (e.nirvana ? 20 : 0), 1, 60) / 100;
       expCrit += critP; if (e.crit) crits++;
-      if (e.crit !== (e.mult >= 3) || (e.crit && (e.mult < 3 || e.mult > 7 || !Number.isInteger(e.mult))) || (!e.crit && e.mult !== 1)) multBad++;
+      if (e.crit !== (e.mult >= 2) || (e.crit && (e.mult < 2 || e.mult > 8 || !Number.isInteger(e.mult))) || (!e.crit && e.mult !== 1)) multBad++;
       // damage: max(ATK x 0.2, ATK - DEF x 0.5) x 0.46 x charge x crit, rounded; a shield halves it
       const base = Math.max(atk * 0.2, atk - foe.def * 0.5) * 0.46 * e.power * e.mult * (e.ot || 1);
       const full = Math.max(1, Math.round(base));
@@ -71,6 +72,7 @@ for (let i = 0; i < 1500; i++) {
     if (e.type === "potion") {
       const s = S[e.who], heal = Math.min(s.hp - hp[e.who], Math.round(s.hp * s.potheal / 100));
       if (heal !== e.heal) potBad++;
+      if (hp[e.who] > s.hp * 0.85) potEarly++;   // 6.18: drunk only at 85% HP or less
       hp[e.who] += heal;
     }
     if (e.type === "ko" && hp[e.who] !== 0) koBad++;
@@ -123,7 +125,7 @@ check("Overtime ends", "always a winner; at most 90 s of overtime", "300 fights"
     if (got !== 50 || Object.values(ups).some((v) => v > 9)) capBad++;
   }
   check("Upgrade cap", "every entry after the first rolls one upgrade, at most 50 in all and 9 per stat", "300 fighters, 79 entries each", "50 upgrades each", `${capBad} wrong`, capBad === 0);
-  check("Weapon success rate", "default chance per try", "DEFAULT_VALUES", "20%", `${E.DEFAULT_VALUES.weapon.chance * 100}%`, E.DEFAULT_VALUES.weapon.chance === 0.2);
+  check("Weapon success rate", "default chance per try", "DEFAULT_VALUES", "35%", `${E.DEFAULT_VALUES.weapon.chance * 100}%`, E.DEFAULT_VALUES.weapon.chance === 0.35);
   // simultaneous: how often is one fighter mid-attack while the other is too? and does Speed set how often each attacks?
   const plain = (spdRolls) => ({ entries: 26, ups: { hp: 9, def: 9, spd: spdRolls }, weapon: 0, skills: [], pet: 0, mount: null });
   let both = 0, frames = 0, nA = 0, nB = 0, tA = 0;
@@ -161,6 +163,16 @@ check("Crit multiplier", "x3 to x7 whole numbers, only on a crit, applied once",
 check("HP after a hit", "HP - damage, never below 0", `${hits} hits`, "0 wrong", `${hpBad} wrong, ${overkill} below 0`, hpBad === 0 && overkill === 0);
 check("KO", "KO exactly when HP reaches 0; nothing happens after it", `${fights} fights`, "0 wrong", `${koBad} wrong, ${afterKo} events after a KO`, koBad === 0 && afterKo === 0);
 check("Potion heal", "min(max HP - HP, round(max HP x heal%))", "all potions", "exact", `${potBad} wrong`, potBad === 0);
+check("Potion trigger", "drunk only at 85% HP or less", "all potions", "0 early", `${potEarly} early`, potEarly === 0);
+{ // 6.18 roll chances: Crit rate 1 in 15, Crit defense 1 in 9; mount pairs 4-7 1 in 12 each, 1-3 2 in 9 each
+  const rr = E.mulberry32(99), N = 120000, cnt = {}, pc = Array(7).fill(0);
+  for (let i = 0; i < N; i++) { const u = E.rollUpgrade({}, rr); cnt[u.id] = (cnt[u.id] || 0) + 1; pc[E.drawPair(rr)]++; }
+  const near = (x, want) => Math.abs(x / N - want) < 0.006;
+  check("Upgrade roll chances", "Crit rate 1/15, Crit defense 1/9", `${N} rolls`, "6.7% / 11.1%", `${(cnt.crit / N * 100).toFixed(1)}% / ${(cnt.critdef / N * 100).toFixed(1)}%`, near(cnt.crit, 1 / 15) && near(cnt.critdef, 1 / 9));
+  check("Mount pair chances", "pairs 1-3 2/9 each, 4-7 1/12 each", `${N} draws`, "22.2% x3, 8.3% x4", pc.map((x) => (x / N * 100).toFixed(1) + "%").join(" "), pc.every((x, i) => near(x, i < 3 ? 2 / 9 : 1 / 12)));
+  let same = 0; for (let i = 0; i < 20000; i++) { const old = i % 7; if (E.drawPair(rr, old) === old) same++; }
+  check("Mount reset", "never draws the same pair", "20000 resets", "0", `${same}`, same === 0);
+}
 check("HP / MP bars", "0 <= value <= max in every frame (bar = value / max)", `${fights} fights`, "0 out of range", `${barBad} out of range`, barBad === 0);
 check("MP", "only goes down (skills and buffs); never refills", `${fights} fights`, "0 rises", `${mpBad} rises`, mpBad === 0);
 const hitRate = hits / (hits + misses), critRate = crits / hits, eh = expHit / (hits + misses), ec = expCrit / hits;
