@@ -241,7 +241,10 @@ function LiveGrudge({ g, sn, serverNow, balance, setBalance, refresh }) {
   const loadBoard = useCallback(async () => {
     try { const res = await base44.functions.invoke("tournamentAction", { action: "grudge_board", id: g.id }); setBoard(res.data.board); } catch { /* next time */ }
   }, [g.id]);
-  useEffect(() => { loadBoard(); const id = setInterval(() => { if (!document.hidden) loadBoard(); }, 3000); return () => clearInterval(id); }, [loadBoard]);
+  // 6.23: the board comes with the grudge list (one poll for the whole tab); it is only asked for on its own
+  // right after this member's own bet, so it shows at once
+  const listBoard = g.board ? JSON.stringify(g.board) : "";
+  useEffect(() => { if (g.board) setBoard(g.board); }, [listBoard]);
   const place = async (lines) => {
     setBusy(true); setError(""); setNotice("");
     try {

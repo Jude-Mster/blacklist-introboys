@@ -12,21 +12,24 @@ import Login from '@/pages/Login';
 import Landing from '@/pages/Landing';
 import AccountProblem from '@/pages/AccountProblem';
 import Dashboard from '@/pages/Dashboard';
+// The games are what members open most: they come with the site itself, ready the moment it opens.
 import Games from '@/pages/Games';
-import Leaderboard from '@/pages/Leaderboard';
-import Profile from '@/pages/Profile';
-import Admin from '@/pages/Admin';
-import Poker from '@/pages/Poker';
-import Pusoy from '@/pages/Pusoy';
-import Shop from '@/pages/Shop';
-import Guide from '@/pages/Guide';
 import { Privacy, Terms } from '@/pages/Legal';
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
 import LanternSpinner from '@/components/LanternSpinner';
-// The Derby carries the 3D course: only downloaded when a member opens it.
-const Derby = lazy(() => import('@/pages/Derby'));
-// The Blacklist Arena carries its 3D fight scene: only downloaded when a member opens it.
-const Arena = lazy(() => import('@/pages/Arena'));
+import { PAGE_LOADERS, deferred } from '@/lib/routes';
+// 6.24: every page but the sign-in, the landing page and the guild hall is downloaded when it is first
+// needed (see lib/routes.js, which also fetches the likely next ones ahead). The Derby and the Arena carry
+// their 3D scenes.
+const Leaderboard = deferred(PAGE_LOADERS.leaderboard);
+const Profile = deferred(PAGE_LOADERS.profile);
+const Admin = deferred(PAGE_LOADERS.admin);
+const Poker = deferred(PAGE_LOADERS.poker);
+const Pusoy = deferred(PAGE_LOADERS.pusoy);
+const Shop = deferred(PAGE_LOADERS.shop);
+const Guide = deferred(PAGE_LOADERS.guide);
+const Derby = deferred(PAGE_LOADERS.derby);
+const Arena = deferred(PAGE_LOADERS.arena);
 // Add page imports here
 
 // Old addresses (signup, password reset, the old Discord link page's callback)

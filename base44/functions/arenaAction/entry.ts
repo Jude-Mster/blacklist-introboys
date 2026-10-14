@@ -208,7 +208,7 @@ export default async function(req) {
 
     // Screens poll 'state' and 'pulse' every few seconds; they may reuse a member row read in the
     // last 20 s. Bets and everything else read it fresh.
-    const LIGHT = p.action === 'state' || p.action === 'pulse';
+    const LIGHT = p.action === 'state' || p.action === 'pulse' || p.action === 'bet';   // 6.23: a bet reads the member fresh inside its lock
     const user = await sessionUser(b, req, LIGHT ? POLL_REUSE_MS : 0);
     if (!user) throw new UserError('Link your Discord first.', 401);
     if (p.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION, engine: ENGINE_VERSION });
@@ -228,7 +228,9 @@ export default async function(req) {
       const now = Date.now();
       const status = statusAt(t, now);
       const board = await betBoard(b, { scope: 'live', round_no: t.round_no }, me.id, status === 'result' ? t.outcome : null);
-      return Response.json({ table: publicTable(t, now, settings), ...board });
+      // 6.23: the crowd (watching, emojis) comes with the table when the screen asks, so it needs no poll of its own
+      const crowd = p.crowd === true ? await pulse(b, me, 'live', p.here === true).catch(() => null) : undefined;
+      return Response.json({ table: publicTable(t, now, settings), ...board, ...(crowd ? { crowd } : {}) });
     }
 
     if (p.action === 'settle') {

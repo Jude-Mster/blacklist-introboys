@@ -6,7 +6,7 @@ import { useGuild, errorText } from "@/lib/GuildContext";
 import { simulate, LIMIT, ENGINE_VERSION } from "@/lib/arenaEngine";
 import { cn } from "@/lib/utils";
 import ArenaRules from "./ArenaRules";
-import { ArenaStage, ReplayStage, FighterCard, BetSlip, MyBets, BetBoard, asFighter, fmt, fmtPrice, lookColor, useServerClock, useArenaCrowd, useWide } from "./arenaUi";
+import { ArenaStage, ReplayStage, FighterCard, BetSlip, MyBets, BetBoard, asFighter, fmt, fmtPrice, lookColor, useServerClock, useArenaCrowd, useCrowdHere, useWide } from "./arenaUi";
 
 // The Live Arena: one shared fight every few minutes between two members of the site, picked at random with
 // random builds. Betting is open first, then every screen plays the same fight from the seed the server
@@ -35,20 +35,21 @@ export default function LiveArena({ balance }) {
     } catch { /* tried again later */ } finally { setTimeout(() => { collecting.current = false; }, 2500); }
   }, [reload]);
 
+  const wantHere = useCrowdHere();
   const refresh = useCallback(async () => {
     if (inFlight.current) return;
     inFlight.current = true;
     const asked = Date.now();
     lastPoll.current = asked;
     try {
-      const res = await base44.functions.invoke("arenaAction", { action: "state" });
+      const res = await base44.functions.invoke("arenaAction", { action: "state", crowd: true, ...(wantHere() ? { here: true } : {}) });   // 6.23: the crowd comes with the table
       const d = res.data;
       if (d && d.table && asked < changedAt.current) return;
       if (d && d.table) { sync(d.table.server_now, asked); tableRef.current = d.table; loaded.current = true; setState(d); setLoadError(""); }
     } catch (e) {
       if (!loaded.current && !(e && e.rateLimited)) setLoadError(errorText(e, "Couldn't reach the arena."));
     } finally { inFlight.current = false; }
-  }, [sync]);
+  }, [sync, wantHere]);
 
   const jitter = useRef(250 + Math.floor(Math.random() * 750));   // spreads the "next fight" requests a little
   useEffect(() => {
@@ -115,7 +116,7 @@ export default function LiveArena({ balance }) {
     const b = { ...replay.builds[1], name: replay.f[1].name, look: replay.f[1].look, avatar: replay.f[1].avatar };
     return { key: `replay-${replay.r}-${replay.started}`, a, b, fight: simulate(a, b, replay.seed, { draws: true }), label: `BLACKLIST INTROBOYS · Live Arena fight ${replay.r}: ${a.name} vs ${b.name}`, fileName: `live-arena-fight-${replay.r}-${a.name}-vs-${b.name}` };
   }, [replay]);
-  const crowd = useArenaCrowd("live");
+  const crowd = useArenaCrowd("live", true, state && state.crowd ? state.crowd : null);
   const wide = useWide();
 
   if (!table) {

@@ -1,9 +1,15 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import Panel from "@/components/Panel";
 import LanternSpinner from "@/components/LanternSpinner";
 import { useGuild } from "@/lib/GuildContext";
 import { Points } from "@/components/SealLogo";
+import LiveFeed from "@/components/games/LiveFeed";
+import ChatBox from "@/components/chat/ChatBox";
+import { GAME_ICONS } from "@/lib/gameIcons";
+import { GAMES } from "@/lib/games";
+import { cn } from "@/lib/utils";
+import { tableGuard } from "@/lib/tableGuard";
 import CoinFlip from "@/components/games/CoinFlip";
 import SicBo from "@/components/games/SicBo";
 import LanternSlots from "@/components/games/LanternSlots";
@@ -12,19 +18,16 @@ import SkyWheel from "@/components/games/SkyWheel";
 import Roulette from "@/components/games/Roulette";
 import Blackjack from "@/components/games/Blackjack";
 import Lucky9 from "@/components/games/Lucky9";
-import LiveFeed from "@/components/games/LiveFeed";
-import ChatBox from "@/components/chat/ChatBox";
-import { GAME_ICONS } from "@/lib/gameIcons";
-import { GAMES } from "@/lib/games";
-import { cn } from "@/lib/utils";
-import { tableGuard } from "@/lib/tableGuard";
+import { warmGames } from "@/lib/routes";
 
+// The games come with the site itself (they are what members open most), so they show the moment the page opens.
 const COMPONENTS = { coinflip: CoinFlip, dragondice: SicBo, lanternslots: LanternSlots, fortune: FortuneSlots, skywheel: SkyWheel, roulette: Roulette, blackjack: Blackjack, lucky9: Lucky9 };
 const ICONS = GAME_ICONS;
 
 export default function Games() {
   const { account, settings, loading } = useGuild();
   const [params, setParams] = useSearchParams();
+  useEffect(() => { warmGames(); }, []);
 
   if (loading) return <LanternSpinner label="Setting out the tables" className="py-24" />;
   if (!account || !account.linked) return <Navigate to="/link-discord" replace />;

@@ -36,11 +36,11 @@ async function readToken(req): Promise<string> {
 // To stay under the platform's request limit, a session that was just looked up is
 // remembered for a short while by this running copy of the function. The member row
 // is still read fresh on every call, so losing access or a ban applies at once.
-const SESSION_CACHE_MS = 120000;   // two minutes (was 30 s): fewer database reads on every call
+const SESSION_CACHE_MS = 600000;   // 6.23: ten minutes (was 2): a session row never changes. After signing out the device drops its token, and other running copies forget the session within 10 minutes
 // 6.17: screens that only look (the table, the crowd, chat) may reuse what this copy read about the
 // caller for up to 2 minutes (member row) / 10 minutes (session). Losing access still signs the member
 // out within about 90 s (the account refresh), and anything that moves points always reads fresh.
-export const POLL_REUSE_MS = 120000;
+export const POLL_REUSE_MS = 300000;   // 6.23: 5 min (was 2): polls never move points; everything that does reads the member fresh
 const POLL_SESSION_MS = 600000;
 const sessionCache = new Map<string, { s: any; at: number }>();
 const memberSeen = new Map<string, { m: any; at: number; used: number }>();

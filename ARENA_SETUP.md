@@ -201,3 +201,39 @@ Two stress rigs ran the real server code with 5 to 50 simulated members (watchin
   - Grudge bets are tournament-scope bets with tour_id `grudge:<id>`, so they are settled the same way.
 - **Hall of Fame and titles** (Hall of Fame tab): champions, leaders and records, worked out from finished tournaments and grudges. Titles: Reigning Champion, N× Champion, Champion. A title shows over the fighter in tournaments and grudges, and on the seeds and fighters lists.
 - **Replays on Discord.** Every tournament match and grudge result posts a card with a "watch" link (`/arena?tab=tournament&tour=…&match=…`, `/arena?tab=grudge&grudge=…`) to `DISCORD_REPLAY_WEBHOOK_URL`, or to the announcements webhook if that secret isn't set. For the final, the Guild Leader opens it under the results and presses **Send the final to Discord**: the browser records it and posts the video (up to 9.5 MB).
+
+## 23. What changed in 6.23: a tournament with 30+ members stays light (redeploy every function and publish; no entity, engine, points rules or package changes)
+A stress rig ran the real server code with 30 members going through a whole tournament (sign-up and shopping, the prediction window, the matches with bets and emojis) and 6 more on the Grudge tab, over 1 or 3 running copies of the functions. On 6.22, the prediction window and the Hall of Fame titles roughly doubled the database work of a tournament.
+- **Predictions:** one shared read of every prediction (it was one read per screen, every 4 s). During the prediction window, every look no longer re-reads the tournament (the "predict" state was missing from a list).
+- **A member's change clears only what it changed.** A purchase clears only the fighters list; a prediction only the predictions; a grudge challenge only the grudge list. Before, any of these made every screen re-read everything, the Hall of Fame included. The Guild Leader's changes still clear everything.
+- **The crowd comes with the screen's own poll.** The Live Arena and the tournament screens get the watching count and the emojis with their state, so the separate crowd poll is gone.
+- **Grudge tab:** the bet board comes with the grudge list (the separate 3-second board poll is gone). The list is read with two queries instead of three and shared for up to 20 s, but read again the moment betting closes, a fight ends or a challenge expires.
+- **Purchases and bets:** fewer database calls each.
+  - The shared look at the tournament replaces two of a purchase's three reads; the check after saving still guards against the tournament starting mid-purchase.
+  - The member row read inside the lock is reused for the points change, and a bet's daily total is saved in the same write.
+  - A purchase now costs 11 calls instead of 13, and a bet 10 instead of 14. Banned members are still refused, checked on the fresh row.
+- **Collecting winnings with nothing to collect takes no lock.** Each collect pays at most one other member's bet (was 3); the Tournament Clock pays the rest.
+- **Polls:** the tournament screen asks at least every 10 s during matches (was 6 s; the exact times still matter) and every 15 s during sign-up (was 10 s). Fighter counts are saved at most every 20 s. Sessions are remembered for 10 minutes and member rows for polls for 5 minutes.
+- **Retries:** a bet, purchase or prediction that meets "server busy" is tried once more after about a second.
+- **Measured** (database calls a minute, 30 members + 6 on the Grudge tab, 3 running copies):
+
+  | Phase | 6.22 | 6.23 |
+  |---|---|---|
+  | Sign-up with heavy shopping (about 40 purchases a minute) | about 1,300 | about 710 |
+  | Prediction window | about 1,270 | about 340 |
+  | Matches | about 1,000 | about 420 |
+
+  Against a Base44-style limit of 500 calls a minute, the failed share of all requests fell from 51% to about 3-4%. What still runs into it is everyone shopping hard at the same moment: each purchase is about 11 database calls, most of them the lock that keeps points safe.
+- New test: `tests/t623_test.ts`.
+
+## 24. What changed in 6.24: the site and the games open faster (redeploy every function and publish; no entity, engine, points or package changes)
+Measured on a phone-like connection (5 Mbit/s, 120 ms, a 4× slower processor) against the real functions:
+- **The page no longer waits for Google before showing anything.** The Google fonts (Zen Kaku Gothic New, plus Cinzel and Barlow for the Arena) came in through `@import` in the stylesheets, so the whole site, and later the Arena, waited for Google's answer before drawing. Where Google couldn't be reached, the Arena didn't open at all ("Unable to preload CSS"). They now load from `index.html` without holding anything up, and the text shows at once in a fallback font. First paint: about 0.85 s → 0.57 s.
+- **Smaller first download.** The guild hall and the Games page (with all eight games) still come with the site. Poker, Pusoy, Derby, Arena, Shop, Rankings, Profile, Guide and the Admin hall are now downloaded when first needed, which cuts about 20% of the JavaScript on a first visit.
+- **Next pages fetched ahead** (`src/lib/routes.js`):
+  - Poker and Pusoy come down a few seconds after the site opens.
+  - Derby and Arena come down from the Games page (skipped on a data-saver or 2G connection).
+  - Any page starts downloading as soon as a finger or pointer lands on a link to it.
+  - Opening the Arena from the Games page went from about 1.2-3.5 s to about 0.7-1.0 s.
+- **The account is asked for as soon as the site's code arrives**, alongside React starting up, rather than after the first screen is drawn. That is about 0.3-0.4 s sooner on a slow phone.
+- **After a new publish,** a tab still running the old site reloads itself once when it can't find a page's code (instead of getting stuck).

@@ -12,6 +12,7 @@ import { sharedHall, titlesOf } from '../../shared/hall.ts';
 import { grudgeAction, tickGrudge, sharedGrudges, publicGrudge, betKey as grudgeBetKey, GRUDGE } from '../../shared/grudge.ts';
 import { placeBets, removeBets, payMine, payOthers, betBoard, arenaLimit, arenaMin, type Resolve } from '../../shared/arenaBets.ts';
 import { postSystem, GUILD_CHANNEL } from '../../shared/chat.ts';
+import { pulse } from '../../shared/arenaSocial.ts';
 import {
   announceWebhookUrl, announceTournamentOpen, announceTournamentResults, announceTournamentCancelled, announceTournamentStarted, announceTournamentSoon,
   announceFightResult, announcePrediction, postFightVideo, replayLink, replayWebhookUrl
@@ -185,7 +186,7 @@ const marksOf = (t) => {
 const noMarkPassed = (t, at: number) => { if (!t) return true; const now = Date.now(); return !marksOf(t).some((x) => x > at && x <= now); };
 const sharedActive = (b) => memo('tour:active', 10000, () => activeTour(b), noMarkPassed);
 const sharedLast = (b) => memo('tour:last', 20000, () => lastTour(b));
-const sharedEntrants = (b, tourId: string) => memo('tour:ent:' + tourId, 2000, () => entrantsOf(b, tourId));
+const sharedEntrants = (b, tourId: string) => memo('tour:ent:' + tourId, 5000, () => entrantsOf(b, tourId));   // 6.23: 5 s (was 2 s)
 const buildOf = (x) => ({ entries: x.entries || 0, ups: x.ups || {}, weapon: x.weapon || 0, skills: x.skills || [], pet: x.pet || 0, mount: x.mount && x.mount.lv ? x.mount : null });
 
 // ---------- the bracket ----------
@@ -589,6 +590,7 @@ async function finishTour(b, t) {
   }
   if (results.some((r) => r.kind === 'points' && !r.paid)) return cur; // try again on the next visit / schedule
   cur = await postEnded(b, cur);
+  bust('hall:'); bust('pot:'); bust('picks:');   // a new champion and title, the pot may have been won
   try { cur = await settlePrediction(b, cur); } catch (e) { console.error('prediction settle failed', cur.id, String(e && e.message || e)); return cur; }
   cur = await E(b).Tournament.update(cur.id, { status: 'done', results, finished_at: iso(Date.now()) });
   await clearEntrants(b, cur.id);
@@ -697,7 +699,7 @@ async function buy(b, t, me, item: string, count: number, shown?: number) {
   const values = normValues(t.values);
   const COSTS = normCosts(t.costs);   // this tournament's prices, set by the Guild Leader
   return lockMember(b, me.id, async () => {
-    const cur = await E(b).Tournament.get(t.id);
+    const cur = t;   // 6.23: no second read here; stillSignup() below is the check that counts
     if (cur.status !== 'signup') throw new UserError('The tournament has started, so the shop is closed.');
     const mineRows = (await E(b).TourEntrant.filter({ tour_id: cur.id, member_id: me.id }, { limit: 2 })).items;
     let x = mineRows[0] || null;
@@ -778,7 +780,10 @@ async function buy(b, t, me, item: string, count: number, shown?: number) {
     }
 
     let balance;
-    try { ({ balance } = await changePoints(b, me.id, -cost, 'tournament', `Tournament: ${what}: ${cur.title}`, null)); }
+    // 6.23: the member row is read here, inside the lock (the request itself may use a row read a moment ago)
+    const fresh = await E(b).Member.get(me.id);
+    if (fresh.banned) throw new UserError('You are banned from the games.', 403);
+    try { ({ balance } = await changePoints(b, me.id, -cost, 'tournament', `Tournament: ${what}: ${cur.title}`, null, { fresh })); }
     catch (e) { throw /not enough/i.test(String(e && e.message)) ? new UserError('Not enough points for that.') : e; }
     const before = x;
     try {
@@ -824,13 +829,23 @@ async function reroll(b, t, me) {
 // 6.16: after anything that isn't a read, forget the shared answers so the next screen sees the change.
 // (bets and payouts don't change the tournament itself; they clear the shared bet boards on their own)
 const READS = new Set(['state', 'status', 'ping', 'pulse', 'bet', 'remove', 'settle', 'grudges', 'grudge_board', 'grudge_bet', 'grudge_remove', 'hall', 'replay']);   // 6.22: grudge polls clear the shared reads themselves when a grudge moves on
+// 6.23: what each change clears, so one member's purchase doesn't make every screen read everything again
+// (anything not listed, i.e. the Guild Leader's changes, clears all of it)
+const ALL_SHARED = ['tour:', 'pot:', 'picks:', 'hall:', 'grudges:'];
+const countsSaved = new Map<string, { sig: string; at: number }>();
+const BUSTS: Record<string, string[]> = {
+  buy: ['tour:ent:'], reroll: ['tour:ent:'], predict: ['picks:'], pot_add: ['pot:'], pot_remove: ['pot:'], final_video: [],
+  challenge: ['grudges:'], grudge_accept: ['grudges:'], grudge_decline: ['grudges:'], grudge_cancel: ['grudges:']
+};
+// the polls that may reuse a member row read a moment ago (nothing here moves points)
+const POLLS = new Set(['state', 'status', 'grudges', 'grudge_board', 'hall', 'replay', 'buy', 'bet', 'grudge_bet'])   // buys and bets read the member fresh inside their lock
 export default async function(req) {
   let action = '';
   try { const q = await req.clone().json(); action = String((q && q.action) || ''); } catch { /* no body */ }
   try {
     return await handle(req);
   } finally {
-    if (!READS.has(action)) bust('tour:');
+    if (!READS.has(action)) for (const k of BUSTS[action] || ALL_SHARED) bust(k);
   }
 }
 
@@ -855,7 +870,7 @@ async function handle(req) {
     }
 
     // 6.15: the screen's polls ('state', 'status') may reuse a member row read in the last 20 s.
-    const user = await sessionUser(b, req, p.action === 'state' || p.action === 'status' ? POLL_REUSE_MS : 0);
+    const user = await sessionUser(b, req, POLLS.has(p.action) ? POLL_REUSE_MS : 0);
     if (!user) throw new UserError('Link your Discord first.', 401);
     if (p.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION, engine: ENGINE_VERSION });
     const me = await getMemberByUserId(b, user.id);
@@ -865,7 +880,12 @@ async function handle(req) {
 
     // ---------- 6.22: grudge matches, Hall of Fame, replays from a link, bracket predictions ----------
     if (['grudges', 'challenge', 'grudge_accept', 'grudge_decline', 'grudge_cancel'].includes(p.action)) {
-      return Response.json(await grudgeAction(b, p, me, { bankMove, titles: await titlesOf(b), settings }));
+      const res = await grudgeAction(b, p, me, { bankMove, titles: await titlesOf(b), settings });
+      // 6.23: the bet board of the grudge on now comes with the list, so the Grudge tab needs one poll, not two
+      if (p.action === 'grudges' && Array.isArray(res.grudges)) {
+        for (const g of res.grudges) if (g.status === 'running') g.board = await betBoard(b, grudgeBetKey(g.id), me.id, g.outcome || null);
+      }
+      return Response.json(res);
     }
     if (p.action === 'grudge_bet' || p.action === 'grudge_remove') {
       const g = await E(b).Grudge.get(String(p.id || '')).catch(() => null);
@@ -877,7 +897,7 @@ async function handle(req) {
       return Response.json({ ok: true, balance: res.balance, mine: res.mine || null });
     }
     if (p.action === 'grudge_board') {
-      const g = await E(b).Grudge.get(String(p.id || '')).catch(() => null);
+      const g = (await sharedGrudges(b)).find((x) => x.id === String(p.id || '')) || await E(b).Grudge.get(String(p.id || '')).catch(() => null);
       if (!g) throw new UserError('That grudge match is gone.');
       const now = Date.now(), done = g.end_at && now >= tms(g.end_at);
       return Response.json({ server_now: iso(now), board: await betBoard(b, grudgeBetKey(g.id), me.id, done ? g.outcome : null) });
@@ -923,7 +943,7 @@ async function handle(req) {
       let t = await tick(b, t0);
       if (t !== t0) bust('tour:'); // the clock moved it on: the shared answers are out of date
       // it just ended: a repeating one may have opened the next
-      if (t && !['signup', 'running', 'paying'].includes(t.status)) { bust('tour:'); t = await sharedActive(b); }
+      if (t && !['signup', 'predict', 'running', 'paying'].includes(t.status)) { bust('tour:'); t = await sharedActive(b); }   // 6.23: 'predict' was missing, so every look during the prediction window read the tournament again
       const now = Date.now();
       const out: any = { server_now: iso(now), costs: normCosts(t && t.costs), limit: arenaLimit(settings), min_bet: arenaMin(settings), bet_seconds: BET_SECONDS, intro: INTRO_SECONDS, result_seconds: RESULT_SECONDS, engine: ENGINE_VERSION };
       out.tournament = t ? publicTour(t, now, leader) : null;
@@ -931,10 +951,12 @@ async function handle(req) {
       const titles = await titlesOf(b);
       if (out.tournament && Array.isArray(out.tournament.field)) out.tournament.field = out.tournament.field.map((f) => ({ ...f, title: titles[f.member_id] || '' }));
       out.titles = titles;
-      out.pot = (await memo('tour:pot', 15000, () => potCodes(b))).map((x) => ({ label: x.label }));
+      out.pot = (await memo('pot:', 30000, () => potCodes(b))).map((x) => ({ label: x.label }));
       if (t && t.format === 'double') {
-        const mine = await memo(`tour:pick:${t.id}:${me.id}`, 4000, async () => (await E(b).BracketPick.filter({ tour_id: t.id, member_id: me.id }, { limit: 1 }).catch(() => ({ items: [] }))).items[0] || null);
-        const count = await memo(`tour:picks:${t.id}`, 8000, async () => (await E(b).BracketPick.filter({ tour_id: t.id }, { limit: 1000, fields: ['member_id'] }).catch(() => ({ items: [] }))).items.length);
+        // 6.23: one shared read of every prediction (not one per screen); after the window they can't change
+        const all = await memo(`picks:${t.id}`, t.status === 'predict' ? 6000 : 120000, async () => (await E(b).BracketPick.filter({ tour_id: t.id }, { limit: 1000 }).catch(() => ({ items: [] }))).items);
+        const mine = all.find((x) => x.member_id === me.id) || null;
+        const count = all.length;
         out.my_prediction = mine ? { picks: mine.picks, champion: mine.champion, submitted_at: mine.submitted_at, right: mine.right ?? null, played: mine.played ?? null, perfect: !!mine.perfect } : null;
         out.prediction_count = count;
       }
@@ -944,7 +966,13 @@ async function handle(req) {
         // the counts come from the fighters themselves (purchases don't write the tournament row)
         const paid = list.reduce((a, x) => a + (x.spent || 0), 0);
         out.tournament.entrant_count = list.length; out.tournament.bank_in = paid;
-        if (list.length !== (t.entrant_count || 0) || paid !== (t.bank_in || 0)) E(b).Tournament.update(t.id, { entrant_count: list.length, bank_in: paid }).catch(() => {});
+        // 6.23: the counts are saved on the tournament (for the menu badge) at most every 20 s, and only when they
+        // changed since this copy last saved them (the shared look at the tournament can be a few seconds old)
+        const sig = `${list.length}:${paid}`, w = countsSaved.get(t.id);
+        if ((list.length !== (t.entrant_count || 0) || paid !== (t.bank_in || 0)) && (!w || (w.sig !== sig && Date.now() - w.at > 20000))) {
+          countsSaved.set(t.id, { sig, at: Date.now() });
+          E(b).Tournament.update(t.id, { entrant_count: list.length, bank_in: paid }).catch(() => {});
+        }
         out.entrants = list.map(publicEntrant).sort((x, y) => y.entries - x.entries);
         const mine = list.find((x) => x.member_id === me.id);
         out.me = mine ? { ...publicEntrant(mine), rerolled: !!mine.rerolled, weapon_tries: mine.weapon_tries || 0, mount_resets: mine.mount_resets || 0 } : null;
@@ -957,6 +985,8 @@ async function handle(req) {
           out.board = { match_no: live.no, ...(await betBoard(b, { scope: 'tour', tour_id: t.id, match_no: live.no }, me.id, st === 'done' ? live.outcome : null)) };
         }
       }
+      // 6.23: the crowd (watching, emojis) comes with the state when the screen asks: no separate crowd poll
+      if (p.crowd === true && t && t.status !== 'predict') out.crowd = await pulse(b, me, 'tour:' + t.id, p.here === true).catch(() => null);
       if (leader) {
         const bank = await bankRow(b);
         out.bank = { balance: bank.balance || 0, total_in: bank.total_in || 0, total_out: bank.total_out || 0, log: (bank.log || []).slice(0, 20) };
@@ -978,7 +1008,10 @@ async function handle(req) {
     // ---------- members ----------
     if (p.action === 'buy' || p.action === 'reroll') {
       // the page says which tournament (one read instead of three searches)
-      const t = p.tour_id ? await E(b).Tournament.get(String(p.tour_id)).catch(() => null) : await activeTour(b);
+      // 6.23: the shared look at the tournament when it is the one asked for (a purchase still checks, after
+      // it is saved, that the tournament hadn't started; see stillSignup)
+      const sh = await sharedActive(b);
+      const t = sh && (!p.tour_id || sh.id === String(p.tour_id)) ? sh : p.tour_id ? await E(b).Tournament.get(String(p.tour_id)).catch(() => null) : await activeTour(b);
       if (!t || t.status !== 'signup') throw new UserError('There is no tournament open for sign-up.');
       if (me.banned) throw new UserError('You are banned from the games.', 403);
       const res = p.action === 'buy' ? await buy(b, t, me, String(p.item || ''), p.count == null ? 1 : Number(p.count), p.price == null ? undefined : Number(p.price)) : await reroll(b, t, me);
@@ -1007,7 +1040,7 @@ async function handle(req) {
     if (p.action === 'settle') {
       const resolve = tourResolver(b);
       const pending = await payMine(b, me, { scope: 'tour' }, resolve, settings);
-      await payOthers(b, { scope: 'tour' }, resolve, settings, me.id, 3);
+      await payOthers(b, { scope: 'tour' }, resolve, settings, me.id, 1);   // 6.23: one (was 3): everyone collects their own, and the clock sweeps the rest
       return Response.json({ ok: true, pending });
     }
 
