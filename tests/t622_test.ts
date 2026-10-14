@@ -16,6 +16,8 @@ const bank = async () => ((await E.ArenaBank.filter({}, {})).items[0] || { balan
 // ---------- shop: join, then random stats in packs of 1, 5 and 10 ----------
 let r = await call(tour, L, { action: 'create', predict_minutes: 61, title: 'x' });
 ok(r.status === 400 && /0 to 60/.test(r.error), 'prediction window over 60 refused: ' + r.error);
+r = await call(tour, L, { action: 'create', title: 'Four Cup', prizes: [1, 2, 3, 4].map((x) => ({ kind: 'points', points: x * 100 })) });
+ok(r.status === 400 && /up to 3 prizes/.test(r.error), 'three winners only: a 4th prize is refused: ' + r.error);
 r = await call(tour, L, { action: 'create', title: 'Pick Cup', prizes: [{ kind: 'points', points: 1000 }] });
 ok(r.ok, 'created (prediction window defaults to 10 minutes)');
 let s = await call(tour, ms[0], { action: 'state' });

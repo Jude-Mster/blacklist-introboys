@@ -1,5 +1,5 @@
 // Phase 3: tournament brackets for 2 to 12 fighters, run to the end. 6.22: seeded double elimination.
-// Checks byes, who advances, that nobody is out before two losses, places 1-4, prizes and that totals add up.
+// Checks byes, who advances, that nobody is out before two losses, places 1-3 (three winners only), prizes and that totals add up.
 import { member, settings, call, E, advance, ok, done } from './h.ts';
 const tour = (await import('../base44/functions/tournamentAction/entry.ts')).default;
 await settings({ games_enabled: ['arena'] });
@@ -7,7 +7,7 @@ const L = await member('Leader', 1e6, 'leader');
 const pool = []; for (let i = 0; i < 12; i++) pool.push(await member('F' + i, 1e6));
 const out = [];
 for (const n of [2, 3, 4, 5, 6, 7, 8, 9, 12]) {
-  const cr = await call(tour, L, { action: 'create', predict_minutes: 0, title: `Cup ${n}`, prizes: [{ kind: 'points', points: 1000 }, { kind: 'points', points: 500 }, { kind: 'points', points: 250 }, { kind: 'points', points: 100 }] });
+  const cr = await call(tour, L, { action: 'create', predict_minutes: 0, title: `Cup ${n}`, prizes: [{ kind: 'points', points: 1000 }, { kind: 'points', points: 500 }, { kind: 'points', points: 250 }] });
   const before = Object.fromEntries(await Promise.all(pool.map(async (m) => [m.id, (await E.Member.get(m.id)).points])));
   for (const m of pool.slice(0, n)) await call(tour, m, { action: 'buy', item: 'entry', count: 1 + Math.floor(Math.random() * 6) });
   await call(tour, L, { action: 'start' });
@@ -38,9 +38,10 @@ for (const n of [2, 3, 4, 5, 6, 7, 8, 9, 12]) {
   ok(r2 && r2.member_id === idOf(final.loser), `${n} fighters: the grand final's loser gets 2nd`);
   if (n >= 3) ok(r3 && lf && r3.member_id === idOf(lf.loser), `${n} fighters: the losers' final loser gets 3rd`);
   ok(field.every((f, i) => Number.isInteger(f.seed)), `${n} fighters: every fighter has a seed`);
-  const places = Math.min(n, 4);
+  const places = Math.min(n, 3);
+  ok(res.length === places, `${n} fighters: ${places} places, no 4th (${res.length})`);
   const paid = (await E.PointLog.filter({ source: 'tournament' }, {})).items.filter((l) => l.amount > 0 && l.reason.includes(`Cup ${n}`) && /prize/i.test(l.reason));
-  const prizeTotal = [1000, 500, 250, 100].slice(0, places).reduce((a, b) => a + b, 0);
+  const prizeTotal = [1000, 500, 250].slice(0, places).reduce((a, b) => a + b, 0);
   ok(paid.reduce((a, l) => a + l.amount, 0) === prizeTotal, `${n} fighters: prizes paid add up to ${prizeTotal} (paid ${paid.reduce((a, l) => a + l.amount, 0)} in ${paid.length})`);
   out.push({ n, matches: fought.length, stages: [...new Set(ms.map((m) => m.stage))].join(', ') });
 }

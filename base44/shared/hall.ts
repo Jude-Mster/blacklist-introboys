@@ -48,7 +48,7 @@ export async function computeHall(b) {
     if (t.prediction && t.prediction.winner_id) who(t.prediction.winner_id, t.prediction.winner_name || '').predictions_won++;
     champions.push({
       tour_id: t.id, title: t.title, at: t.finished_at || t.created_date, fighters: field.length, format: t.format || 'single',
-      places: results.slice(0, 4).map((r) => ({ place: r.place, member_id: r.member_id, name: r.name, avatar: r.avatar || '', look: r.look || '', prize: r.prize || '' })),
+      places: results.slice(0, 3).map((r) => ({ place: r.place, member_id: r.member_id, name: r.name, avatar: r.avatar || '', look: r.look || '', prize: r.prize || '' })),
       prediction: t.prediction ? { perfect: t.prediction.perfect_count || 0, entries: t.prediction.entries || 0, winner: t.prediction.winner_name || '' } : null
     });
   }

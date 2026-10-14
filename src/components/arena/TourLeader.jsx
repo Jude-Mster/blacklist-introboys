@@ -167,8 +167,8 @@ export default function TourLeader({ data, onChanged }) {
                 )}
               </div>
             ))}
-            {form.prizes.length < 4 && <button type="button" onClick={() => setForm((f) => ({ ...f, prizes: [...f.prizes, blankPrize()] }))} className="btn-bronze h-9 px-3 text-sm"><Plus className="h-4 w-4" /> Add a prize</button>}
-            <p className="text-xs text-mist">Points prizes are created by the site unless you tick "Pay from the Arena bank". Double elimination: 1st and 2nd come from the grand final, 3rd is the loser of the losers' final, 4th the loser of the losers' semi-final.</p>
+            {form.prizes.length < 3 && <button type="button" onClick={() => setForm((f) => ({ ...f, prizes: [...f.prizes, blankPrize()] }))} className="btn-bronze h-9 px-3 text-sm"><Plus className="h-4 w-4" /> Add a prize</button>}
+            <p className="text-xs text-mist">Points prizes are created by the site unless you tick "Pay from the Arena bank". Double elimination: 1st and 2nd come from the grand final, 3rd is the loser of the losers' final. Three winners only.</p>
           </fieldset>
 
           <fieldset className="rounded border border-bronze/40 bg-black/30 p-3">

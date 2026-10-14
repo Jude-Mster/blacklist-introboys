@@ -51,7 +51,7 @@ const cleanPredict = (v) => {
   return x;
 };
 const predictMinutesOf = (t) => { const x = Number(t && t.predict_minutes); return Number.isInteger(x) && x >= 0 && x <= PREDICT_MAX ? x : PREDICT_DEFAULT; };
-const MAX_PRIZES = 4;
+const MAX_PRIZES = 3;   // 6.22: three winners (1st, 2nd, 3rd), nothing more
 const MAX_PRIZE_POINTS = 10000000;
 const TOUR_LOCK_MS = 120000;
 const REMIND_MS = 10 * 60000;   // the "starts in 10 minutes" post
@@ -64,7 +64,7 @@ const iso = (ms: number) => new Date(ms).toISOString();
 const E = (b) => b.asServiceRole.entities;
 const rand = () => crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296;
 const secretSeed = () => crypto.getRandomValues(new Uint32Array(1))[0] >>> 0;
-const PLACE = ['1st', '2nd', '3rd', '4th'];
+const PLACE = ['1st', '2nd', '3rd'];
 const fmt = (n: number) => Number(n || 0).toLocaleString('en-US');
 const lockTour = (b, id: string, fn) => withRecordLock(b, 'Tournament', id, fn, TOUR_LOCK_MS);
 const lockMember = (b, id: string, fn) => withMemberLock(b, id, fn, 15000);
@@ -397,7 +397,7 @@ async function scheduleNext(b, t) {
     if (await activeTour(b)) return null;
     let next = (tms(t.starts_at) || tms(t.started_at) || Date.now()) + step;
     while (next < Date.now() + 60000) next += step;
-    const prizes = (t.prizes || []).map((x) => ({ ...x }));
+    const prizes = (t.prizes || []).slice(0, MAX_PRIZES).map((x) => ({ ...x }));
     const n = await E(b).Tournament.create({
       title: t.title, status: 'signup', starts_at: iso(next), values: normValues(t.values), costs: normCosts(t.costs), max_spend: maxSpendOf(t), prizes, repeat: t.repeat,
       format: 'double', predict_minutes: predictMinutesOf(t),
@@ -549,7 +549,7 @@ async function settlePrediction(b, t) {
 async function finishTour(b, t) {
   let cur = t;
   if (cur.status === 'running') cur = await E(b).Tournament.update(t.id, { status: 'paying' });
-  const places = placesOf(cur.matches || [], cur.format);
+  const places = placesOf(cur.matches || [], cur.format).slice(0, MAX_PRIZES);
   const field = cur.field || [];
   let results = Array.isArray(cur.results) && cur.results.length ? cur.results.map((r) => ({ ...r })) : places.map((fi, i) => {
     const p = (cur.prizes || [])[i];

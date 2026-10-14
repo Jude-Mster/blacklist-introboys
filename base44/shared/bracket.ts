@@ -130,17 +130,15 @@ export function championOf(ms, winners) {
   if (reset && sides[reset.no] !== "skip") return winners[reset.no] ?? null;
   return winners[gf.no] ?? null;
 }
-// Places 1-4 from the fought bracket: champion, runner-up, loser of the losers' final, loser of the
-// losers' semi-final.
+// Places 1-3 from the fought bracket: champion, runner-up, loser of the losers' final (three winners only).
 export function placesDouble(ms) {
   const done = (m) => m && m.winner != null && !m.skipped;
   const reset = ms.find((m) => m.reset), gf = ms.find((m) => m.sec === "G" && !m.reset);
   const last = done(reset) ? reset : gf;
   if (!done(last)) return [];
   const out = [last.winner, last.loser];
-  const lf = ms.find((m) => m.stage === "Losers' final"), ls = ms.find((m) => m.stage === "Losers' semi-final");
+  const lf = ms.find((m) => m.stage === "Losers' final");
   if (done(lf)) out.push(lf.loser);
-  if (done(ls)) out.push(ls.loser);
   return out.filter((x, i, a) => x != null && a.indexOf(x) === i);
 }
 // How a prediction did: picks[no] = predicted winner. Perfect = every match played went as picked

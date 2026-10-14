@@ -148,5 +148,5 @@ s = await call(tour, L, { action: 'state' });
 ok(s.tournament.matches.length === 2 * 13 - 1, '13 fighters: 24 matches + the reset slot = ' + s.tournament.matches.length);
 advance(3 * 3600 * 1000);
 s = await call(tour, L, { action: 'state' });
-ok(s.last.status === 'done' && new Set(s.last.results.map((x) => x.member_id)).size === 4, '4 distinct places');
+ok(s.last.status === 'done' && new Set(s.last.results.map((x) => x.member_id)).size === 3 && s.last.results.length === 3, '3 distinct places, no 4th');
 done();
