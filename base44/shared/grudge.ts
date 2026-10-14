@@ -95,6 +95,7 @@ export async function tickGrudge(b, g, bankMove) {
           await bankMove(b, house, `Grudge match cut: ${cur.challenger_name} vs ${cur.opponent_name}`).catch((e) => console.error('grudge bank cut failed', e));
         }
         cur = await E(b).Grudge.update(cur.id, { status: 'done', paid: true, prize, finished_at: iso(Date.now()) });
+        bust('hall:');
         const o = cur.outcome, how = o.how === 'ko' ? (o.ot ? 'by KO in overtime' : 'by KO') : 'on HP after overtime';
         await postSystem(b, GUILD_CHANNEL, `Grudge settled: ${winName} beat ${loseName} ${how} and takes ${fmt(prize)} points.`).catch(() => {});
         const price = cur.odds ? (cur.winner === 0 ? cur.odds.a : cur.odds.b) : 0;
@@ -108,11 +109,21 @@ export async function tickGrudge(b, g, bankMove) {
   }
 }
 
+// 6.23: two reads (open and running together, then the recent finished ones), shared for up to 8 s but
+// read again the moment one of their times passes (betting closing, a fight ending, a challenge expiring)
 async function list(b) {
-  const [open, running, done] = await Promise.all(['open', 'running', 'done'].map((s) => E(b).Grudge.filter({ status: s }, { sort: '-created_date', limit: s === 'done' ? 12 : 40 })));
-  return [...open.items, ...running.items, ...done.items];
+  const [live, done] = await Promise.all([
+    E(b).Grudge.filter({ status: { $in: ['open', 'running'] } }, { sort: '-created_date', limit: 60 }).catch(async () => {
+      const [o, r] = await Promise.all(['open', 'running'].map((s) => E(b).Grudge.filter({ status: s }, { sort: '-created_date', limit: 40 })));
+      return { items: [...o.items, ...r.items] };
+    }),
+    E(b).Grudge.filter({ status: 'done' }, { sort: '-created_date', limit: 12 })
+  ]);
+  return [...live.items.filter((g) => g.status === 'open'), ...live.items.filter((g) => g.status === 'running'), ...done.items];
 }
-export const sharedGrudges = (b) => memo('tour:grudges', 3000, () => list(b));
+const marksOf = (g) => (g.status === 'open' ? [g.expires_at] : g.status === 'running' ? [g.close_at, g.end_at] : []).map(tms).filter(Boolean);
+const noMarkPassed = (rows, at) => { const now = Date.now(); return !rows.some((g) => marksOf(g).some((m) => m > at && m <= now)); };
+export const sharedGrudges = (b) => memo('grudges:', 20000, () => list(b), (rows, at) => noMarkPassed(rows, at) && (Date.now() - at < 8000 || !rows.some((g) => g.status === 'running')));
 
 // The member actions. Returns the JSON to send.
 export async function grudgeAction(b, p, me, deps) {
@@ -123,7 +134,7 @@ export async function grudgeAction(b, p, me, deps) {
     // the clock work for any grudge that needs it (also done by the Tournament Clock schedule)
     let moved = false;
     for (const g of rows) { const n = await tickGrudge(b, g, bankMove); if (n !== g) moved = true; }
-    if (moved) { bust('tour:'); rows = await sharedGrudges(b); }
+    if (moved) { bust('grudges:'); bust('bets:'); rows = await sharedGrudges(b); }
     const now = Date.now();
     const out: any = { server_now: iso(now), rules: GRUDGE, grudges: rows.map((g) => publicGrudge(g, now, titles)) };
     if (p.members) {

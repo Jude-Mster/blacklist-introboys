@@ -293,11 +293,13 @@ export async function withRecordLock(b, entity: string, id: string, fn: () => Pr
 
 // The single helper that mutates points. amount may be negative.
 // Call it inside withMemberLock when the amount depends on a balance you just read.
-export async function changePoints(b, memberId, amount, source, reason, byMemberId) {
-  const member = await b.asServiceRole.entities.Member.get(memberId);
+// 6.23 opts: fresh = the member row the caller has just read INSIDE the same member lock (saves reading it
+// again); extra = other fields of the member to save in the same write (e.g. the day's wager total).
+export async function changePoints(b, memberId, amount, source, reason, byMemberId, opts: { fresh?: any; extra?: Record<string, any> } = {}) {
+  const member = opts.fresh && opts.fresh.id === memberId ? opts.fresh : await b.asServiceRole.entities.Member.get(memberId);
   const newBalance = (member.points || 0) + amount;
   if (newBalance < 0) throw new UserError("Not enough points.");
-  const updated = await b.asServiceRole.entities.Member.update(memberId, { points: newBalance });
+  const updated = await b.asServiceRole.entities.Member.update(memberId, { ...(opts.extra || {}), points: newBalance });
   await b.asServiceRole.entities.PointLog.create({
     member_id: memberId,
     discord_id: member.discord_id,

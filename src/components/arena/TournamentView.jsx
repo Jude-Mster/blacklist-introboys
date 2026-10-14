@@ -10,7 +10,7 @@ import {
 } from "@/lib/arenaEngine";
 import { cn } from "@/lib/utils";
 import {
-  ArenaStage, ReplayStage, FighterCard, BetSlip, MyBets, BetBoard, RollDialog, SkillIcons, Pips, asFighter, fmt, fmtPrice, hex, lookTitle, lookColor, useServerClock, useArenaCrowd, useWide
+  ArenaStage, ReplayStage, FighterCard, BetSlip, MyBets, BetBoard, RollDialog, SkillIcons, Pips, asFighter, fmt, fmtPrice, hex, lookTitle, lookColor, useServerClock, useArenaCrowd, useCrowdHere, useWide
 } from "./arenaUi";
 import TourLeader from "./TourLeader";
 import {
@@ -209,20 +209,21 @@ export default function TournamentView({ balance, member, link, onCloseLink }) {
   const dataRef = useRef(null), lastPoll = useRef(0), inFlight = useRef(false), changedAt = useRef(0), loaded = useRef(false);
   const leader = member.role === "leader";
 
+  const wantHere = useCrowdHere();
   const refresh = useCallback(async () => {
     if (inFlight.current) return;
     inFlight.current = true;
     const asked = Date.now();
     lastPoll.current = asked;
     try {
-      const res = await base44.functions.invoke("tournamentAction", { action: "state" });
+      const res = await base44.functions.invoke("tournamentAction", { action: "state", crowd: true, ...(wantHere() ? { here: true } : {}) });   // 6.23: the crowd comes with the state
       const d = res.data;
       if (d && asked < changedAt.current) return;
       if (d) { sync(d.server_now, asked); dataRef.current = d; loaded.current = true; setData(d); setLoadError(""); }
     } catch (e) {
       if (!loaded.current && !(e && e.rateLimited)) setLoadError(errorText(e, "Couldn't load the tournament."));
     } finally { inFlight.current = false; }
-  }, [sync]);
+  }, [sync, wantHere]);
 
   const jitter = useRef(Math.floor(Math.random() * 750));
   // Ask when something can change: the next match opening, betting closing (the seed), a fight ending.
@@ -239,13 +240,14 @@ export default function TournamentView({ balance, member, link, onCloseLink }) {
         if (t.ends_at) marks.push(Date.parse(t.ends_at));
         const next = marks.filter((x) => x > now - 200).sort((a, b) => a - b)[0];
         // 6.17: each screen adds its own 0.25-1.1 s, so a crowd doesn't arrive in the same second
-        wait = next ? Math.min(6000, Math.max(300, next - now + 350 + jitter.current)) : 4000;
+        wait = next ? Math.min(10000, Math.max(300, next - now + 350 + jitter.current)) : 4000;   // 6.23: at most 10 s between looks (was 6 s): the times that matter are asked for exactly
         // a match whose betting has closed but whose seed we don't have yet
         if (t.matches.some((m) => now >= Date.parse(m.close_at) && now < Date.parse(m.close_at) + 600000 && m.seed == null && m.a != null && m.b != null)) wait = Math.min(wait, 1200);
       } else if (t && t.status === "predict") {
         wait = t.predict_until ? Math.min(8000, Math.max(800, Date.parse(t.predict_until) - now + 500)) : 8000;
       } else if (t && t.status === "signup") {
-        wait = t.starts_at ? Math.min(10000, Math.max(800, Date.parse(t.starts_at) - now + 500)) : 10000;
+        // 6.23: every 15 s during sign-up (was 10 s); your own purchases show at once anyway
+        wait = t.starts_at ? Math.min(15000, Math.max(800, Date.parse(t.starts_at) - now + 500 + jitter.current)) : 15000;
       } else if (t && t.status === "paying") wait = 3000;
       if (Date.now() - lastPoll.current >= wait) refresh();
     }, 250);
@@ -393,7 +395,7 @@ function SignUp({ data, t, sn, balance, member, setBalance, onChanged, onBought,
     return { key: `signup-${pair[0].look}-${pair[1].look}`, a: pair[0], b: pair[1], values, fight: simulate(pair[0], pair[1], 1, { draws: false, ot: false, limit: 0.2, values }) };
   }, [pair, labKey, JSON.stringify(values)]);  
   const stageClock = useCallback(() => ({ idle: true, banner: me ? "" : "Join to get your own fighter" }), [me]);
-  const crowd = useArenaCrowd(`tour:${t.id}`);
+  const crowd = useArenaCrowd(`tour:${t.id}`, true, data.crowd || null);
 
   // The weapon forge on the stage: the blade soaks up the next aura while the try goes to the server (at
   // least FORGE_MS, so it can be seen), then keeps it or loses it; the result shows once that has played.
@@ -602,7 +604,7 @@ function Running({ data, t, sn, serverNow, balance, member, setBalance, changedA
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   useEffect(() => { setError(""); setNotice(""); }, [cur && cur.no]);
-  const crowd = useArenaCrowd(`tour:${t.id}`);
+  const crowd = useArenaCrowd(`tour:${t.id}`, true, data.crowd || null);
   // a finished match watched again from its seed
   const [replay, setReplay] = useState(null);
   const replaySpec = useMemo(() => (replay ? replaySpecOf(t, field, ms.find((m) => m.no === replay.no), values, replay.started) : null), [replay]);  

@@ -76,5 +76,5 @@ export async function computeHall(b) {
     tournaments: tours.length, grudges: grudges.length
   };
 }
-export const sharedHall = (b) => memo('tour:hall', 60000, () => computeHall(b));
+export const sharedHall = (b) => memo('hall:', 60000, () => computeHall(b));
 export async function titlesOf(b) { try { return (await sharedHall(b)).titles || {}; } catch { return {}; } }

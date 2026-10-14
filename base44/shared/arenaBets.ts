@@ -68,14 +68,19 @@ export async function placeBets(b, me, settings, o: { key: FightKey; label: stri
     if (clash) throw new UserError(`You can't bet on both "${lineLabel({ k: clash[0], line: lineOf(clash[0], o.odds) }, o.names)}" and "${lineLabel({ k: clash[1], line: lineOf(clash[1], o.odds) }, o.names)}" on the same fight.`);
     const today = todayStr();
     const fresh = await E(b).Member.get(me.id).catch(() => me);
+    if (fresh.banned) throw new UserError('You are banned from the games.', 403);   // 6.23: checked on the fresh row
     const usedToday = fresh.daily_bet_date === today ? fresh.daily_bet_total || 0 : 0;
     if (usedToday + total > (Number(settings.daily_bet_cap) || Infinity)) throw new UserError('Daily wager limit reached. It resets at 00:00 UTC.');
     if (Date.now() >= o.closeAt) throw new UserError(CLOSED);
 
     let balance;
-    try { ({ balance } = await changePoints(b, me.id, -total, 'game', `${o.label} bet`, null)); }
+    // 6.23: the member row read just above (inside this lock) is used, and the day's total is saved in the
+    // same write as the points (one read and one write fewer per bet)
+    const dailyNow = { daily_bet_total: usedToday + total, daily_bet_date: today };
+    const fromFresh = fresh && fresh.id === me.id && fresh !== me;
+    try { ({ balance } = await changePoints(b, me.id, -total, 'game', `${o.label} bet`, null, fromFresh ? { fresh, extra: dailyNow } : {})); }
     catch (e) { throw /not enough/i.test(String(e && e.message)) ? new UserError('Not enough points for that bet.') : e; }
-    const daily = E(b).Member.update(me.id, { daily_bet_total: usedToday + total, daily_bet_date: today }).catch(() => {});
+    const daily = fromFresh ? Promise.resolve() : E(b).Member.update(me.id, dailyNow).catch(() => {});
     let row;
     try {
       if (existing) row = await E(b).ArenaBet.update(existing.id, { lines: merged, amount: (existing.amount || 0) + total });
@@ -175,6 +180,13 @@ export const runAfter = async (after: Array<() => Promise<void>>) => { for (cons
 export async function payMine(b, me, scopeFilter, resolve: Resolve, settings) {
   let pending = 0;
   const after = [];
+  // 6.23: look first without the lock (a read): no bet of mine waiting, or none whose fight is over yet,
+  // means there is nothing to pay, so the lock (five database calls) is skipped
+  const { items: waiting } = await E(b).ArenaBet.filter({ ...scopeFilter, member_id: me.id, settled: false }, { limit: 10 });
+  if (!waiting.length) return 0;
+  let over = 0;
+  for (const row of waiting) { try { if ((await resolve(row)).over) over++; } catch { over++; } }
+  if (!over) return waiting.length;
   await lockMember(b, me.id, async () => {
     const { items } = await E(b).ArenaBet.filter({ ...scopeFilter, member_id: me.id, settled: false }, { limit: 10 });
     for (const row of items) {

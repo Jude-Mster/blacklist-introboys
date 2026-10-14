@@ -41,6 +41,10 @@ let busyStreak = 0;
 const slowDown = () => { busyStreak = Math.min(busyStreak + 1, 4); backoffUntil = Date.now() + Math.min(BACKOFF_MAX_MS, BACKOFF_MS * 2 ** (busyStreak - 1)); };
 const LOAD_ACTIONS = new Set(["state", "list", "catalog", "adminOverview", "roster", "totals", "search", "discordStatus", "ping", "mine", "pending", "adminList", "stockSummary"]);
 const LOAD_RETRY_MS = [1200, 2500, 5000];
+// 6.23: a bet, a purchase or a prediction that meets a "busy" answer is tried once more after a short random
+// pause (a burst, e.g. everyone betting in the same 10 seconds, is usually over by then). Safe: a busy answer
+// means nothing was charged, or what was charged was returned before the answer came back.
+const RETRY_ONCE = new Set(["bet", "grudge_bet", "buy", "predict"]);
 // Games that play an animation before the result should be seen set the balance themselves.
 const HOLD_BALANCE = new Set(["playGame"]);
 // Calls that can't change anyone's points.
@@ -104,6 +108,7 @@ functions.invoke = async (name, data) => {
       } catch (e) {
         // "One emoji at a time" is a game rule, not the server being busy.
         if (!isRateLimit(e) || payload.action === "react") throw e;
+        if (attempt === 0 && RETRY_ONCE.has(payload.action)) { await new Promise((r) => setTimeout(r, 700 + Math.floor(Math.random() * 900))); continue; }
         slowDown();
         if (!isLoad || attempt >= retries) throw busyError(e);
         await new Promise((r) => setTimeout(r, LOAD_RETRY_MS[attempt]));

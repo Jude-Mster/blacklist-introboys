@@ -175,11 +175,14 @@ export function ArenaStage({ spec, clock, className, showLog = true, logTitle = 
 // The crowd for one screen ("live", or "tour:<id>"): how many are watching and the emojis they throw.
 // Asks every 12 seconds while the tab is open (it was 5: the crowd was the busiest caller of all);
 // counts this member as watching every 30 seconds.
-export function useArenaCrowd(scope, enabled = true) {
+// 6.23: ext = the crowd that came with the screen's own poll (the Live Arena and tournament screens ask for
+// it with their state), so there is no separate crowd poll at all; without it, it polls as before.
+export function useArenaCrowd(scope, enabled = true, ext = undefined) {
   const [state, setState] = useState({ watching: 0, reactions: [] });
   const lastHere = useRef(0);
+  const own = ext !== undefined;
   useEffect(() => {
-    if (!enabled || !scope) return undefined;
+    if (!enabled || !scope || own) return undefined;
     let alive = true;
     const ask = async () => {
       if (typeof document !== "undefined" && document.hidden) return;
@@ -191,13 +194,19 @@ export function useArenaCrowd(scope, enabled = true) {
       } catch { /* the crowd is a nicety: try again next time */ }
     };
     ask();
-    const t = setInterval(ask, 12000);
+    const t = setInterval(ask, 20000);   // 6.23: every 20 s (was 12 s): the watching count doesn't need more
     return () => { alive = false; clearInterval(t); };
-  }, [scope, enabled]);
+  }, [scope, enabled, own]);
   const send = useCallback(async (emoji) => {
     try { const res = await base44.functions.invoke("arenaAction", { action: "react", scope, emoji }); return res.data && res.data.id; } catch { return null; }
   }, [scope]);
-  return useMemo(() => ({ ...state, send }), [state, send]);
+  const shown = own ? { watching: (ext && ext.watching) || 0, reactions: (ext && ext.reactions) || [] } : state;
+  return useMemo(() => ({ ...shown, send }), [shown.watching, shown.reactions, send]);
+}
+// For a screen that carries the crowd on its own poll: send "I'm watching" with it about every 45 s.
+export function useCrowdHere() {
+  const last = useRef(0);
+  return useCallback(() => { if (Date.now() - last.current > 45000) { last.current = Date.now(); return true; } return false; }, []);
 }
 
 // A replay on the page's own clock, with 2× speed, skip to the result and play again.
