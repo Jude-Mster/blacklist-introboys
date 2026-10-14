@@ -111,7 +111,7 @@ const fightUrl = `${SITE}/arena?tab=tournament`;
 export function announceTournamentOpen(t, entryCost: number, ping = false) {
   const at = t.starts_at ? Math.floor(Date.parse(t.starts_at) / 1000) : 0;
   const fields = [
-    { name: 'Entry', value: `${n(entryCost)} points`, inline: true },
+    { name: 'Join', value: `${n(entryCost)} points`, inline: true },
     { name: 'Starts', value: at ? `<t:${at}:F>\n<t:${at}:R>` : 'When the Guild Leader starts it', inline: true },
     { name: 'Prizes', value: (t.prizes || []).map((p, i) => `**${PLACE[i]}** · ${clip(p.label, 80)}`).join('\n').slice(0, 1000) || '—' }
   ];
@@ -123,7 +123,7 @@ export function announceTournamentOpen(t, entryCost: number, ping = false) {
       color: RED,
       title: `Tournament open: ${clip(t.title, 200)}`,
       url: fightUrl,
-      description: `Your first entry gives you a fighter. Every entry after that, weapon upgrade, skill, pet and mount makes it stronger. Every match is fought live and you can bet on each one.\n[Sign up on blacklistintroboys.com](${fightUrl})`,
+      description: `Joining gives you a fighter. Random stats (1, 5 or 10 at a time), weapon upgrades, skills, a pet and a mount make it stronger. Double elimination: you're out after two losses. Predict the whole bracket for the GP code pot, and bet on every match.\n[Sign up on blacklistintroboys.com](${fightUrl})`,
       fields,
       footer: { text: 'BLACKLIST INTROBOYS · Arena tournament' },
       timestamp: new Date().toISOString()
@@ -195,4 +195,70 @@ export function announceTournamentStarted(title: string, field, matchCount: numb
       timestamp: new Date().toISOString()
     }]
   });
+}
+// ---------- 6.22: match results and replays ----------
+// Results go to their own channel when DISCORD_REPLAY_WEBHOOK_URL is set, otherwise to the announcements
+// channel.
+export function replayWebhookUrl() {
+  let url = '';
+  try { url = secrets.get('DISCORD_REPLAY_WEBHOOK_URL') || ''; } catch { url = ''; }
+  url = String(url).trim();
+  if (url.startsWith('https://discord.com/api/webhooks/') || url.startsWith('https://discordapp.com/api/webhooks/')) return url;
+  return announceWebhookUrl();
+}
+async function postReplay(payload) {
+  const url = replayWebhookUrl();
+  if (!url) return false;
+  try {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 5000);
+    const res = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'Blacklist Arena', avatar_url: `${SITE}/icon-192.png`, allowed_mentions: { parse: [] }, ...payload }),
+      signal: ctl.signal
+    });
+    clearTimeout(timer);
+    if (!res.ok) console.error('replay post failed', res.status, (await res.text().catch(() => '')).slice(0, 200));
+    return res.ok;
+  } catch (e) { console.error('replay post failed', e); return false; }
+}
+export const replayLink = (q: string) => `${SITE}/arena?${q}`;
+// One finished fight: who won, how, and a link that plays it again on the site.
+// c: { title, stage, a, b, winner (name), how, length, price (winner's price or 0), watch, note }
+export function announceFightResult(c) {
+  const how = c.how === 'ko' ? (c.ot ? 'by KO in overtime' : 'by KO') : 'on HP left after overtime';
+  return postReplay({
+    embeds: [{
+      color: GOLD,
+      title: clip(`${c.stage}: ${c.a} vs ${c.b}`, 250),
+      url: c.watch,
+      description: `**${clip(c.winner, 60)}** wins ${how} in ${Number(c.length || 0).toFixed(1)} s${c.price > 1 ? ` (was ${Number(c.price).toFixed(2)}×)` : ''}.${c.note ? `\n${clip(c.note, 300)}` : ''}\n[▶ Watch the replay](${c.watch})`,
+      footer: { text: clip(c.title, 120) },
+      timestamp: new Date().toISOString()
+    }]
+  });
+}
+// The final as a video file (recorded in the Guild Leader's browser). Returns true when Discord took it.
+export async function postFightVideo(bytes: Uint8Array, mime: string, name: string, text: string) {
+  const url = replayWebhookUrl();
+  if (!url) return false;
+  try {
+    const fd = new FormData();
+    fd.append('payload_json', JSON.stringify({ username: 'Blacklist Arena', avatar_url: `${SITE}/icon-192.png`, content: clip(text, 1800), allowed_mentions: { parse: [] } }));
+    fd.append('files[0]', new Blob([bytes], { type: mime }), name);
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 25000);
+    const res = await fetch(url, { method: 'POST', body: fd, signal: ctl.signal });
+    clearTimeout(timer);
+    if (!res.ok) console.error('video post failed', res.status, (await res.text().catch(() => '')).slice(0, 300));
+    return res.ok;
+  } catch (e) { console.error('video post failed', e); return false; }
+}
+// Grudge match posts: a challenge, and its result.
+export function announceGrudge(text: string, watch = '') {
+  return postAnnouncement({ allowed_mentions: { parse: [] }, embeds: [{ color: RED, title: 'Grudge match', url: watch || `${SITE}/arena?tab=grudge`, description: clip(text, 1500), footer: { text: 'BLACKLIST INTROBOYS · Blacklist Arena' }, timestamp: new Date().toISOString() }] });
+}
+// Bracket prediction: who won the pot, or that it rolls over.
+export function announcePrediction(title: string, text: string) {
+  return postAnnouncement({ allowed_mentions: { parse: [] }, embeds: [{ color: GOLD, title: clip(`Bracket prediction: ${title}`, 250), url: fightUrl, description: clip(text, 2000), footer: { text: 'BLACKLIST INTROBOYS · Arena tournament' }, timestamp: new Date().toISOString() }] });
 }

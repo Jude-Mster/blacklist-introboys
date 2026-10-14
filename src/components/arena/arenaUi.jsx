@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import fixWebmDuration from "fix-webm-duration";
-import { Loader2, Volume2, VolumeX, X, Users, Eye, RotateCcw, FastForward, SkipForward, Download } from "lucide-react";
+import { Loader2, Volume2, VolumeX, X, Users, Eye, RotateCcw, FastForward, SkipForward, Download, Upload } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import Avatar from "@/components/Avatar";
@@ -24,7 +24,8 @@ const QUICK = [1, 10, 50, 100, 500, 1000, 5000];
 const SOUND_KEY = "bi.arena.sound";
 
 // A fighter as the scene and the cards want it: the build, the name, the look and the rank.
-export const asFighter = (x, extra = {}) => ({ ...(x.build || x), name: x.name, look: x.look, rank: RANK[x.role] || x.rank || "Member", avatar: x.avatar, ...extra });
+// 6.22: a Hall of Fame title (Reigning Champion, 3× Champion) shows in place of the guild rank
+export const asFighter = (x, extra = {}) => ({ ...(x.build || x), name: x.name, look: x.look, rank: x.title || RANK[x.role] || x.rank || "Member", title: x.title || "", avatar: x.avatar, member_id: x.member_id, seed: x.seed, ...extra });
 
 // ---------- the stage ----------
 // spec: { key, a, b, fight, values }; clock() -> { betting, betLeft, t, idle, banner } (see arenaScene.js).
@@ -219,7 +220,9 @@ export function useReplayClock(length, intro = 3) {
 }
 
 // A past fight watched again on this page's own clock (2× speed, skip, replay). Give it key={spec.key}.
-export function ReplayStage({ spec, crowd }) {
+// 6.22: onVideo(blob, ext) adds a "Send to Discord" button (the Guild Leader, for the final): it records the
+// replay the same way and hands the file over instead of saving it.
+export function ReplayStage({ spec, crowd, onVideo, videoLabel = "Send to Discord" }) {
   const { clock, controls, restart } = useReplayClock(spec.fight.length);
   const api = useRef(null);
   const [rec, setRec] = useState(null);   // { at, length } while recording
@@ -227,7 +230,8 @@ export function ReplayStage({ spec, crowd }) {
   const job = useRef(null);
   useEffect(() => () => { if (job.current) { job.current.cancel(); job.current = null; } }, []);
   // Download: plays the fight again from the start at normal speed and records the stage, then saves the file.
-  const download = async () => {
+  const [sending, setSending] = useState("");
+  const download = async (send) => {
     const sc = api.current;
     setRecError("");
     if (!sc || !sc.canRecord || !sc.canRecord()) { setRecError("This browser can't record the replay. Try Chrome, Edge, Firefox or a recent Safari."); return; }
@@ -250,6 +254,11 @@ export function ReplayStage({ spec, crowd }) {
     setRec(null);
     // browsers save recorded WebM without its length, so players can't seek it: write the length in
     if (r.ext === "webm") { try { blob = await fixWebmDuration(blob, Math.round(performance.now() - began), { logger: false }); } catch { /* the video still plays */ } }
+    if (send === true && onVideo) {
+      setSending("Sending…");
+      try { await onVideo(blob, r.ext); setSending("Sent to Discord."); } catch (e) { setSending(""); setRecError(String((e && e.message) || e)); }
+      return;
+    }
     const url = URL.createObjectURL(blob), a = document.createElement("a");
     a.href = url; a.download = `${(spec.fileName || "blacklist-arena-replay").replace(/[^A-Za-z0-9_-]+/g, "-")}.${r.ext}`;
     document.body.appendChild(a); a.click(); a.remove();
@@ -266,7 +275,9 @@ export function ReplayStage({ spec, crowd }) {
     <>
       {recError && <span className="mr-auto text-xs text-ember">{recError}</span>}
       {controls}
-      <button type="button" onClick={download} className={btn} title="Plays the fight again and saves it as a video"><Download className="h-3.5 w-3.5" /> Download</button>
+      {sending && <span className="text-xs text-[#f1d38c]" role="status">{sending}</span>}
+      <button type="button" onClick={() => download(false)} className={btn} title="Plays the fight again and saves it as a video"><Download className="h-3.5 w-3.5" /> Download</button>
+      {onVideo && <button type="button" onClick={() => download(true)} disabled={sending === "Sending…"} className={cn(btn, "border-[#5865f2] text-[#c9cdfb]")} title="Plays the fight again, records it and posts the video in the Discord replay channel"><Upload className="h-3.5 w-3.5" /> {videoLabel}</button>}
     </>
   );
   return <ArenaStage spec={spec} clock={clock} chip={{ text: rec ? "● Recording" : "Replay", live: !!rec }} crowd={crowd} controls={all} logTitle="Fight log (replay)" apiRef={api} />;
@@ -311,7 +322,7 @@ export function FighterCard({ f, values, side, highlight, children, className })
         {rows.map(([k, v, id]) => (<React.Fragment key={k}><dt className="text-mist">{k}</dt><dd className="text-right">{v}{up(id)}</dd></React.Fragment>))}
       </dl>
       <div className="mt-2 space-y-1 text-[12.5px]">
-        <p className="flex justify-between gap-2"><span className="text-mist">Entries</span><span className="tabular-nums">{f.entries || 1}</span></p>
+        <p className="flex justify-between gap-2"><span className="text-mist">Random stats</span><span className="tabular-nums">{Object.values(f.ups || {}).reduce((x, y) => x + (Number(y) || 0), 0)}</span></p>
         <p className="flex justify-between gap-2"><span className="text-mist">Weapon</span><span style={W ? { color: hex(W.color) } : undefined}>{W ? `+${f.weapon} ${W.name}` : "+0"}</span></p>
         <p className="flex items-center justify-between gap-2"><span className="text-mist">Skills</span><SkillIcons skills={f.skills} size={22} /></p>
         <p className="flex justify-between gap-2"><span className="text-mist">Pet</span><span>{f.pet ? `Condor ${petGrowth(f.pet)}%` : "—"}</span></p>

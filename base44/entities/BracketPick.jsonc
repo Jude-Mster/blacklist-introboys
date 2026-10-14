@@ -1,0 +1,46 @@
+{
+  "name": "BracketPick",
+  "type": "object",
+  "description": "6.22 a member's prediction of a whole tournament bracket (free). Scored when the tournament ends.",
+  "properties": {
+    "tour_id": {
+      "type": "string"
+    },
+    "member_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "avatar": {
+      "type": "string"
+    },
+    "picks": {
+      "type": "object",
+      "description": "match number -> predicted winner (field index)"
+    },
+    "champion": {
+      "type": "integer"
+    },
+    "submitted_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "right": {
+      "type": "integer"
+    },
+    "played": {
+      "type": "integer"
+    },
+    "perfect": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

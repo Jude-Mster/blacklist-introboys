@@ -33,9 +33,9 @@ export default function TourLeader({ data, onChanged }) {
       setForm({
         title: t.title, starts_at: toLocal(t.starts_at), repeat: t.repeat || "none",
         prizes: t.prizes.map((p) => ({ kind: p.kind, points: p.points ? String(p.points) : "", label: p.kind === "points" ? "" : p.label, from_bank: !!p.from_bank, code: "", from_stock: false })),
-        values: normValues(t.values), costs: normCosts(t.costs), max_spend: t.max_spend ? String(t.max_spend) : ""
+        values: normValues(t.values), costs: normCosts(t.costs), max_spend: t.max_spend ? String(t.max_spend) : "", predict_minutes: String(t.predict_minutes ?? 10)
       });
-    } else if (!t) setForm({ title: "", starts_at: "", repeat: "none", prizes: [blankPrize(), blankPrize(), blankPrize()], values: normValues(DEFAULT_VALUES), costs: normCosts(COSTS), max_spend: "" });
+    } else if (!t) setForm({ title: "", starts_at: "", repeat: "none", prizes: [blankPrize(), blankPrize(), blankPrize()], values: normValues(DEFAULT_VALUES), costs: normCosts(COSTS), max_spend: "", predict_minutes: "10" });
   }, [t, editing, form]);
   // a different tournament (or one that moved on): start the form again
   const keyRef = React.useRef(`${t ? t.id : ""}:${t ? t.status : ""}`);
@@ -59,7 +59,7 @@ export default function TourLeader({ data, onChanged }) {
   const bankPanel = (
     <Panel title="Arena bank">
       <p className="flex items-baseline justify-between gap-2"><span className="text-mist">Held</span><Points value={bank.balance} className="font-heading text-xl font-bold text-gold" iconSize={16} /></p>
-      <p className="mt-1 text-xs text-mist">Every point paid for tournament entries, weapon tries, skills, pets and mounts goes here and is held for later. Prizes marked "from the bank" are paid out of it; anything the bank can't cover is added by the site.</p>
+      <p className="mt-1 text-xs text-mist">Every point paid to join tournaments and for random stats, weapon tries, skills, pets and mounts goes here, plus the 5% cut from grudge matches, and is held for later. Prizes marked "from the bank" are paid out of it; anything the bank can't cover is added by the site.</p>
       <p className="mt-2 flex justify-between text-sm"><span className="text-mist">In, all time</span><span className="tabular-nums">{fmt(bank.total_in)}</span></p>
       <p className="flex justify-between text-sm"><span className="text-mist">Out, all time</span><span className="tabular-nums">{fmt(bank.total_out)}</span></p>
       {bank.log && bank.log.length > 0 && (
@@ -72,10 +72,11 @@ export default function TourLeader({ data, onChanged }) {
     </Panel>
   );
 
+  const potPanel = <PotPanel data={data} onChanged={onChanged} />;
   if (t && t.status !== "signup") {
-    return <div className="space-y-4">{bankPanel}<Panel title="Guild Leader"><p className="text-sm text-mist">{t.status === "running" ? "The tournament is being fought. Every match plays live; the prizes are paid after the final." : "Paying the prizes."}</p></Panel></div>;
+    return <div className="space-y-4">{bankPanel}<Panel title="Guild Leader"><p className="text-sm text-mist">{t.status === "predict" ? "The bracket is drawn and members are predicting it. The first match opens when the prediction window closes." : t.status === "running" ? "The tournament is being fought. Every match plays live; the prizes are paid after the final." : "Paying the prizes."}</p></Panel>{potPanel}</div>;
   }
-  if (!form) return bankPanel;
+  if (!form) return <div className="space-y-4">{bankPanel}{potPanel}</div>;
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setPrize = (i, k, v) => setForm((f) => ({ ...f, prizes: f.prizes.map((p, j) => (j === i ? { ...p, [k]: v } : p)) }));
@@ -94,6 +95,7 @@ export default function TourLeader({ data, onChanged }) {
     })),
     costs: Object.fromEntries(COST_ITEMS.map((c) => [c.id, Number(form.costs[c.id])])),
     max_spend: form.max_spend ? Number(form.max_spend) : 0,
+    predict_minutes: form.predict_minutes === "" ? 10 : Number(form.predict_minutes),
     values: {
       ups: Object.fromEntries(UPGRADES.map((u) => [u.id, Number(form.values.ups[u.id])])),
       weapon: { atk: Number(form.values.weapon.atk), crit: Number(form.values.weapon.crit), chance: Number(form.values.weapon.chance) }
@@ -122,7 +124,7 @@ export default function TourLeader({ data, onChanged }) {
               ))}
               {form.starts_at && <button type="button" onClick={() => set("starts_at", "")} className="btn-bronze h-8 px-2.5 text-xs">No start time</button>}
             </div>
-            <p className="mt-1 text-xs text-mist">It starts by itself at this time, and guild chat and Discord get a "starts in 10 minutes" reminder. Leave it empty to start it only with Start now. With 1 sign-up it is cancelled and refunded; with 2 it is a single 1v1.</p>
+            <p className="mt-1 text-xs text-mist">It starts by itself at this time, and guild chat and Discord get a "starts in 10 minutes" reminder. Leave it empty to start it only with Start now. With 1 sign-up it is cancelled and refunded.</p>
           </div>
           <div>
             <label className="label" htmlFor="tour-repeat">Schedule</label>
@@ -166,7 +168,7 @@ export default function TourLeader({ data, onChanged }) {
               </div>
             ))}
             {form.prizes.length < 4 && <button type="button" onClick={() => setForm((f) => ({ ...f, prizes: [...f.prizes, blankPrize()] }))} className="btn-bronze h-9 px-3 text-sm"><Plus className="h-4 w-4" /> Add a prize</button>}
-            <p className="text-xs text-mist">Points prizes are created by the site unless you tick "Pay from the Arena bank". 1st and 2nd come from the final, 3rd from the match for third place, 4th is its loser.</p>
+            <p className="text-xs text-mist">Points prizes are created by the site unless you tick "Pay from the Arena bank". Double elimination: 1st and 2nd come from the grand final, 3rd is the loser of the losers' final, 4th the loser of the losers' semi-final.</p>
           </fieldset>
 
           <fieldset className="rounded border border-bronze/40 bg-black/30 p-3">
@@ -183,12 +185,21 @@ export default function TourLeader({ data, onChanged }) {
           </fieldset>
 
           <fieldset className="rounded border border-bronze/40 bg-black/30 p-3">
+            <legend className="px-1 font-heading font-bold text-gold">Bracket prediction</legend>
+            <label className="flex flex-col text-xs text-mist">Minutes to predict the bracket after it's drawn (0 to 60, 0 = no predictions)
+              <input type="text" inputMode="numeric" className="field mt-1 h-9 w-full max-w-[8rem] tabular-nums" value={form.predict_minutes ?? "10"}
+                onChange={(e) => set("predict_minutes", e.target.value.replace(/[^\d]/g, "").slice(0, 2))} aria-label="Prediction window in minutes" />
+            </label>
+            <p className="mt-2 text-xs text-mist">At the start the bracket is drawn (seeded by strength) and shown first; members predict every match for free, then the first match opens. A perfect bracket wins the GP code pot below.</p>
+          </fieldset>
+
+          <fieldset className="rounded border border-bronze/40 bg-black/30 p-3">
             <legend className="px-1 font-heading font-bold text-gold">Spending limit</legend>
             <label className="flex flex-col text-xs text-mist">Most one member may spend on their fighter (points)
               <input type="text" inputMode="numeric" placeholder="No limit" className="field mt-1 h-9 w-full max-w-xs tabular-nums" value={form.max_spend ?? ""}
                 onChange={(e) => set("max_spend", e.target.value.replace(/[^\d]/g, "").slice(0, 10))} aria-label="Spending limit per member in points" />
             </label>
-            <p className="mt-2 text-xs text-mist">Counts everything bought for the fighter: entries, skills, weapon tries (failed ones too), Iron Condor growth, mount levels and resets. Bets on matches don't count; they have the per-match and daily limits. Leave it empty or 0 for no limit. You can change it while sign-up is open: a lower limit stops further buying but takes nothing back. A repeating tournament keeps it.</p>
+            <p className="mt-2 text-xs text-mist">Counts everything bought for the fighter: joining, random stats, skills, weapon tries (failed ones too), Iron Condor growth, mount levels and resets. Bets on matches don't count; they have the per-match and daily limits. Leave it empty or 0 for no limit. You can change it while sign-up is open: a lower limit stops further buying but takes nothing back. A repeating tournament keeps it.</p>
           </fieldset>
 
           <details className="rounded border border-bronze/40 bg-black/30 p-3">
@@ -229,6 +240,47 @@ export default function TourLeader({ data, onChanged }) {
         </form>
       </Panel>
       {bankPanel}
+      {potPanel}
     </div>
+  );
+}
+// 6.22: the GP code pot for a perfect bracket prediction. It stays until someone wins it (it rolls over).
+function PotPanel({ data, onChanged }) {
+  const rows = data.pot_rows || [];
+  const [label, setLabel] = useState("");
+  const [code, setCode] = useState("");
+  const [fromStock, setFromStock] = useState(false);
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const run = async (what, payload) => {
+    setBusy(what); setError("");
+    try { await base44.functions.invoke("tournamentAction", payload); setCode(""); if (what === "add") setLabel(""); onChanged(); }
+    catch (e) { setError(errorText(e, "That didn't work. Try again.")); }
+    finally { setBusy(""); }
+  };
+  return (
+    <Panel title="Bracket prediction pot">
+      <p className="text-sm text-mist">GP codes for whoever predicts a whole bracket (every match and the champion) right. Nobody perfect: the pot rolls over. Several: one is drawn at random.</p>
+      {rows.length ? (
+        <ul className="mt-2 space-y-1">
+          {rows.map((r) => (
+            <li key={r.id} className="flex items-center gap-2 rounded border border-bronze/40 bg-black/30 px-2 py-1.5 text-sm">
+              <span className="min-w-0 flex-1 truncate font-bold text-gold">{r.label}</span>
+              {r.last4 && <span className="text-xs text-mist">…{r.last4}</span>}
+              <button type="button" disabled={!!busy} onClick={() => run(`rm${r.id}`, { action: "pot_remove", id: r.id })} className="rounded p-1.5 text-mist hover:text-ember" aria-label={`Take ${r.label} out of the pot`}>{busy === `rm${r.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}</button>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="mt-2 text-sm">The pot is empty.</p>}
+      {rows.length < 10 && (
+        <div className="mt-3 space-y-2">
+          <input className="field h-10 w-full" maxLength={80} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Prize name, e.g. 1,000 GP code" aria-label="Pot prize name" />
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={fromStock} onChange={(e) => setFromStock(e.target.checked)} /> Take a code with this name from the stock</label>
+          {!fromStock && <CodeInput value={code} onChange={setCode} label="The code" />}
+          <button type="button" disabled={!!busy || !label.trim() || (!fromStock && !code.trim())} onClick={() => run("add", { action: "pot_add", label, ...(fromStock ? { from_stock: true } : { code: normalizeCode(code) }) })} className="btn-seal h-10 px-4 text-sm">{busy === "add" ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Plus className="h-4 w-4" /> Add to the pot</>}</button>
+        </div>
+      )}
+      {error && <p role="alert" className="mt-2 text-sm text-ember">{error}</p>}
+    </Panel>
   );
 }

@@ -1,4 +1,4 @@
-import { advance, member, settings, call, pts, ok, done, E } from './h.ts';
+import { advance, member, settings, call, pts, ok, done, E, enter } from './h.ts';
 import tour from '../base44/functions/tournamentAction/entry.ts';
 import { simulate, outcomeOf, normValues, betReturn } from '../base44/shared/arenaEngine.ts';
 const offeredKey = (o) => (o.a > 1 ? 'a' : o.b > 1 ? 'b' : ((o.side || []).find((x) => x.price > 1) || { id: 'lenover' }).id);   // a fighter if one is offered, else a side bet
@@ -11,11 +11,11 @@ for (let i = 0; i < 6; i++) ms.push(await member('F' + i, 50000));
 // --- 1 entrant: cancel + refund
 let r = await call(tour, ms[0], { action: 'create', title: 'x' });
 ok(r.status === 403, 'only leader creates');
-r = await call(tour, L, { action: 'create', title: 'Solo Cup', prizes: [{ kind: 'points', points: 1000 }] });
+r = await call(tour, L, { action: 'create', predict_minutes: 0, title: 'Solo Cup', prizes: [{ kind: 'points', points: 1000 }] });
 ok(r.ok, 'create');
 r = await call(tour, ms[0], { action: 'buy', item: 'weapon' });
-ok(r.status === 400 && /first entry/.test(r.error), 'need entry first');
-r = await call(tour, ms[0], { action: 'buy', item: 'entry', count: 3 });
+ok(r.status === 400 && /Join the tournament first/.test(r.error), 'need to join first');
+r = await enter(tour, ms[0], 3);
 ok(r.ok && r.me.entries === 3 && r.rolled.ups.length === 2 && r.me.look, 'entries roll upgrades; character given: ' + r.me.look);
 const look0 = r.me.look;
 r = await call(tour, ms[0], { action: 'reroll' });
@@ -33,11 +33,11 @@ ok(s.bank.balance === 0 && s.tournament === null && s.last.status === 'cancelled
 ok((await E.TourEntrant.filter({}, {})).items.length === 0, 'characters cleared');
 
 // --- 5 entrants, scheduled
-r = await call(tour, L, { action: 'create', title: 'Blacklist Cup', starts_at: new Date(Date.now() + 120000).toISOString(),
+r = await call(tour, L, { action: 'create', predict_minutes: 0, title: 'Blacklist Cup', starts_at: new Date(Date.now() + 120000).toISOString(),
   values: { ups: { atk: 600 }, weapon: { chance: 0.5 } },
   prizes: [{ kind: 'points', points: 5000, from_bank: true }, { kind: 'points', points: 2000 }, { kind: 'item', label: 'Dragon Ball' }] });
 ok(r.ok, 'create scheduled with values');
-for (let i = 0; i < 5; i++) await call(tour, ms[i], { action: 'buy', item: 'entry', count: 1 + i * 3 });
+for (let i = 0; i < 5; i++) await enter(tour, ms[i], 1 + i * 3);
 r = await call(tour, ms[4], { action: 'buy', item: 'skill' });
 ok(r.ok && r.me.skills.length === 1, 'skill bought: ' + r.rolled.skill);
 r = await call(tour, ms[4], { action: 'buy', item: 'skill' });
@@ -64,12 +64,13 @@ advance(121000);
 s = await call(tour, ms[5], { action: 'state' });
 ok(s.tournament.status === 'running' && s.tournament.field.length === 5, 'auto-started on time');
 const M = s.tournament.matches;
-ok(M.length === 5 && M.some((m) => m.bronze) && M[M.length - 1].stage === 'Final', 'bracket: ' + M.map((m) => m.stage).join(', '));
+ok(s.tournament.format === 'double' && M.length === 9 && M[M.length - 2].stage === 'Grand final' && M[M.length - 1].reset, 'double bracket: ' + M.map((m) => m.stage).join(', '));
+ok(s.tournament.field.every((f) => Number.isInteger(f.seed)), 'every fighter seeded');
 ok(M.every((m) => m.seed === null && m.outcome === null), 'no seeds before matches');
 const later = M.filter((m) => m.refs.some((x) => x.s === undefined));
 ok(later.every((m) => m.a === null || m.refs[0].s !== undefined), 'later fighters hidden');
 
-r = await call(tour, ms[5], { action: 'buy', item: 'entry' });
+r = await call(tour, ms[5], { action: 'buy', item: 'join' });
 ok(r.status === 400, 'shop closed after start');
 
 // bet on match 1 while open
@@ -124,27 +125,27 @@ ok(r.ok, 'sweep ok');
 ok((await E.ArenaBet.filter({ settled: false }, {})).items.length === 0, 'all bets settled');
 
 // --- 2 entrants: single 1v1, and leader cancel refunds
-r = await call(tour, L, { action: 'create', title: 'Duel' });
-await call(tour, ms[0], { action: 'buy', item: 'entry' });
-await call(tour, ms[1], { action: 'buy', item: 'entry' });
+r = await call(tour, L, { action: 'create', predict_minutes: 0, title: 'Duel' });
+await enter(tour, ms[0], 1);
+await enter(tour, ms[1], 1);
 r = await call(tour, L, { action: 'start' });
 s = await call(tour, L, { action: 'state' });
-ok(s.tournament.matches.length === 1 && s.tournament.matches[0].stage === 'Final', '2 fighters: one final');
+ok(s.tournament.matches.length === 3 && s.tournament.matches[1].stage === 'Grand final', '2 fighters: a first match, then the grand final (and a reset if needed)');
 advance(3600 * 1000);
 s = await call(tour, L, { action: 'state' });
 ok(s.last.status === 'done' && s.last.results.length === 2, 'duel done');
-r = await call(tour, L, { action: 'create', title: 'Oops' });
-await call(tour, ms[2], { action: 'buy', item: 'entry', count: 2 });
+r = await call(tour, L, { action: 'create', predict_minutes: 0, title: 'Oops' });
+await enter(tour, ms[2], 2);
 const p2 = await pts(ms[2]);
 r = await call(tour, L, { action: 'cancel' });
 ok(r.ok && (await pts(ms[2])) === p2 + 1000, 'leader cancel refunds');
 // bigger bracket
-r = await call(tour, L, { action: 'create', title: 'Big' });
+r = await call(tour, L, { action: 'create', predict_minutes: 0, title: 'Big' });
 const many = [];
-for (let i = 0; i < 13; i++) { const m = await member('B' + i, 10000); many.push(m); await call(tour, m, { action: 'buy', item: 'entry' }); }
+for (let i = 0; i < 13; i++) { const m = await member('B' + i, 10000); many.push(m); await enter(tour, m, 1); }
 r = await call(tour, L, { action: 'start' });
 s = await call(tour, L, { action: 'state' });
-ok(s.tournament.matches.length === 13, '13 fighters: 12 knockouts + 3rd place = ' + s.tournament.matches.length);
+ok(s.tournament.matches.length === 2 * 13 - 1, '13 fighters: 24 matches + the reset slot = ' + s.tournament.matches.length);
 advance(3 * 3600 * 1000);
 s = await call(tour, L, { action: 'state' });
 ok(s.last.status === 'done' && new Set(s.last.results.map((x) => x.member_id)).size === 4, '4 distinct places');

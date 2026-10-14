@@ -27,4 +27,17 @@ export async function call(fn, who, body) {
 }
 export const pts = async (m) => (await E.Member.get(m.id)).points;
 export function ok(c: boolean, msg: string) { if (!c) { console.error('FAIL:', msg); g.__fail = (g.__fail || 0) + 1; } else console.log('ok -', msg); }
-export const done = () => { if (g.__fail) { console.error(g.__fail, 'failures'); Deno.exit(1); } console.log('ALL PASSED'); };
+export const done = () => { if (g.__fail) { console.error(g.__fail, 'failures'); Deno.exit(1); } console.log('ALL PASSED'); };// 6.22: join a tournament, then buy random stats so the fighter has `n` entries in all (1 join + n - 1
+// random stats, bought as packs of 10, 5 and 1). Returns the last answer, with every rolled stat.
+export async function enter(fn, who, n = 1, price?: number) {
+  let r = await call(fn, who, { action: 'buy', item: 'join', ...(price != null ? { price } : {}) });
+  if (!r.ok) return r;
+  const ups = [];
+  let left = n - 1;
+  for (const pack of [10, 5, 1]) while (left >= pack) {
+    r = await call(fn, who, { action: 'buy', item: 'roll', count: pack, ...(price != null ? { price } : {}) });
+    if (!r.ok) return r;
+    ups.push(...r.rolled.ups); left -= pack;
+  }
+  return { ...r, rolled: { ...r.rolled, ups } };
+}

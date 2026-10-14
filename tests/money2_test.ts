@@ -75,7 +75,7 @@ const rnd = (n) => Math.floor(Math.random() * n);
 
 // ---------- tournament: start while members are still buying; cancel with refunds while buying ----------
 {
-  const cr = await call(tour, L, { action: 'create', title: 'Race Cup', prizes: [{ kind: 'points', points: 100 }] });
+  const cr = await call(tour, L, { action: 'create', predict_minutes: 0, title: 'Race Cup', prizes: [{ kind: 'points', points: 100 }] });
   ok(cr.ok, 'tournament: opened');
   for (const p of P) await call(tour, p, { action: 'buy', item: 'entry', count: 2 });
   const rs = await Promise.all([...P.flatMap((p) => [call(tour, p, { action: 'buy', item: 'entry', count: 3 }), call(tour, p, { action: 'buy', item: 'weapon' }), call(tour, p, { action: 'buy', item: 'pet' })]), call(tour, L, { action: 'start' })]);
@@ -96,7 +96,7 @@ const rnd = (n) => Math.floor(Math.random() * n);
   await ledger('tournament start race');
   // finish it and clean up
   for (let k = 0; k < 40; k++) { advance(20e3); await call(tour, P[0], { action: 'state' }); }
-  const cr2 = await call(tour, L, { action: 'create', title: 'Cancel Cup', prizes: [{ kind: 'points', points: 100 }] });
+  const cr2 = await call(tour, L, { action: 'create', predict_minutes: 0, title: 'Cancel Cup', prizes: [{ kind: 'points', points: 100 }] });
   ok(cr2.ok, `tournament: second one opened ${cr2.error || ''}`);
   const bank0 = (await E.ArenaBank.filter({}, {})).items[0].balance;
   const before = Object.fromEntries(await Promise.all(P.map(async (p) => [p.id, await pts(p)])));

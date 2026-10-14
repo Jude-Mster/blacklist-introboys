@@ -172,3 +172,26 @@
 .bk-key.gold { background: #e8c15a; }
 .bk-key.live { background: #e0383e; }
 .lab-tile .pips.bar { height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.14); }
+/* 6.22: double elimination: three sections (winners, losers, grand final), each a row of rounds */
+.dbk { display: grid; gap: 18px; }
+.dbk-sec { display: grid; gap: 6px; min-width: 0; }
+.dbk-sec-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.dbk-sec-head h4 { margin: 0; font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: #e8c15a; font-weight: 700; }
+.dbk-sec-head p { margin: 0; font-size: 12px; color: #a9a49b; }
+.dbk-cols { display: flex; gap: 22px; align-items: stretch; width: max-content; }
+.dbk-col { display: flex; flex-direction: column; width: 204px; flex: none; }
+.dbk-col-head { margin: 0 0 6px; text-align: center; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: #c9a35a; border-bottom: 1px solid rgba(201,163,90,.35); padding-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dbk-col-body { display: flex; flex-direction: column; justify-content: space-around; gap: 10px; flex: 1; }
+.dbk .bk-card { position: relative; width: 100%; }
+.dbk .bk-card.skipped { height: auto; opacity: .6; border-style: dashed; }
+.dbk .bk-card.need { border-color: rgba(232,193,90,.75); }
+.dbk .dbk-champ { position: relative; width: 100%; }
+.dbk .seed { display: inline-block; min-width: 16px; margin-right: 5px; font-size: 10px; color: #c9a35a; font-variant-numeric: tabular-nums; }
+button.bk-side { width: 100%; text-align: left; cursor: pointer; background: transparent; border: 0; font: inherit; }
+button.bk-side.b { border-top: 1px solid rgba(201,163,90,.18); }
+button.bk-side:hover { background: rgba(232,193,90,.10); }
+button.bk-side:focus-visible { outline: 1px solid #e8c15a; outline-offset: -1px; }
+.bk-side.picked { color: #f1d38c; font-weight: 700; background: linear-gradient(90deg, rgba(232,193,90,.22), transparent 80%); }
+.bk-side .mypick { font-size: 11px; color: #e8c15a; }
+.bk-side .mypick.ok { color: #8fe39a; }
+.bk-side .mypick.no { color: #ff8a7a; }

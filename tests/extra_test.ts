@@ -35,10 +35,10 @@ ok(x.status === 429, 'react too fast refused');
 x = await call(arena, B, { action: 'pulse', scope: 'live', here: true });
 ok(x.watching >= 1 && x.reactions.length === 1 && x.reactions[0].name === 'A', 'pulse: watching ' + x.watching);
 // repeat + reminder
-x = await call(tour, L, { action: 'create', title: 'Weekly', repeat: 'weekly' });
+x = await call(tour, L, { action: 'create', predict_minutes: 0, title: 'Weekly', repeat: 'weekly' });
 ok(x.status === 400, 'repeat needs time');
 const start = Date.now() + 20 * 60000;
-x = await call(tour, L, { action: 'create', title: 'Weekly', repeat: 'weekly', starts_at: new Date(start).toISOString(), prizes: [{ kind: 'points', points: 100 }] });
+x = await call(tour, L, { action: 'create', predict_minutes: 0, title: 'Weekly', repeat: 'weekly', starts_at: new Date(start).toISOString(), prizes: [{ kind: 'points', points: 100 }] });
 ok(x.ok, 'weekly created');
 await call(tour, A, { action: 'buy', item: 'entry' }); await call(tour, B, { action: 'buy', item: 'entry' });
 advance(11 * 60000);

@@ -42,21 +42,29 @@ export default function ArenaRules({ mode = "live", values, costs = COSTS, betSe
         ) : (
           <>
             <Rule title="Sign-up">
-              <p>Your first entry ({fmt(costs.entry)} points) gives you a fighter: one of the guild's 50 characters at random. One free re-roll, never the same one back. Fighters are removed when the tournament ends. Every point paid goes into the Arena bank; no refunds once paid, unless only one fighter signs up or the Guild Leader cancels with refunds.{maxSpend > 0 ? ` In this tournament each member can spend up to ${fmt(maxSpend)} points on their fighter (bets on matches aren't counted).` : ""}</p>
+              <p>Joining ({fmt(costs.join ?? costs.entry)} points) gives you a fighter: one of the guild's 50 characters at random. One free re-roll, never the same one back. Fighters are removed when the tournament ends. Every point paid goes into the Arena bank; no refunds once paid, unless only one fighter signs up or the Guild Leader cancels with refunds.{maxSpend > 0 ? ` In this tournament each member can spend up to ${fmt(maxSpend)} points on their fighter (bets on matches aren't counted).` : ""}</p>
             </Rule>
             <Rule title="The bracket">
-              <p>Drawn at random at the start, with byes when the number of fighters isn't a power of two. 2 fighters play a single 1v1; 1 fighter cancels and refunds. The semi-final losers fight for 3rd place. Every match is live: 10 seconds of betting, the fight, the result. No knockout at the {LIMIT}-second limit means <b>overtime</b>: sudden death with no potions, where every hit does ×{OT.start} damage, rising by one every {OT.every} seconds. If neither fighter is down after {OT.max} seconds of overtime (practically never), the larger share of HP left wins. Anyone can bet, fighters included, but never on both fighters or both sides of a side bet.</p>
+              <p><B>Double elimination, seeded.</B> At the start every fighter is ranked by practice fights between the real builds, and the bracket is drawn so the strongest meet late (1 and 2 only in the grand final). Top seeds get any byes. A first loss drops you to the losers' bracket; a second loss and you're out. The winners' champion meets the losers' champion in the grand final; if the losers' champion wins it, both have lost once and a reset decides it. 1st and 2nd come from the grand final, 3rd is the losers' final loser, 4th the losers' semi-final loser. 1 fighter cancels and refunds.</p>
+              <p>Every match is live: 10 seconds of betting, the fight, the result. No knockout at the {LIMIT}-second limit means <b>overtime</b>: sudden death with no potions, where every hit does ×{OT.start} damage, rising by one every {OT.every} seconds. If neither fighter is down after {OT.max} seconds of overtime (practically never), the larger share of HP left wins. Anyone can bet, fighters included, but never on both fighters or both sides of a side bet.</p>
+            </Rule>
+            <Rule title="Bracket prediction">
+              <p>When the bracket is drawn there's a window (set by the Guild Leader, usually 10 minutes) to predict every match for free. Predict the whole bracket and the champion right to win the GP code pot. If nobody gets it perfect, the pot rolls over to the next tournament; if several do, one is drawn at random.</p>
+            </Rule>
+            <Rule title="Grudge matches and titles">
+              <p>On the Grudge tab, challenge any member to a 1-on-1 for an equal stake. Both get equal random builds (same number of random stats, weapon, pet and mount level and number of skills). Everyone can bet for 60 seconds; the winner takes both stakes less 5% (to the Arena bank).</p>
+              <p>Tournament winners earn a title shown over their fighter: Champion, 2× Champion and up, and the last winner is the Reigning Champion. See the Hall of Fame.</p>
             </Rule>
           </>
         )}
         <Rule title="Base fighter">
           <p>Everyone starts the same: HP {fmt(BASE.hp)} · ATK {fmt(BASE.atk)} · DEF {fmt(BASE.def)} · Crit rate {BASE.crit}% · Crit defense {BASE.critdef}% · Accuracy {BASE.acc}% · Evasion {BASE.eva}% · Speed {BASE.spd}% · {BASE.pots} HP potions that heal {BASE.potheal}%.</p>
         </Rule>
-        <Rule title="Entry upgrades">
-          <p>Each entry after the first rolls one: {UPGRADES.map((u) => `${u.name} +${fmt(V.ups[u.id])}${u.unit}`).join(" · ")}. Crit rate comes up 1 roll in 15, Crit defense 1 in 9, the others about 1 in 8.5 each. Potions always heal 100% (there is no Potion heal upgrade). Up to {PER_STAT} per stat and {TOTAL_CAP} in all; entries after that still raise the halo.</p>
+        <Rule title="Random stats">
+          <p>{fmt(costs.roll ?? costs.entry)} points for a random stat, in packs of 1, 5 or 10. Each one rolls: {UPGRADES.map((u) => `${u.name} +${fmt(V.ups[u.id])}${u.unit}`).join(" · ")}. Crit rate comes up 1 roll in 15, Crit defense 1 in 9, the others about 1 in 8.5 each. Potions always heal 100% (there is no Potion heal upgrade). Up to {PER_STAT} per stat and {TOTAL_CAP} in all.</p>
         </Rule>
         <Rule title="Weapon upgrade">
-          <p>{fmt(costs.weaponTry)} points per try, {Math.round(V.weapon.chance * 100)}% success rate. A failed try is not credited as an entry, but its points count toward the fighter's total spent. Each level adds {Math.round(V.weapon.atk * 100)}% ATK and {V.weapon.crit}% Crit rate and lights the weapon: {WEAPON.looks.map((l) => l.name.toLowerCase()).join(", ")}. Up to +{WEAPON.max}.</p>
+          <p>{fmt(costs.weaponTry)} points per try, {Math.round(V.weapon.chance * 100)}% success rate. A failed try doesn't give a random stat, but its points count toward the fighter's total spent. Each level adds {Math.round(V.weapon.atk * 100)}% ATK and {V.weapon.crit}% Crit rate and lights the weapon: {WEAPON.looks.map((l) => l.name.toLowerCase()).join(", ")}. Up to +{WEAPON.max}.</p>
         </Rule>
         <Rule title="Buff skills">
           <p>Add skill ({fmt(costs.skill)} points) teaches one at random that the fighter doesn't have, up to {MAX_SKILLS}. Every skill off cooldown rolls its chance before each of the fighter's attacks; all that come up are cast and stack.</p>
@@ -66,13 +74,13 @@ export default function ArenaRules({ mode = "live", values, costs = COSTS, betSe
         </Rule>
         <Rule title="Pet and mount">
           <p>{PET.name}: {fmt(costs.pet)} points per 25% of growth, up to {petGrowth(PET.levels)}%. At 200%: HP +{fmt(PET.full.hp)}, ATK +{fmt(PET.full.atk)}, DEF +{fmt(PET.full.def)}.</p>
-          <p>Mount: {fmt(costs.mountLevel)} points per level, up to {MOUNT.levels}. The first level draws one pair ({MOUNT.pairs.map((p) => p.map((id) => STAT_NAME[id]).join(" & ")).join(", ")}); each level adds {MOUNT.per}% to both. A reset ({fmt(costs.mountReset)} points) draws a new pair and keeps the level; it is not credited as an entry, but its points count toward the total spent. The site asks you to confirm first.</p>
+          <p>Mount: {fmt(costs.mountLevel)} points per level, up to {MOUNT.levels}. The first level draws one pair ({MOUNT.pairs.map((p) => p.map((id) => STAT_NAME[id]).join(" & ")).join(", ")}); each level adds {MOUNT.per}% to both. A reset ({fmt(costs.mountReset)} points) draws a new pair and keeps the level; it doesn't give a random stat, but its points count toward the total spent. The site asks you to confirm first.</p>
         </Rule>
         <Rule title="Combat">
           <p><B>Skyfall</B> (the 360° slash) lands with Accuracy − the target's Evasion. <B>Crimson LightningCharger</B>, the buff every fighter casts before each Skyfall, charges it for 1× to 2× damage (it costs MP but isn't counted in the buff side bets). MP only goes down when a skill or buff is cast. A <B>critical</B> (chance = Crit rate, at most 60%) does 2× to 10×: 2× to 7× are the usual rolls (15% each), while the big ones are rare (8× 5%, 9× 3%, 10× 2%). That is less the target's <B>Crit defense</B>: each % of Crit defense takes 1% off the critical's damage (up to 80%). An <B>HP potion</B> is drunk at the start of the fighter's next attack after a hit leaves them at 85% HP or less. Both fighters attack at the same time, each at their own pace: nobody waits for a turn. <B>Speed</B> sets that pace: a faster fighter casts, charges and swings quicker, so it attacks more often (up to about twice as often at 182% Speed). Spirits Within adds {Math.round(SKILLS.spirits.spd * 100)}% Speed from the moment it is cast.</p>
         </Rule>
         <Rule title="Halo">
-          <p>The ring of light over a fighter's head: one level per entry, and its look changes every 8 levels. It is for show only.</p>
+          <p>The ring of light over a fighter's head: one level per random stat, and its look changes every 8 levels. It is for show only.</p>
         </Rule>
       </div>
     </details>

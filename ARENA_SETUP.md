@@ -186,3 +186,18 @@ Two stress rigs ran the real server code with 5 to 50 simulated members (watchin
 - Side bets: offered when they come up 25% to 75% of the time (was 30-70%), up to 3.5× (was 3×), house edge 7% (was 10%). The fight-length line is now priced from the real fight length it is settled on (before, "over" was slightly under-counted, so it paid more than the other lines).
 - Fighter bets: house edge 5% on the favourite, 8% on the other (6.19: 6% / 10%). Caps unchanged (4×).
 - Measured on 1,600 fights (two runs): about 88.5-89% of all stakes paid back (6.19: 86%), every bet type under 100%. Live Arena average fight about 37 s, tournament about 21-25 s; no draws.
+
+## 22. What changed in 6.22 (engine 12; new entities Grudge and BracketPick; redeploy every function and publish)
+- **Join and random stats are separate.** Joining (500 by default) gives the fighter; random stats are "500 points for a random stat", bought in packs of 1, 5 or 10. The Guild Leader prices "Join the tournament" and "Random stat (each)" separately. A tournament made before 6.22 uses its old entry price for both. Screens from before 6.22 that still send "entry" join first and then buy one random stat.
+- **HP potions +1 per upgrade** (was +2).
+- **Seeded double elimination.** At the start, practice fights between the real builds rank the field. The bracket uses standard seeding, so 1 and 2 can only meet in the grand final, and the top seeds get the byes. A first loss drops you to the losers' bracket; a second loss and you're out. If the losers' champion wins the grand final, a reset decides it; otherwise the reset is skipped. Places: grand final winner and loser, then the losers' final loser, then the losers' semi-final loser.
+- **Bracket prediction.** After the draw there's a prediction window: `predict_minutes`, default 10, 0 to 60, where 0 means none. Members predict every match for free. A perfect bracket wins every code in the GP code pot. The Guild Leader fills the pot on the Tournament tab; codes are reserved with raffle_id `bracket-pot`. Nobody perfect: the pot rolls over. Several perfect: one is drawn at random; the draw is seeded by the tournament, so a retry picks the same winner.
+- **Grudge matches** (Grudge tab):
+  - A member challenges another for an equal stake (100 to 50,000) with 10, 25 or 50 random stats.
+  - Both fighters get equal random builds: same stats count, weapon, pet, mount level and number of skills.
+  - Once accepted, everyone can bet for 60 seconds. The fight then runs from a secret seed. The winner takes both stakes less 5%, and the 5% goes to the Arena bank.
+  - A challenge left unanswered for 24 hours expires and the stake comes back; a declined or withdrawn challenge also refunds the stake.
+  - The Tournament Clock moves grudge matches on too.
+  - Grudge bets are tournament-scope bets with tour_id `grudge:<id>`, so they are settled the same way.
+- **Hall of Fame and titles** (Hall of Fame tab): champions, leaders and records, worked out from finished tournaments and grudges. Titles: Reigning Champion, N× Champion, Champion. A title shows over the fighter in tournaments and grudges, and on the seeds and fighters lists.
+- **Replays on Discord.** Every tournament match and grudge result posts a card with a "watch" link (`/arena?tab=tournament&tour=…&match=…`, `/arena?tab=grudge&grudge=…`) to `DISCORD_REPLAY_WEBHOOK_URL`, or to the announcements webhook if that secret isn't set. For the final, the Guild Leader opens it under the results and presses **Send the final to Discord**: the browser records it and posts the video (up to 9.5 MB).

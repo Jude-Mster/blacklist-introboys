@@ -10,6 +10,7 @@
       "type": "string",
       "enum": [
         "signup",
+        "predict",
         "running",
         "paying",
         "done",
@@ -120,6 +121,33 @@
     },
     "created_by": {
       "type": "string"
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "single",
+        "double"
+      ],
+      "default": "single",
+      "description": "6.22: double = seeded double elimination (single = the old bracket)"
+    },
+    "predict_minutes": {
+      "type": "integer",
+      "default": 10,
+      "description": "6.22: minutes between the draw and the first match for bracket predictions (0 = none)"
+    },
+    "predict_until": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "prediction": {
+      "type": "object",
+      "description": "6.22: how the bracket predictions ended: entries, perfect_count, top, winner, codes"
+    },
+    "video_posted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "6.22: when the video of the final went to Discord"
     }
   },
   "rls": {

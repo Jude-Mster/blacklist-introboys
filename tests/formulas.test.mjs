@@ -8,7 +8,7 @@ const check = (name, formula, inputs, expected, actual, pass) => { R.rows.push({
 
 // ---- the rules as stated (not imported) ----
 const BASE = { hp: 50000, mp: 13153, atk: 15500, def: 7000, crit: 10, critdef: 10, acc: 100, eva: 10, pots: 7, potheal: 100, spd: 100 };   // 6.20
-const PER = { hp: 8500, atk: 650, def: 900, crit: 3.5, critdef: 10, acc: 5, eva: 5, pots: 2, spd: 10 };   // no Potion heal upgrade
+const PER = { hp: 8500, atk: 650, def: 900, crit: 3.5, critdef: 10, acc: 5, eva: 5, pots: 1, spd: 10 };   // no Potion heal upgrade
 const W = { atk: 0.15, crit: 5 };
 const PET_FULL = { hp: 4400, atk: 2700, def: 4400 }, PET_LV = 8;
 const MOUNT_PER = 3, PAIRS = [["atk", "def"], ["atk", "acc"], ["def", "hp"], ["crit", "eva"], ["def", "eva"], ["critdef", "def"], ["atk", "crit"]];
