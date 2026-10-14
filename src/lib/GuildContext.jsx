@@ -54,6 +54,15 @@ const MIN_GAP = 10000;
 const HEARTBEAT = 90000;
 const DETAIL_KEYS = ["rank", "stats", "recentLogs", "recentBets"];
 
+// 6.24: the account is asked for the moment the site's code arrives (main.jsx calls this before React even
+// starts), not after the first screen has been drawn; the first read in GuildProvider takes that answer.
+let early = null;
+export function askAccountEarly() {
+  if (early || typeof window === "undefined" || !getSessionToken()) return;
+  early = base44.functions.invoke("getMyAccount", { detail: false, fresh: false });
+  early.catch(() => {});
+}
+
 export function GuildProvider({ children }) {
   const [cached] = useState(() => (typeof window === "undefined" ? null : readCache()));
   const [account, setAccount] = useState(cached);
@@ -70,7 +79,9 @@ export function GuildProvider({ children }) {
     const run = (async () => {
       lastAt.current = Date.now();
       try {
-        const res = await base44.functions.invoke("getMyAccount", { detail, fresh: opts.fresh === true });
+        const head = early && !detail && !opts.fresh ? early : null;
+        early = null;
+        const res = head ? await head : await base44.functions.invoke("getMyAccount", { detail, fresh: opts.fresh === true });
         const data = res.data || {};
         if (!data.linked) {
           // No longer a guild member (lost the role or left the server).

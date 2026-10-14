@@ -1,5 +1,6 @@
 /* Blacklist Arena: the stage, the skill tooltip and the roll windows (from the approved preview). */
-@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap");
+/* 6.24: its Google fonts (Cinzel, Barlow) load from index.html: an @import here made the Arena wait for Google
+   before opening (and not open at all when Google couldn't be reached) */
 
 .arena-root {
   --ar-ink: #0a0b10;

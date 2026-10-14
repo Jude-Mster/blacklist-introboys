@@ -3,8 +3,10 @@ import HsbTimer from "@/components/HsbTimer";
 import EventAlerts from "@/components/EventAlerts";
 import AppPrompt from "@/components/AppPrompt";
 import PrizeNotice from "@/components/prizes/PrizeNotice";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
+import LanternSpinner from "@/components/LanternSpinner";
+import { prefetchPath, warmUp } from "@/lib/routes";
 import { GuildProvider, useGuild } from "@/lib/GuildContext";
 import TopBar from "./nav/TopBar";
 import Sidebar from "./nav/Sidebar";
@@ -54,6 +56,16 @@ function Shell() {
   const playingRef = useRef(playing);
   playingRef.current = playing;
   const dropFloater = useCallback((key) => setFloaters((f) => f.filter((x) => x.key !== key)), []);
+  // 6.24: a page starts downloading the moment a finger or pointer lands on a link to it, and the Games
+  // page is fetched in the background shortly after the site opens
+  useEffect(() => {
+    const ahead = (e) => { const a = e.target && e.target.closest && e.target.closest("a[href]"); if (a) prefetchPath(a.getAttribute("href")); };
+    document.addEventListener("pointerover", ahead, { passive: true });
+    document.addEventListener("touchstart", ahead, { passive: true });
+    document.addEventListener("focusin", ahead);
+    warmUp();
+    return () => { document.removeEventListener("pointerover", ahead); document.removeEventListener("touchstart", ahead); document.removeEventListener("focusin", ahead); };
+  }, []);
 
   const toggleCollapsed = () => {
     setCollapsed((c) => {
@@ -112,7 +124,7 @@ function Shell() {
           <WarTimer variant="strip" className="mb-2 md:hidden" />
           <HsbTimer variant="strip" className="mb-3 md:hidden" />
           {account && account.linked && <PrizeNotice />}
-          <Outlet />
+          <Suspense fallback={<LanternSpinner label="Opening" className="py-24" />}><Outlet /></Suspense>
         </div>
       </main>
       {account && account.linked && <ChatDrawer open={chatOpen} onClose={closeChat} onIncoming={onIncoming} />}

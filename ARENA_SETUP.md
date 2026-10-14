@@ -225,3 +225,15 @@ A stress rig ran the real server code with 30 members going through a whole tour
 
   Against a Base44-style limit of 500 calls a minute, the failed share of all requests fell from 51% to about 3-4%. What still runs into it is everyone shopping hard at the same moment: each purchase is about 11 database calls, most of them the lock that keeps points safe.
 - New test: `tests/t623_test.ts`.
+
+## 24. What changed in 6.24: the site and the games open faster (redeploy every function and publish; no entity, engine, points or package changes)
+Measured on a phone-like connection (5 Mbit/s, 120 ms, a 4× slower processor) against the real functions:
+- **The page no longer waits for Google before showing anything.** The Google fonts (Zen Kaku Gothic New, plus Cinzel and Barlow for the Arena) came in through `@import` in the stylesheets, so the whole site, and later the Arena, waited for Google's answer before drawing. Where Google couldn't be reached, the Arena didn't open at all ("Unable to preload CSS"). They now load from `index.html` without holding anything up, and the text shows at once in a fallback font. First paint: about 0.85 s → 0.57 s.
+- **Smaller first download.** The guild hall and the Games page (with all eight games) still come with the site. Poker, Pusoy, Derby, Arena, Shop, Rankings, Profile, Guide and the Admin hall are now downloaded when first needed, which cuts about 20% of the JavaScript on a first visit.
+- **Next pages fetched ahead** (`src/lib/routes.js`):
+  - Poker and Pusoy come down a few seconds after the site opens.
+  - Derby and Arena come down from the Games page (skipped on a data-saver or 2G connection).
+  - Any page starts downloading as soon as a finger or pointer lands on a link to it.
+  - Opening the Arena from the Games page went from about 1.2-3.5 s to about 0.7-1.0 s.
+- **The account is asked for as soon as the site's code arrives**, alongside React starting up, rather than after the first screen is drawn. That is about 0.3-0.4 s sooner on a slow phone.
+- **After a new publish,** a tab still running the old site reloads itself once when it can't find a page's code (instead of getting stuck).
