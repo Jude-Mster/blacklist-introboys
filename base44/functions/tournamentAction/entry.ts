@@ -5,12 +5,16 @@ import {
 } from '../../shared/points.ts';
 import {
   ENGINE_VERSION, LOOK_KEYS, LIMIT, WEAPON, PET, MOUNT, drawPair, SKILLS, SKILL_IDS, MAX_SKILLS, UPGRADES,
-  DEFAULT_VALUES, normValues, normCosts, rollUpgrade, simulate, outcomeOf, priceMatch
+  DEFAULT_VALUES, normValues, normCosts, rollUpgrade, simulate, outcomeOf, priceMatch, TOTAL_CAP, ROLL_PACKS
 } from '../../shared/arenaEngine.ts';
+import { drawDouble, placesDouble, scorePicks, cleanPicks, sidesOf } from '../../shared/bracket.ts';
+import { sharedHall, titlesOf } from '../../shared/hall.ts';
+import { grudgeAction, tickGrudge, sharedGrudges, publicGrudge, betKey as grudgeBetKey, GRUDGE } from '../../shared/grudge.ts';
 import { placeBets, removeBets, payMine, payOthers, betBoard, arenaLimit, arenaMin, type Resolve } from '../../shared/arenaBets.ts';
 import { postSystem, GUILD_CHANNEL } from '../../shared/chat.ts';
 import {
-  announceWebhookUrl, announceTournamentOpen, announceTournamentResults, announceTournamentCancelled, announceTournamentStarted, announceTournamentSoon
+  announceWebhookUrl, announceTournamentOpen, announceTournamentResults, announceTournamentCancelled, announceTournamentStarted, announceTournamentSoon,
+  announceFightResult, announcePrediction, postFightVideo, replayLink, replayWebhookUrl
 } from '../../shared/discordPost.ts';
 import { checkCode, assertNewCode, codeFields, runStockLocked, takeFromStock, assignAndDeliver } from '../../shared/prizeCodes.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
@@ -36,7 +40,18 @@ const INTRO_SECONDS = 3;
 const RESULT_SECONDS = 5;      // the result, then the next match opens for bets (was 10)
 const LEAD_IN_SECONDS = 10;    // from the start to the first match opening for bets
 const MAX_ENTRANTS = 128;
-const MAX_PRIZES = 4;
+// 6.22: after sign-up closes the seeded bracket is shown and members have this long to predict it
+// (the Guild Leader sets it per tournament; 0 = no prediction window).
+const PREDICT_DEFAULT = 10, PREDICT_MAX = 60;
+const POT_ID = 'bracket-pot';   // PrizeCode rows set aside for a perfect bracket prediction (they roll over)
+const cleanPredict = (v) => {
+  if (v == null || v === '') return PREDICT_DEFAULT;
+  const x = Math.floor(Number(v));
+  if (!Number.isInteger(x) || x < 0 || x > PREDICT_MAX) throw new UserError(`Set the prediction window from 0 to ${PREDICT_MAX} minutes (0 = no predictions).`);
+  return x;
+};
+const predictMinutesOf = (t) => { const x = Number(t && t.predict_minutes); return Number.isInteger(x) && x >= 0 && x <= PREDICT_MAX ? x : PREDICT_DEFAULT; };
+const MAX_PRIZES = 3;   // 6.22: three winners (1st, 2nd, 3rd), nothing more
 const MAX_PRIZE_POINTS = 10000000;
 const TOUR_LOCK_MS = 120000;
 const REMIND_MS = 10 * 60000;   // the "starts in 10 minutes" post
@@ -49,7 +64,7 @@ const iso = (ms: number) => new Date(ms).toISOString();
 const E = (b) => b.asServiceRole.entities;
 const rand = () => crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296;
 const secretSeed = () => crypto.getRandomValues(new Uint32Array(1))[0] >>> 0;
-const PLACE = ['1st', '2nd', '3rd', '4th'];
+const PLACE = ['1st', '2nd', '3rd'];
 const fmt = (n: number) => Number(n || 0).toLocaleString('en-US');
 const lockTour = (b, id: string, fn) => withRecordLock(b, 'Tournament', id, fn, TOUR_LOCK_MS);
 const lockMember = (b, id: string, fn) => withMemberLock(b, id, fn, 15000);
@@ -141,14 +156,14 @@ let inOk = true;
 async function activeTour(b) {
   if (inOk) {
     try {
-      const { items } = await E(b).Tournament.filter({ status: { $in: ['signup', 'running', 'paying'] } }, { sort: '-created_date', limit: 1 });
+      const { items } = await E(b).Tournament.filter({ status: { $in: ['signup', 'predict', 'running', 'paying'] } }, { sort: '-created_date', limit: 1 });
       return items[0] || null;
     } catch (e) {
       if (e && ((e as any).status === 429 || /rate limit/i.test(String((e as any).message || '')))) throw e;
       inOk = false;
     }
   }
-  const lists = await Promise.all(['signup', 'running', 'paying'].map((s) => E(b).Tournament.filter({ status: s }, { sort: '-created_date', limit: 1 })));
+  const lists = await Promise.all(['signup', 'predict', 'running', 'paying'].map((s) => E(b).Tournament.filter({ status: s }, { sort: '-created_date', limit: 1 })));
   return lists.map((x) => x.items[0]).filter(Boolean).sort((x, y) => String(y.created_date).localeCompare(String(x.created_date)))[0] || null;
 }
 async function lastTour(b) {
@@ -163,7 +178,7 @@ const entrantsOf = async (b, tourId: string) => (await E(b).TourEntrant.filter({
 // a fight ending, the start or the end) or when someone changes it (which clears the shared answers).
 // So the shared look is kept up to 10 s, but dropped the moment one of those times passes.
 const marksOf = (t) => {
-  const xs = [t.starts_at, t.ends_at];
+  const xs = [t.starts_at, t.ends_at, t.predict_until];
   for (const m of t.matches || []) xs.push(m.open_at, m.close_at, m.end_at);
   return xs.filter(Boolean).map((x) => tms(x));
 };
@@ -223,9 +238,14 @@ const refOf = (x) => (x.s !== undefined ? { s: x.s } : { w: x.w });
 // closes: a match is "opened" (its two fighters, prices and betting window) when the one before it is fought,
 // and it is "fought" (its seed, result and length picked) the moment its own betting closes.
 const whoOf = (ms, ref) => (ref.s !== undefined ? ref.s : ref.w !== undefined ? ms[ref.w - 1].winner : ms[ref.l - 1].loser);
-const isFought = (m) => !!(m && m.fought && m.outcome && Number.isInteger(m.seed) && m.end_at);
+const isFought = (m) => !!(m && (m.skipped || (m.fought && m.outcome && Number.isInteger(m.seed) && m.end_at)));
 function openMatch(t, ms, i, openMs: number) {
   const m = ms[i], field = t.field, values = normValues(t.values);
+  // 6.22: the grand final reset is only played if the losers' champion won the grand final
+  if (m.reset) {
+    const gf = ms[m.refs[0].w - 1];
+    if (gf && gf.winner === gf.a) { const at = iso(openMs); ms[i] = { ...m, skipped: true, open_at: at, close_at: at, end_at: at }; return; }
+  }
   const a = whoOf(ms, m.refs[0]), b = whoOf(ms, m.refs[1]);
   const fa = { ...field[a].build, name: field[a].name }, fb = { ...field[b].build, name: field[b].name };
   ms[i] = { ...m, a, b, odds: priceMatch(fa, fb, secretSeed(), { draws: false, values, limit: LIMIT }), open_at: iso(openMs), close_at: iso(openMs + BET_SECONDS * 1000) };
@@ -256,21 +276,23 @@ function advance(t, now: number) {
     const i = ms.findIndex((m) => !isFought(m));
     if (i < 0) {
       const last = ms[ms.length - 1];
-      const ends = iso(tms(last.end_at) + RESULT_SECONDS * 1000);
+      const ends = iso(tms(last.end_at) + (last.skipped ? 0 : RESULT_SECONDS * 1000));
       if (t.ends_at !== ends) { t = { ...t, ends_at: ends }; changed = true; }
       break;
     }
     if (!ms[i].open_at) {
-      const opens = i === 0 ? tms(t.started_at) + LEAD_IN_SECONDS * 1000 : tms(ms[i - 1].end_at) + RESULT_SECONDS * 1000;
+      const opens = i === 0 ? tms(t.started_at) + LEAD_IN_SECONDS * 1000 : tms(ms[i - 1].end_at) + (ms[i - 1].skipped ? 0 : RESULT_SECONDS * 1000);
       openMatch(t, ms, i, opens); changed = true;
     }
+    if (ms[i].skipped) { changed = true; continue; }
     if (now >= tms(ms[i].close_at)) { fightMatch(t, ms, i); changed = true; continue; }
     break;
   }
   return changed ? { matches: ms, ends_at: t.ends_at || '' } : null;
 }
 // Who finished where, from the fought bracket.
-function placesOf(ms) {
+function placesOf(ms, format = 'single') {
+  if (format === 'double') return placesDouble(ms);
   const fin = ms.find((m) => m.stage === 'Final'), bronze = ms.find((m) => m.bronze);
   if (!fin) return [];
   const out = [fin.winner, fin.loser];
@@ -286,6 +308,7 @@ function placesOf(ms) {
 // ---------- what members may see ----------
 const tms = (s) => Date.parse(s) || 0;
 function matchStatus(m, now: number) {
+  if (m.skipped) return now >= tms(m.end_at) ? 'skipped' : 'waiting';
   if (!m.open_at || now < tms(m.open_at)) return 'waiting';
   if (now < tms(m.close_at)) return 'betting';
   return !isFought(m) || now < tms(m.end_at) ? 'fighting' : 'done';
@@ -296,7 +319,8 @@ function publicTour(t, now: number, leader: boolean) {
     values: normValues(t.values), costs: normCosts(t.costs), max_spend: maxSpendOf(t), prizes: (t.prizes || []).map((p) => ({ label: p.label, kind: p.kind, points: p.points || 0, from_bank: !!p.from_bank })),
     entrant_count: t.entrant_count || 0, bank_in: t.bank_in || 0, results: t.results || [], cancel_reason: t.cancel_reason || '',
     finished_at: t.finished_at || null, announced_at: leader ? t.announced_at || null : undefined, engine: t.engine || ENGINE_VERSION,
-    repeat: cleanRepeat(t.repeat)
+    repeat: cleanRepeat(t.repeat), format: t.format || 'single', predict_minutes: predictMinutesOf(t), predict_until: t.predict_until || null,
+    prediction: t.prediction ? { ...t.prediction, winner_id: undefined } : null
   };
   if (!Array.isArray(t.matches) || !t.matches.length) return { ...base, field: [], matches: [] };
   const ms = t.matches;
@@ -306,7 +330,7 @@ function publicTour(t, now: number, leader: boolean) {
     const st = matchStatus(m, now);
     const ka = known(m.refs[0]), kb = known(m.refs[1]);
     return {
-      no: m.no, round: m.round, stage: m.stage, bronze: !!m.bronze, status: st,
+      no: m.no, round: m.round, stage: m.stage, bronze: !!m.bronze, status: st, sec: m.sec || '', reset: !!m.reset, skipped: st === 'skipped',
       refs: m.refs, a: ka ? m.a : null, b: kb ? m.b : null,
       odds: ka && kb && m.open_at ? m.odds : null,
       open_at: m.open_at || null, close_at: m.close_at || null,
@@ -373,9 +397,10 @@ async function scheduleNext(b, t) {
     if (await activeTour(b)) return null;
     let next = (tms(t.starts_at) || tms(t.started_at) || Date.now()) + step;
     while (next < Date.now() + 60000) next += step;
-    const prizes = (t.prizes || []).map((x) => ({ ...x }));
+    const prizes = (t.prizes || []).slice(0, MAX_PRIZES).map((x) => ({ ...x }));
     const n = await E(b).Tournament.create({
       title: t.title, status: 'signup', starts_at: iso(next), values: normValues(t.values), costs: normCosts(t.costs), max_spend: maxSpendOf(t), prizes, repeat: t.repeat,
+      format: 'double', predict_minutes: predictMinutesOf(t),
       entrant_count: 0, bank_in: 0, bank_deferred: true, created_by: t.created_by || '', engine: ENGINE_VERSION
     });
     await E(b).Tournament.update(t.id, { next_id: n.id }).catch(() => {});
@@ -386,8 +411,8 @@ async function scheduleNext(b, t) {
       }
     }).catch((e) => console.error('repeat: stock lock failed', e));
     const when = new Date(next).toISOString().replace('T', ' ').slice(0, 16);
-    await postSystem(b, GUILD_CHANNEL, `The next "${t.title}" is open for sign-up. It starts ${when} UTC. Entry ${fmt(normCosts(n.costs).entry)} points.`);
-    try { await announceTournamentOpen(n, normCosts(n.costs).entry, false); } catch (e) { console.error('repeat announce failed', e); }
+    await postSystem(b, GUILD_CHANNEL, `The next "${t.title}" is open for sign-up. It starts ${when} UTC. Join ${fmt(normCosts(n.costs).join)} points.`);
+    try { await announceTournamentOpen(n, normCosts(n.costs).join, false); } catch (e) { console.error('repeat announce failed', e); }
     return n;
   } catch (e) {
     console.error('repeat: next tournament failed', t.id, String(e && e.message || e));
@@ -395,7 +420,29 @@ async function scheduleNext(b, t) {
   }
 }
 
-// Start: freeze the fighters, draw the bracket and fight every match. Call inside the tournament lock.
+// 6.22 seeding: how strong each fighter is, from practice fights against the rest of the field (every
+// other fighter when there are up to 24, else 10 picked at random), 8 fights each.
+function rankField(field, values) {
+  const n = field.length, wins = new Array(n).fill(0), games = new Array(n).fill(0);
+  const fs = field.map((f) => ({ ...f.build, name: f.name }));
+  const pairs = [];
+  if (n <= 24) { for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) pairs.push([i, j]); }
+  else for (let i = 0; i < n; i++) for (let k = 0; k < 5; k++) { let j = Math.floor(rand() * (n - 1)); if (j >= i) j++; pairs.push([i, j]); }
+  const per = n <= 12 ? 12 : 8;
+  for (const [i, j] of pairs) for (let k = 0; k < per; k++) {
+    const f = simulate(fs[i], fs[j], secretSeed(), { draws: false, frames: false, values, limit: LIMIT });
+    games[i]++; games[j]++;
+    if (f.winner === 0) wins[i]++; else wins[j]++;
+  }
+  const rate = wins.map((w, i) => (games[i] ? w / games[i] : 0.5));
+  const tie = field.map(() => rand());
+  const order = field.map((_, i) => i).sort((x, y) => rate[y] - rate[x] || tie[x] - tie[y]);
+  return { order, rate };
+}
+
+// Start: freeze the fighters, seed them and draw the bracket. With a prediction window the bracket is
+// shown first (status "predict") and the first match opens when the window closes; otherwise straight away.
+// Call inside the tournament lock.
 async function startTour(b, t) {
   const entrants = await entrantsOf(b, t.id);
   if (entrants.length === 0) return cancelTour(b, t, 'No one signed up.', false, '');
@@ -407,29 +454,102 @@ async function startTour(b, t) {
   const paid = entrants.reduce((a, x) => a + (x.spent || 0), 0);
   const field = list.map((x) => ({ member_id: x.member_id, name: x.name, avatar: x.avatar || '', role: x.role || 'member', look: x.look, build: buildOf(x) }));
   const values = normValues(t.values);
-  const plan = drawBracket(field.length);
-  const now = Date.now();
-  // Only the bracket is drawn here. The first match opens for bets a few seconds from now; every match is
-  // fought when its own betting closes.
-  const begun = { ...t, status: 'running', started_at: iso(now), field, values, matches: plan.matches, ends_at: '' };
-  const first = advance(begun, now);
-  const matches = first ? first.matches : plan.matches;
-  await E(b).Tournament.update(t.id, {
-    status: 'running', engine: ENGINE_VERSION, started_at: iso(now), field, matches, ends_at: '', entrant_count: field.length, bank_in: paid
-  });
+  const { order, rate } = rankField(field, values);
+  order.forEach((fi, k) => { field[fi].seed = k + 1; field[fi].rating = Math.round(rate[fi] * 1000) / 1000; });
+  const plan = drawDouble(order);
+  const now = Date.now(), mins = predictMinutesOf(t);
   // every point the fighters paid goes into the bank now, in one move (older tournaments paid it on each purchase)
-  if (t.bank_deferred) { if (paid) await bankMove(b, paid, `${t.title}: ${fmt(paid)} points paid in by ${entrants.length} fighters`).catch((e) => console.error('bank deposit failed', t.id, paid, e)); }
-  else if (t.bank_in) await bankMove(b, 0, `${t.title}: ${fmt(t.bank_in)} points paid in by ${field.length} fighters`).catch(() => {});
+  const deposit = async () => {
+    if (t.bank_deferred) { if (paid) await bankMove(b, paid, `${t.title}: ${fmt(paid)} points paid in by ${entrants.length} fighters`).catch((e) => console.error('bank deposit failed', t.id, paid, e)); }
+    else if (t.bank_in) await bankMove(b, 0, `${t.title}: ${fmt(t.bank_in)} points paid in by ${field.length} fighters`).catch(() => {});
+  };
+  if (mins > 0) {
+    const until = now + mins * 60000;
+    await E(b).Tournament.update(t.id, {
+      status: 'predict', format: 'double', engine: ENGINE_VERSION, field, matches: plan.matches, predict_until: iso(until), ends_at: '', entrant_count: field.length, bank_in: paid
+    });
+    await deposit();
+    const pot = await potCodes(b);
+    await postEverywhere(b, `Tournament "${t.title}": the bracket is drawn! ${field.length} fighters, seeded by strength. Predict the whole bracket in the next ${mins} minutes${pot.length ? ` for the GP code pot (${pot.map((x) => x.label).join(', ')})` : ''}. The first match opens at ${new Date(until + LEAD_IN_SECONDS * 1000).toISOString().slice(11, 16)} UTC.`,
+      () => announcePrediction(t.title, `The bracket is drawn: ${field.length} fighters, seeded by strength, double elimination. Predict every match and the champion in the next **${mins} minutes**.${pot.length ? ` A perfect bracket wins the pot: **${pot.map((x) => x.label).join(', ')}**.` : ''}\nThe first match opens <t:${Math.floor((until + LEAD_IN_SECONDS * 1000) / 1000)}:R>.`));
+    return;
+  }
+  await beginMatches(b, { ...t, field, matches: plan.matches, format: 'double' }, now, paid);
+  await deposit();
+}
+// The matches begin: the first one opens for bets a few seconds from now; every match is fought when its
+// own betting closes.
+async function beginMatches(b, t, now: number, paid: number) {
+  const begun = { ...t, status: 'running', started_at: iso(now), ends_at: '' };
+  const first = advance(begun, now);
+  const matches = first ? first.matches : t.matches;
+  await E(b).Tournament.update(t.id, {
+    status: 'running', format: t.format || 'double', engine: ENGINE_VERSION, started_at: iso(now), field: t.field, matches, ends_at: '', entrant_count: t.field.length, bank_in: paid ?? t.bank_in ?? 0
+  });
   const firstOpen = new Date(now + LEAD_IN_SECONDS * 1000);
-  await postEverywhere(b, `Tournament "${t.title}" has started: ${field.length} fighters, ${matches.length} matches. The first match opens for bets at ${firstOpen.toISOString().slice(11, 16)} UTC.`,
-    () => announceTournamentStarted(t.title, field, matches.length, firstOpen.getTime()));
+  await postEverywhere(b, `Tournament "${t.title}" has started: ${t.field.length} fighters, double elimination (out after two losses). The first match opens for bets at ${firstOpen.toISOString().slice(11, 16)} UTC.`,
+    () => announceTournamentStarted(t.title, t.field, matches.length, firstOpen.getTime()));
+}
+
+// ---------- 6.22: match results on Discord, with a link to the replay ----------
+async function postEnded(b, t) {
+  const now = Date.now();
+  const ended = (t.matches || []).filter((m) => isFought(m) && !m.skipped && !m.posted && now >= tms(m.end_at));
+  if (!ended.length) return t;
+  const nos = new Set(ended.map((m) => m.no));
+  const saved = await E(b).Tournament.update(t.id, { matches: t.matches.map((m) => (nos.has(m.no) ? { ...m, posted: true } : m)) }).catch(() => null);
+  if (!saved) return t;
+  if (!replayWebhookUrl()) return saved;
+  for (const m of ended) {
+    const fa = t.field[m.a], fb = t.field[m.b], w = t.field[m.winner];
+    const price = m.odds ? (m.winner === m.a ? m.odds.a : m.odds.b) : 0;
+    await announceFightResult({ title: t.title, stage: m.stage || `Match ${m.no}`, a: fa.name, b: fb.name, winner: w.name, how: m.outcome.how, ot: m.outcome.ot, length: m.outcome.length, price, watch: replayLink(`tab=tournament&tour=${t.id}&match=${m.no}`) }).catch(() => {});
+  }
+  return saved;
+}
+
+// ---------- 6.22: bracket prediction ----------
+async function potCodes(b) { return (await PrizeCodes(b).filter({ raffle_id: POT_ID, status: 'reserved' }, { limit: 50 })).items; }
+// After the last match: score every prediction. A perfect one (every match, so the champion too) wins
+// every code in the pot; several perfect: one of them at random. None: the pot rolls over. Safe to repeat.
+async function settlePrediction(b, t) {
+  if (t.format !== 'double' || (t.prediction && t.prediction.settled)) return t;
+  const rows = (await E(b).BracketPick.filter({ tour_id: t.id }, { limit: 1000 }).catch(() => ({ items: [] }))).items;
+  const scored = rows.map((r) => ({ r, ...scorePicks(t.matches || [], r.picks || {}) }));
+  const perfect = scored.filter((x) => x.perfect);
+  const top = scored.slice().sort((x, y) => y.right - x.right).slice(0, 10).map((x) => ({ name: x.r.name, right: x.right, played: x.played, perfect: x.perfect }));
+  const pot = await potCodes(b);
+  let pred: any = { settled: true, entries: rows.length, perfect_count: perfect.length, top, codes: 0, pot: pot.map((x) => x.label) };
+  if (perfect.length && pot.length) {
+    // a random draw that comes out the same if this is run again after a crash (seeded by the tournament)
+    let h = 0; for (const ch of String(t.id) + String(t.started_at || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    const pool = perfect.slice().sort((x, y) => String(x.r.member_id).localeCompare(String(y.r.member_id)));
+    const win = pool[h % pool.length].r;
+    const m = await E(b).Member.get(win.member_id).catch(() => null);
+    if (m) {
+      let given = 0;
+      for (const row of pot) {
+        try { await assignAndDeliver(b, row, m, { source: 'prediction', raffle_id: t.id, raffle_title: `${t.title} · bracket prediction`, place: 1, reason: `Perfect bracket prediction: ${t.title}` }); given++; }
+        catch (e) { console.error('prediction code delivery failed', t.id, row.id, String(e && e.message || e)); }
+      }
+      pred = { ...pred, winner_id: win.member_id, winner_name: win.name, codes: given };
+    }
+  }
+  const saved = await E(b).Tournament.update(t.id, { prediction: pred });
+  const text = pred.winner_name
+    ? `${pred.winner_name} predicted the whole "${t.title}" bracket perfectly${perfect.length > 1 ? ` (drawn from ${perfect.length} perfect brackets)` : ''} and wins the pot: ${pred.pot.join(', ')}!`
+    : rows.length ? `No one predicted the whole "${t.title}" bracket (${rows.length} tried; best: ${top[0] ? `${top[0].name}, ${top[0].right} of ${top[0].played}` : '—'}).${pot.length ? ` The pot rolls over: ${pot.map((x) => x.label).join(', ')}.` : ''}`
+      : '';
+  if (text) await postEverywhere(b, text, () => announcePrediction(t.title, text));
+  for (const x of scored) E(b).BracketPick.update(x.r.id, { right: x.right, played: x.played, perfect: x.perfect }).catch(() => {});
+  return saved;
 }
 
 // After the last match: pay the prizes, then remove every fighter. Safe to call again after a crash.
 async function finishTour(b, t) {
   let cur = t;
   if (cur.status === 'running') cur = await E(b).Tournament.update(t.id, { status: 'paying' });
-  const places = placesOf(cur.matches || []);
+  const places = placesOf(cur.matches || [], cur.format).slice(0, MAX_PRIZES);
   const field = cur.field || [];
   let results = Array.isArray(cur.results) && cur.results.length ? cur.results.map((r) => ({ ...r })) : places.map((fi, i) => {
     const p = (cur.prizes || [])[i];
@@ -468,6 +588,8 @@ async function finishTour(b, t) {
     await save();
   }
   if (results.some((r) => r.kind === 'points' && !r.paid)) return cur; // try again on the next visit / schedule
+  cur = await postEnded(b, cur);
+  try { cur = await settlePrediction(b, cur); } catch (e) { console.error('prediction settle failed', cur.id, String(e && e.message || e)); return cur; }
   cur = await E(b).Tournament.update(cur.id, { status: 'done', results, finished_at: iso(Date.now()) });
   await clearEntrants(b, cur.id);
   const withIds = results.map((r) => ({ ...r, discord_id: members[r.member_id] ? members[r.member_id].discord_id : '' }));
@@ -482,7 +604,9 @@ async function tick(b, t) {
   const now = Date.now();
   const remind = t.status === 'signup' && t.starts_at && !t.reminded_at && now >= tms(t.starts_at) - REMIND_MS && now < tms(t.starts_at);
   const due = remind || (t.status === 'signup' && t.starts_at && now >= tms(t.starts_at))
-    || needsWork(t, now) || t.status === 'paying';
+    || (t.status === 'predict' && now >= tms(t.predict_until))
+    || needsWork(t, now) || t.status === 'paying'
+    || (t.status === 'running' && (t.matches || []).some((m) => isFought(m) && !m.skipped && !m.posted && now >= tms(m.end_at)));
   if (!due) return t;
   try {
     // only one request moves the tournament on; the others don't queue (see withRecordLock's waitMs)
@@ -501,9 +625,11 @@ async function tick(b, t) {
           () => announceTournamentSoon(cur, mins, normCosts(cur.costs).entry));
       }
       if (cur.status === 'signup' && cur.starts_at && Date.now() >= tms(cur.starts_at)) await startTour(b, cur);
+      else if (cur.status === 'predict' && Date.now() >= tms(cur.predict_until)) await beginMatches(b, cur, Date.now(), cur.bank_in);
       else if (cur.status === 'running') {
         const upd = advance(cur, Date.now());
-        const next = upd ? await E(b).Tournament.update(cur.id, upd) : cur;
+        let next = upd ? await E(b).Tournament.update(cur.id, upd) : cur;
+        next = await postEnded(b, next);
         if (next.ends_at && Date.now() >= tms(next.ends_at)) await finishTour(b, next);
       } else if (cur.status === 'paying') await finishTour(b, cur);
       return await E(b).Tournament.get(t.id);
@@ -520,6 +646,14 @@ async function tick(b, t) {
 function tourResolver(b): Resolve {
   const cache = new Map();
   return async (row) => {
+    if (String(row.tour_id).startsWith('grudge:')) {
+      const id = String(row.tour_id).slice(7);
+      if (!cache.has(row.tour_id)) cache.set(row.tour_id, await E(b).Grudge.get(id).catch(() => null));
+      const g = cache.get(row.tour_id);
+      if (!g || ['cancelled', 'declined', 'expired'].includes(g.status)) return { over: true, o: null };
+      if (g.seed == null || !g.end_at || Date.now() < tms(g.end_at)) return { over: false };
+      return { over: true, o: g.outcome };
+    }
     if (!cache.has(row.tour_id)) cache.set(row.tour_id, await E(b).Tournament.get(row.tour_id).catch(() => null));
     const t = cache.get(row.tour_id);
     if (!t) return { over: true, o: null };
@@ -567,7 +701,11 @@ async function buy(b, t, me, item: string, count: number, shown?: number) {
     if (cur.status !== 'signup') throw new UserError('The tournament has started, so the shop is closed.');
     const mineRows = (await E(b).TourEntrant.filter({ tour_id: cur.id, member_id: me.id }, { limit: 2 })).items;
     let x = mineRows[0] || null;
-    if (!x && item !== 'entry') throw new UserError('Buy your first entry to get your fighter first.');
+    // 6.22: "join" gets you your fighter, "roll" buys random stats (1, 5 or 10). The old single "entry"
+    // item (screens from before the update) means join when you have no fighter yet, else rolls.
+    if (item === 'entry') { if (!x) item = 'join'; else item = 'roll'; }
+    if (!x && item !== 'join') throw new UserError('Join the tournament first to get your fighter.');
+    if (x && item === 'join') throw new UserError("You're already in this tournament.");
     let all = null;
     if (!x) {
       all = (await E(b).TourEntrant.filter({ tour_id: cur.id }, { limit: 1000 })).items;
@@ -575,21 +713,27 @@ async function buy(b, t, me, item: string, count: number, shown?: number) {
     }
     const ups = { ...(x && x.ups || {}) };
     const next = x ? { entries: x.entries || 0, ups, weapon: x.weapon || 0, weapon_tries: x.weapon_tries || 0, skills: [...(x.skills || [])], pet: x.pet || 0, mount: x.mount && x.mount.lv ? { ...x.mount } : null, mount_resets: x.mount_resets || 0 } : { entries: 0, ups, weapon: 0, weapon_tries: 0, skills: [], pet: 0, mount: null, mount_resets: 0 };
-    const KEY = { entry: 'entry', weapon: 'weaponTry', skill: 'skill', pet: 'pet', mount: 'mountLevel', mountReset: 'mountReset' };
+    const KEY = { join: 'join', roll: 'roll', weapon: 'weaponTry', skill: 'skill', pet: 'pet', mount: 'mountLevel', mountReset: 'mountReset' };
     if (!KEY[item]) throw new UserError('Unknown item.');
     // the page sends the price it showed; if the Guild Leader has changed it since, say so instead of charging
     if (shown != null && Number(shown) !== COSTS[KEY[item]]) throw new UserError(`The price just changed to ${fmt(COSTS[KEY[item]])} points. Check it and try again.`);
     let cost = 0, what = '';
     const rolled: any = { item };
-    if (item === 'entry') {
-      const n = count;   // 0, 1.5 or anything that isn't 1 to 50 is refused (0 used to buy 1 entry)
-      if (!Number.isInteger(n) || n < 1 || n > 50) throw new UserError('Buy 1 to 50 entries at a time.');
-      cost = n * COSTS.entry; what = `${n} ${n === 1 ? 'entry' : 'entries'}`;
+    if (item === 'join') {
+      cost = COSTS.join; what = 'joined';
+      next.entries = 1; rolled.ups = [];
+    } else if (item === 'roll') {
+      const n = count;   // 1, 5 or 10 random stats; anything else (0, 1.5, 7) is refused
+      if (!ROLL_PACKS.includes(n)) throw new UserError(`Buy ${ROLL_PACKS.join(', ')} random stats at a time.`);
+      const used = Object.values(next.ups).reduce((a: number, v) => a + (Number(v) || 0), 0) as number;
+      const left = TOTAL_CAP - used;
+      if (left <= 0) throw new UserError(`Your fighter has all ${TOTAL_CAP} random stats.`);
+      if (n > left) throw new UserError(`Your fighter has room for ${left} more random stat${left === 1 ? '' : 's'}. Buy fewer.`);
+      cost = n * COSTS.roll; what = `${n} random stat${n === 1 ? '' : 's'}`;
       rolled.ups = [];
       for (let k = 0; k < n; k++) {
-        next.entries++;
-        if (next.entries === 1) continue; // the first entry is the fighter itself
         const u = rollUpgrade(next.ups, rand);
+        if (u) next.entries++;
         rolled.ups.push(u ? u.id : null);
       }
     } else if (item === 'weapon') {
@@ -679,7 +823,7 @@ async function reroll(b, t, me) {
 
 // 6.16: after anything that isn't a read, forget the shared answers so the next screen sees the change.
 // (bets and payouts don't change the tournament itself; they clear the shared bet boards on their own)
-const READS = new Set(['state', 'status', 'ping', 'pulse', 'bet', 'remove', 'settle']);
+const READS = new Set(['state', 'status', 'ping', 'pulse', 'bet', 'remove', 'settle', 'grudges', 'grudge_board', 'grudge_bet', 'grudge_remove', 'hall', 'replay']);   // 6.22: grudge polls clear the shared reads themselves when a grudge moves on
 export default async function(req) {
   let action = '';
   try { const q = await req.clone().json(); action = String((q && q.action) || ''); } catch { /* no body */ }
@@ -703,8 +847,11 @@ async function handle(req) {
       const settings = await getSettings(b);
       let t = null;
       try { t = await tick(b, await activeTour(b)); } catch (e) { console.error('tournament tick failed', e); }
+      // 6.22: grudge matches move on here too (expire, fight, pay) even if nobody is on the site
+      let grudges = 0;
+      try { for (const g of await sharedGrudges(b)) { if (g.status === 'open' || g.status === 'running') { await tickGrudge(b, g, bankMove); grudges++; } } } catch (e) { console.error('grudge tick failed', e); }
       const paid = await payOthers(b, { scope: 'tour' }, tourResolver(b), settings, '', 25);
-      return Response.json({ ok: true, status: t ? t.status : null, paid });
+      return Response.json({ ok: true, status: t ? t.status : null, paid, grudges });
     }
 
     // 6.15: the screen's polls ('state', 'status') may reuse a member row read in the last 20 s.
@@ -716,10 +863,59 @@ async function handle(req) {
     const leader = me.role === 'leader';
     const settings = await getSettings(b);
 
+    // ---------- 6.22: grudge matches, Hall of Fame, replays from a link, bracket predictions ----------
+    if (['grudges', 'challenge', 'grudge_accept', 'grudge_decline', 'grudge_cancel'].includes(p.action)) {
+      return Response.json(await grudgeAction(b, p, me, { bankMove, titles: await titlesOf(b), settings }));
+    }
+    if (p.action === 'grudge_bet' || p.action === 'grudge_remove') {
+      const g = await E(b).Grudge.get(String(p.id || '')).catch(() => null);
+      if (!g || g.status !== 'running') throw new UserError('That grudge match is not open for bets.');
+      const key = grudgeBetKey(g.id), label = `Grudge match ${g.challenger_name} vs ${g.opponent_name}`;
+      const res = p.action === 'grudge_bet'
+        ? await placeBets(b, me, settings, { key, label, names: [g.challenger_name, g.opponent_name], closeAt: tms(g.close_at), arrived, odds: g.odds, raw: p.lines })
+        : await removeBets(b, me, { key, label, closeAt: tms(g.close_at), arrived, all: p.all === true, k: String(p.k || '') });
+      return Response.json({ ok: true, balance: res.balance, mine: res.mine || null });
+    }
+    if (p.action === 'grudge_board') {
+      const g = await E(b).Grudge.get(String(p.id || '')).catch(() => null);
+      if (!g) throw new UserError('That grudge match is gone.');
+      const now = Date.now(), done = g.end_at && now >= tms(g.end_at);
+      return Response.json({ server_now: iso(now), board: await betBoard(b, grudgeBetKey(g.id), me.id, done ? g.outcome : null) });
+    }
+    if (p.action === 'hall') return Response.json({ server_now: iso(Date.now()), hall: await sharedHall(b) });
+    if (p.action === 'replay') {
+      // a match (or grudge) watched again from a link, e.g. the one posted on Discord
+      const now = Date.now();
+      if (p.grudge) {
+        const g = await E(b).Grudge.get(String(p.grudge)).catch(() => null);
+        if (!g) throw new UserError('That grudge match is gone.');
+        return Response.json({ server_now: iso(now), grudge: publicGrudge(g, now, await titlesOf(b)) });
+      }
+      const t = await E(b).Tournament.get(String(p.tour || '')).catch(() => null);
+      if (!t) throw new UserError('That tournament is gone.');
+      const m = (t.matches || []).find((x) => x.no === Number(p.match));
+      if (!m || !isFought(m) || m.skipped || now < tms(m.end_at)) throw new UserError("That match hasn't been fought yet.");
+      const titles = await titlesOf(b);
+      return Response.json({ server_now: iso(now), tour: { id: t.id, title: t.title, values: normValues(t.values), engine: t.engine || ENGINE_VERSION, format: t.format || 'single', field: (t.field || []).map((f) => ({ ...f, title: titles[f.member_id] || '' })) }, match: { no: m.no, stage: m.stage, a: m.a, b: m.b, seed: m.seed, winner: m.winner, outcome: m.outcome } });
+    }
+    if (p.action === 'predict') {
+      const t = await activeTour(b);
+      if (!t || t.status !== 'predict') throw new UserError('Predictions are closed. They open when the bracket is drawn and close when the first match opens.');
+      if (Date.now() >= tms(t.predict_until)) throw new UserError('Predictions just closed.');
+      const c = cleanPicks(t.matches || [], p.picks || {});
+      if (!c.ok) throw new UserError(`Pick a winner for every match (match ${c.missing} is missing).`);
+      const row = await lockMember(b, me.id, async () => {
+        const { items } = await E(b).BracketPick.filter({ tour_id: t.id, member_id: me.id }, { limit: 2 });
+        const data = { picks: c.picks, champion: c.champion, submitted_at: iso(Date.now()), name: String(me.discord_name || me.discord_id).slice(0, 32), avatar: me.avatar_url || '' };
+        return items[0] ? E(b).BracketPick.update(items[0].id, data) : E(b).BracketPick.create({ tour_id: t.id, member_id: me.id, ...data });
+      });
+      return Response.json({ ok: true, picks: row.picks, champion: row.champion, submitted_at: row.submitted_at });
+    }
+
     // A quick look for the menu badge and the guild hall banner (no clock work).
     if (p.action === 'status') {
       const t = await sharedActive(b);
-      return Response.json({ tournament: t ? { id: t.id, title: t.title, status: t.status, starts_at: t.starts_at || null, ends_at: t.ends_at || null, entrant_count: t.entrant_count || 0, prizes: (t.prizes || []).map((x) => x.label) } : null, server_now: iso(Date.now()), entry: normCosts(t && t.costs).entry });
+      return Response.json({ tournament: t ? { id: t.id, title: t.title, status: t.status, starts_at: t.starts_at || null, ends_at: t.ends_at || null, predict_until: t.predict_until || null, entrant_count: t.entrant_count || 0, prizes: (t.prizes || []).map((x) => x.label) } : null, server_now: iso(Date.now()), entry: normCosts(t && t.costs).join });
     }
 
     if (p.action === 'state') {
@@ -731,6 +927,17 @@ async function handle(req) {
       const now = Date.now();
       const out: any = { server_now: iso(now), costs: normCosts(t && t.costs), limit: arenaLimit(settings), min_bet: arenaMin(settings), bet_seconds: BET_SECONDS, intro: INTRO_SECONDS, result_seconds: RESULT_SECONDS, engine: ENGINE_VERSION };
       out.tournament = t ? publicTour(t, now, leader) : null;
+      // 6.22: titles on the fighters, the prediction window, the GP code pot
+      const titles = await titlesOf(b);
+      if (out.tournament && Array.isArray(out.tournament.field)) out.tournament.field = out.tournament.field.map((f) => ({ ...f, title: titles[f.member_id] || '' }));
+      out.titles = titles;
+      out.pot = (await memo('tour:pot', 15000, () => potCodes(b))).map((x) => ({ label: x.label }));
+      if (t && t.format === 'double') {
+        const mine = await memo(`tour:pick:${t.id}:${me.id}`, 4000, async () => (await E(b).BracketPick.filter({ tour_id: t.id, member_id: me.id }, { limit: 1 }).catch(() => ({ items: [] }))).items[0] || null);
+        const count = await memo(`tour:picks:${t.id}`, 8000, async () => (await E(b).BracketPick.filter({ tour_id: t.id }, { limit: 1000, fields: ['member_id'] }).catch(() => ({ items: [] }))).items.length);
+        out.my_prediction = mine ? { picks: mine.picks, champion: mine.champion, submitted_at: mine.submitted_at, right: mine.right ?? null, played: mine.played ?? null, perfect: !!mine.perfect } : null;
+        out.prediction_count = count;
+      }
       if (!t) { const last = await sharedLast(b); out.last = last ? publicTour(last, now, false) : null; }
       if (t && t.status === 'signup') {
         const list = await sharedEntrants(b, t.id);
@@ -754,6 +961,8 @@ async function handle(req) {
         const bank = await bankRow(b);
         out.bank = { balance: bank.balance || 0, total_in: bank.total_in || 0, total_out: bank.total_out || 0, log: (bank.log || []).slice(0, 20) };
         out.discord_announce = !!announceWebhookUrl();
+        out.discord_replay = !!replayWebhookUrl();
+        out.pot_rows = (await potCodes(b)).map((x) => ({ id: x.id, label: x.label, last4: x.last4 || '' }));
         if (t) {
           const rows = (await PrizeCodes(b).filter({ raffle_id: t.id }, { limit: 20 })).items;
           out.code_slots = (t.prizes || []).map((x, i) => {
@@ -805,6 +1014,44 @@ async function handle(req) {
     // ---------- the Guild Leader ----------
     if (!leader) throw new UserError('Only the Guild Leader can run tournaments.', 403);
 
+    // 6.22: the prediction prize pot (GP codes set aside until someone predicts a whole bracket right)
+    if (p.action === 'pot_add') {
+      const label = String(p.label || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+      if (!label) throw new UserError('Name the prize (for example "1,000 GP").');
+      const held = await potCodes(b);
+      if (held.length >= 10) throw new UserError('The pot already holds 10 codes.');
+      const pot = { id: POT_ID, title: 'Bracket prediction pot', prizes: [{ label }] };
+      const row = await runStockLocked(b, () => reserveCode(b, pot, 1, p.from_stock === true ? { from_stock: true } : { code: p.code }, me.id));
+      bust('tour:');
+      return Response.json({ ok: true, pot: [...held, row].map((x) => ({ id: x.id, label: x.label })) });
+    }
+    if (p.action === 'pot_remove') {
+      const row = (await potCodes(b)).find((x) => x.id === String(p.id || ''));
+      if (!row) throw new UserError('That code is no longer in the pot.');
+      await discardReserved(b, [row]);
+      bust('tour:');
+      return Response.json({ ok: true, pot: (await potCodes(b)).map((x) => ({ id: x.id, label: x.label })) });
+    }
+    // 6.22: the leader's screen records the final and sends the video to Discord
+    if (p.action === 'final_video') {
+      const t = await E(b).Tournament.get(String(p.tour || '')).catch(() => null);
+      if (!t) throw new UserError('That tournament is gone.');
+      if (t.video_posted_at) throw new UserError('The video of this final was already sent.');
+      const fin = (t.matches || []).filter((m) => isFought(m) && !m.skipped).pop();
+      if (!fin || Date.now() < tms(fin.end_at)) throw new UserError('The final has not been fought yet.');
+      const mime = String(p.mime || 'video/webm').startsWith('video/mp4') ? 'video/mp4' : 'video/webm';
+      let bytes;
+      try { bytes = Uint8Array.from(atob(String(p.data || '')), (c) => c.charCodeAt(0)); } catch { throw new UserError('The video could not be read.'); }
+      if (bytes.length < 1000) throw new UserError('The video is empty.');
+      if (bytes.length > 9.5 * 1024 * 1024) throw new UserError('The video is too big for Discord (over 9.5 MB). Use Download instead.');
+      const w = t.field[fin.winner], l = t.field[fin.loser];
+      const text = `**${t.title}** · ${fin.stage || 'Final'}: **${w.name}** beat ${l.name}. Watch it again: ${replayLink(`tab=tournament&tour=${t.id}&match=${fin.no}`)}`;
+      const okd = await postFightVideo(bytes, mime, `final-${t.id}.${mime === 'video/mp4' ? 'mp4' : 'webm'}`, text);
+      if (!okd) throw new UserError(replayWebhookUrl() ? "Discord didn't accept the video. Try Download instead." : 'Discord is not connected yet. Add the DISCORD_REPLAY_WEBHOOK_URL (or announcements) secret first.');
+      await E(b).Tournament.update(t.id, { video_posted_at: iso(Date.now()) });
+      return Response.json({ ok: true });
+    }
+
     if (p.action === 'create') {
       if (await activeTour(b)) throw new UserError('A tournament is already open. Finish or cancel it first.');
       const title = String(p.title || '').replace(/\s+/g, ' ').trim().slice(0, 60);
@@ -830,6 +1077,7 @@ async function handle(req) {
       }
       const t = await E(b).Tournament.create({
         title, status: 'signup', starts_at: starts ? iso(starts) : '', values: normValues(p.values), costs: normCosts(p.costs), max_spend: maxSpend, prizes, repeat,
+        format: 'double', predict_minutes: cleanPredict(p.predict_minutes),
         entrant_count: 0, bank_in: 0, bank_deferred: true, created_by: me.id, engine: ENGINE_VERSION
       });
       try {
@@ -841,7 +1089,7 @@ async function handle(req) {
         await E(b).Tournament.delete(t.id).catch(() => {});
         throw e;
       }
-      await postSystem(b, GUILD_CHANNEL, `Tournament "${title}" is open for sign-up! Entry ${fmt(normCosts(t.costs).entry)} points. Top prize: ${prizes[0] ? prizes[0].label : 'glory'}.`);
+      await postSystem(b, GUILD_CHANNEL, `Tournament "${title}" is open for sign-up! Join ${fmt(normCosts(t.costs).join)} points. Top prize: ${prizes[0] ? prizes[0].label : 'glory'}.`);
       return Response.json({ ok: true, id: t.id });
     }
 
@@ -864,6 +1112,7 @@ async function handle(req) {
         if ('costs' in p) update.costs = normCosts(p.costs);
         if ('max_spend' in p) update.max_spend = cleanMaxSpend(p.max_spend);
         if ('repeat' in p) update.repeat = cleanRepeat(p.repeat);
+        if ('predict_minutes' in p) update.predict_minutes = cleanPredict(p.predict_minutes);
         if ((update.repeat ?? cleanRepeat(cur.repeat)) !== 'none' && !('starts_at' in update ? update.starts_at : cur.starts_at)) throw new UserError('A repeating tournament needs a start time.');
         if ('prizes' in p) {
           const raw = Array.isArray(p.prizes) ? p.prizes : [];
@@ -918,7 +1167,7 @@ async function handle(req) {
       if (!announceWebhookUrl()) throw new UserError('Discord announcements are not connected yet. Add the DISCORD_ANNOUNCE_WEBHOOK_URL secret first.');
       if (t.status !== 'signup') throw new UserError('Only a tournament open for sign-up can be posted.');
       if (t.announced_at && Date.now() - tms(t.announced_at) < 60000) throw new UserError('It was just posted. Wait a minute before posting again.');
-      const okd = await announceTournamentOpen(t, normCosts(t.costs).entry, p.ping === true);
+      const okd = await announceTournamentOpen(t, normCosts(t.costs).join, p.ping === true);
       if (!okd) throw new UserError("Discord didn't accept the post. Check the announcements webhook and try again.");
       const at = iso(Date.now());
       await E(b).Tournament.update(t.id, { announced_at: at });

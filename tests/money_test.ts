@@ -176,12 +176,13 @@ const BAD = [-100, 0, 0.5, 1.5, 1e20, 'abc', null, NaN, '100abc', [], {}];
 
 // ---------- tournament ----------
 {
-  ok((await call(tour, A, { action: 'create', title: 'x' })).status === 403, 'tournament: a member cannot open one');
-  const cr = await call(tour, L, { action: 'create', title: 'QA Cup', prizes: [{ kind: 'points', points: 2000 }, { kind: 'points', points: 500, from_bank: true }], costs: { entry: 300 } });
+  ok((await call(tour, A, { action: 'create', predict_minutes: 0, title: 'x' })).status === 403, 'tournament: a member cannot open one');
+  const cr = await call(tour, L, { action: 'create', predict_minutes: 0, title: 'QA Cup', prizes: [{ kind: 'points', points: 2000 }, { kind: 'points', points: 500, from_bank: true }], costs: { entry: 300 } });
   ok(cr.ok, 'tournament: leader opens one');
   const before = Object.fromEntries(await Promise.all(people.map(async (m) => [m.id, await pts(m)])));
-  for (const v of [-1, 0, 1.5, 51, 'x', null]) { const b0 = await pts(A); const r = await call(tour, A, { action: 'buy', item: 'entry', count: v, price: 300 }); ok((v === null ? r.ok === true : r.status >= 400), `tournament: entry count ${JSON.stringify(v)} handled (got ${r.status} ${r.error || ''})`); if (v === null && r.ok) await call(tour, A, { action: 'state' }); }
-  for (const m of [A, B, C, D]) { const rs = await race(6, () => call(tour, m, { action: 'buy', item: 'entry', count: 1, price: 300 })); ok(rs.filter((r) => r.status === 200).length >= 1, `tournament: ${m.discord_name} bought entries at once ${JSON.stringify(statusCount(rs))}`); }
+  await call(tour, A, { action: 'buy', item: 'join', price: 300 });
+  for (const v of [-1, 0, 1.5, 7, 51, 'x', null]) { const b0 = await pts(A); const r = await call(tour, A, { action: 'buy', item: 'roll', count: v, price: 300 }); ok((v === null ? r.ok === true : r.status >= 400), `tournament: entry count ${JSON.stringify(v)} handled (got ${r.status} ${r.error || ''})`); if (v === null && r.ok) await call(tour, A, { action: 'state' }); }
+  for (const m of [A, B, C, D]) { const rs = await race(6, () => call(tour, m, { action: 'buy', item: m === A ? 'roll' : 'join', count: 1, price: 300 })); ok(rs.filter((r) => r.status === 200).length >= 1, `tournament: ${m.discord_name} bought entries at once ${JSON.stringify(statusCount(rs))}`); }
   const ents = (await E.TourEntrant.filter({}, {})).items;
   for (const m of [A, B, C, D]) { const x = ents.filter((e) => e.member_id === m.id); ok(x.length === 1 && before[m.id] - (await pts(m)) === x[0].spent && x[0].spent === x[0].entries * 300, `tournament: ${m.discord_name} one fighter, charged = spent = entries x price (${x.length} rows, entries ${x[0] && x[0].entries}, spent ${x[0] && x[0].spent}, charged ${before[m.id] - (await pts(m))})`); }
   const rr = await race(5, () => call(tour, A, { action: 'reroll' }));

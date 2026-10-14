@@ -10,7 +10,7 @@
 // Plain JavaScript on purpose: the backend functions (Deno) and the page (Vite) both import this
 // one file, so the rules can never drift apart. Change ENGINE_VERSION whenever a rule changes.
 
-export const ENGINE_VERSION = 11;   // 11: 6.20 (crits 2x-10x weighted, Crit defense base 10%, Accuracy +5%) · 10: 6.19 (ATK/DEF/crit retune, Crit defense cuts crit damage) · 9: 6.18 balance (stronger base, potions at 85%, crits 2x-8x, weapon 35%, mount pairs) · 8: priced from real fights, tighter caps, length line, Live Arena matchmaking (7: both attack at once)
+export const ENGINE_VERSION = 12;   // 12: 6.22 (Potions +1 per upgrade, was +2) · 11: 6.20 (crits 2x-10x weighted, Crit defense base 10%, Accuracy +5%) · 10: 6.19 (ATK/DEF/crit retune, Crit defense cuts crit damage) · 9: 6.18 balance (stronger base, potions at 85%, crits 2x-8x, weapon 35%, mount pairs) · 8: priced from real fights, tighter caps, length line, Live Arena matchmaking (7: both attack at once)
 export const ENGINE_VERSION_NOTES = 5;   // 2: tighter prices, no near-certain or long-shot side bets
                                    // 4: Speed sets the pace of every move, MP only spent by skills, the Draw always offered
                                    // 5: new upgrade values (see DEFAULT_VALUES), stronger weapon levels, pet and mount, Spirits Within +20% Speed
@@ -38,7 +38,7 @@ export const UPGRADES = [
 export const PER_STAT = 9, TOTAL_CAP = 50;
 // What each upgrade gives. The Guild Leader can change these for a tournament (saved on it).
 export const DEFAULT_VALUES = {
-  ups: { hp: 8500, atk: 650, def: 900, crit: 3.5, critdef: 10, acc: 5, eva: 5, pots: 2, spd: 10 },
+  ups: { hp: 8500, atk: 650, def: 900, crit: 3.5, critdef: 10, acc: 5, eva: 5, pots: 1, spd: 10 },   // 6.22: Potions +1 per upgrade (was +2)
   weapon: { atk: 0.15, crit: 5, chance: 0.35 }
 };
 // Keep only sane numbers; anything missing falls back to the default.
@@ -54,15 +54,23 @@ export function normValues(v) {
 
 // ---------- prices in the tournament shop ----------
 // The defaults; the Guild Leader sets a tournament's own prices when opening it (saved on it as costs).
-export const COSTS = { entry: 500, skill: 1000, weaponTry: 500, pet: 1500, mountLevel: 1500, mountReset: 2500 };
+// 6.22: joining and random stats are priced apart: "join" gets you your fighter, "roll" is one random
+// stat upgrade (bought 1, 5 or 10 at a time). Before 6.22 one "entry" price did both; a tournament saved
+// with only "entry" uses it for both. "entry" is still returned (= join) for older screens.
+export const COSTS = { join: 500, roll: 500, skill: 1000, weaponTry: 500, pet: 1500, mountLevel: 1500, mountReset: 2500 };
 export const COST_ITEMS = [
-  { id: "entry", name: "Entry (each)" }, { id: "skill", name: "Add skill" }, { id: "weaponTry", name: "Weapon upgrade try" },
+  { id: "join", name: "Join the tournament" }, { id: "roll", name: "Random stat (each)" }, { id: "skill", name: "Add skill" }, { id: "weaponTry", name: "Weapon upgrade try" },
   { id: "pet", name: "Pet growth (each 25%)" }, { id: "mountLevel", name: "Mount level (each)" }, { id: "mountReset", name: "Mount stat reset" }
 ];
+export const ROLL_PACKS = [1, 5, 10];
 // Whole points from 1 to 1,000,000; anything else falls back to the default.
 export function normCosts(c) {
-  const out = {};
-  for (const { id } of COST_ITEMS) { const x = Math.floor(Number(c && c[id])); out[id] = Number.isFinite(x) && x >= 1 && x <= 1000000 ? x : COSTS[id]; }
+  const out = {}, ok = (v) => { const x = Math.floor(Number(v)); return Number.isFinite(x) && x >= 1 && x <= 1000000 ? x : null; };
+  for (const { id } of COST_ITEMS) {
+    const legacy = (id === "join" || id === "roll") && c ? ok(c.entry) : null;
+    out[id] = (c && ok(c[id])) ?? legacy ?? COSTS[id];
+  }
+  out.entry = out.join;
   return out;
 }
 

@@ -1,0 +1,117 @@
+{
+  "name": "Grudge",
+  "type": "object",
+  "description": "6.22 grudge match: a member challenges another for an equal points stake; both get equal random builds; others can bet. Server-only: the seed is secret until it is fought.",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "running",
+        "done",
+        "expired",
+        "declined",
+        "cancelled"
+      ],
+      "default": "open"
+    },
+    "challenger_id": {
+      "type": "string"
+    },
+    "challenger_name": {
+      "type": "string"
+    },
+    "challenger_avatar": {
+      "type": "string"
+    },
+    "opponent_id": {
+      "type": "string"
+    },
+    "opponent_name": {
+      "type": "string"
+    },
+    "opponent_avatar": {
+      "type": "string"
+    },
+    "stake": {
+      "type": "integer",
+      "default": 0
+    },
+    "size": {
+      "type": "integer",
+      "default": 0
+    },
+    "message": {
+      "type": "string"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "builds": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "looks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "odds": {
+      "type": "object"
+    },
+    "open_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "close_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "seed": {
+      "type": "integer"
+    },
+    "outcome": {
+      "type": "object"
+    },
+    "winner": {
+      "type": "integer"
+    },
+    "end_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "paid": {
+      "type": "boolean",
+      "default": false
+    },
+    "pay_started": {
+      "type": "boolean",
+      "default": false
+    },
+    "prize": {
+      "type": "integer",
+      "default": 0
+    },
+    "accepted_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "engine": {
+      "type": "integer"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

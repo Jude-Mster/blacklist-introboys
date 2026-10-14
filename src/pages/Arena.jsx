@@ -7,13 +7,20 @@ import { useGuild } from "@/lib/GuildContext";
 import { cn } from "@/lib/utils";
 import LiveArena from "@/components/arena/LiveArena";
 import TournamentView from "@/components/arena/TournamentView";
+import GrudgeView from "@/components/arena/GrudgeView";
+import HallView from "@/components/arena/HallView";
 
 // Blacklist Arena ("Fight" in the menu): the Live Arena, a fight every few minutes to bet on, and the
 // Guild Leader's tournaments. This page (and the 3D arena with it) is only downloaded when a member opens it.
 export default function Arena() {
   const { account, settings, loading } = useGuild();
   const [params, setParams] = useSearchParams();
-  const tab = params.get("tab") === "tournament" ? "tournament" : "live";
+  const TABS = [["live", "Live Arena"], ["tournament", "Tournament"], ["grudge", "Grudge"], ["hall", "Hall of Fame"]];
+  const tab = TABS.some(([id]) => id === params.get("tab")) ? params.get("tab") : "live";
+  // 6.22: a replay link (from Discord): ?tab=tournament&tour=…&match=… or ?tab=grudge&grudge=…
+  const link = tab === "tournament" && params.get("tour") && params.get("match") ? { tour: params.get("tour"), match: Number(params.get("match")) } : null;
+  const grudgeId = tab === "grudge" ? params.get("grudge") || "" : "";
+  const closeLink = () => setParams({ tab }, { replace: true });
 
   if (loading) return <LanternSpinner label="Opening the arena" className="py-24" />;
   if (!account || !account.linked) return <Navigate to="/link-discord" replace />;
@@ -36,7 +43,7 @@ export default function Arena() {
           <h1 className="font-heading text-2xl font-bold sm:text-3xl leading-tight text-white">Blacklist Arena</h1>
         </div>
         <div className="grid w-full grid-cols-2 gap-1.5 sm:flex sm:w-auto" role="tablist" aria-label="Arena">
-          {[["live", "Live Arena"], ["tournament", "Tournament"]].map(([id, label]) => (
+          {TABS.map(([id, label]) => (
             <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setParams(id === "live" ? {} : { tab: id }, { replace: true })}
               className={cn("h-10 whitespace-nowrap rounded border px-3 font-heading sm:px-4 text-sm font-semibold uppercase tracking-wider", tab === id ? "border-gold bg-gold/15 text-gold" : "border-bronze/50 text-mist hover:border-gold")}>
               {label}
@@ -51,7 +58,9 @@ export default function Arena() {
               <p className="text-center text-mist">The Guild Leader has closed the Live Arena for now. Tournaments are still on the Tournament tab.</p>
             </Panel>
           ))
-          : <TournamentView key="tour" balance={account.member.points} member={account.member} />}
+          : tab === "tournament" ? <TournamentView key="tour" balance={account.member.points} member={account.member} link={link} onCloseLink={closeLink} />
+          : tab === "grudge" ? <GrudgeView key="grudge" balance={account.member.points} member={account.member} focusId={grudgeId} onCloseLink={closeLink} />
+          : <HallView key="hall" member={account.member} />}
       </TableBoundary>
     </div>
   );
