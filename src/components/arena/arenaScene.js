@@ -14,6 +14,7 @@
 // is switched off while the arena is open, and the lights keep the old (pre-r155) brightness.
 /* eslint-disable */
 import * as THREE from "three";
+import { findClashes, CLASH } from "./clash";
 import {
   SKILLS, WEAPON, MOUNT, PET, petGrowth, CHARGE, BUFF_STACK, BUFF_CAST, CAST, SPIN, RECOVER, POTION, DT, LIMIT, OT, mulberry32, speedNow, paceOf, statsOf as engineStats
 } from "@/lib/arenaEngine";
@@ -449,6 +450,7 @@ export function createArenaScene(opts) {
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
     }`;
+  const CLASH_FRAG = WEAPON_FRAG.replace("uniform float bright;", "uniform float bright; uniform float fade;").replace("gl_FragColor = vec4(rgb, c.a);", "gl_FragColor = vec4(rgb, c.a * fade);");
   // the aura: a tight bright glow hugging the outline and a wide soft one, both flickering like cold fire,
   // with tongues of flame streaming back off the weapon
   const AURA_FRAG = `uniform sampler2D auraMap; uniform vec3 auraColor; uniform float strength; uniform float time; varying vec2 vUv;
@@ -1422,6 +1424,36 @@ export function createArenaScene(opts) {
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: slashTex, color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
       sp.position.set(x, FLOOR + 1.3, 0.3); sp.material.rotation = Math.random() * 6.28; sp.userData.s = big ? 4.2 : 3; add(sp, "slash", 0.28);
     }
+    if (kind === "clash") {
+      // the weapon clash: both spearheads slam together in the middle, lock for a beat grinding with sparks
+      // pouring off them, then fly apart. color: [fighter A's weapon colour, fighter B's]
+      const [cA, cB] = color, P = new THREE.Vector3(x, FLOOR + 1.7, 0.6), L = BLADE.length * FIGHTER_SCALE * 1.35, life = CLASH.hold + 0.45;
+      [0, 1].forEach((side) => {
+        const g = new THREE.Group(), col = new THREE.Color(side ? cB : cA);
+        const wm = new THREE.Mesh(weaponGeo, new THREE.ShaderMaterial({ uniforms: { map: { value: weaponTex.weapon }, auraMap: { value: weaponTex.aura }, auraColor: { value: col }, auraOn: { value: 1 }, tint: { value: 0.12 }, bright: { value: 1.25 }, fade: { value: 1 } }, vertexShader: WEAPON_VERT, fragmentShader: CLASH_FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+        const am = new THREE.Mesh(weaponGeo, new THREE.ShaderMaterial({ uniforms: { auraMap: { value: weaponTex.aura }, auraColor: { value: col }, strength: { value: 0.8 }, time: { value: 0 } }, vertexShader: WEAPON_VERT, fragmentShader: AURA_FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+        wm.renderOrder = 6; am.renderOrder = 7; am.position.z = 0.002;
+        g.add(wm, am); g.scale.set(FIGHTER_SCALE * 1.35, (side ? -1 : 1) * FIGHTER_SCALE * 1.35, 1);
+        g.userData = { side, P, L, wm, am };
+        add(g, "cblade", life);
+      });
+      // the flash where they meet: a white core, a gold bloom, a four-point star of light and a ring
+      [[0xffffff, 1.4, 0.22], [0xffc870, 2.4, 0.4]].forEach(([c, s0, l]) => { const g = glow(c, s0, 0.75); g.position.copy(P); g.userData.s0 = s0; add(g, "fire", l); });
+      [[6.5, 0.22, 0], [2.6, 0.18, Math.PI / 2], [2.2, 0.12, Math.PI / 4], [2.2, 0.12, -Math.PI / 4]].forEach(([sx, sy, rot], k) => {
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: k ? 0xfff3d0 : 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+        sp.position.copy(P); sp.material.rotation = rot; sp.userData.sx = sx; sp.userData.sy = sy; add(sp, "streak", 0.42);
+      });
+      const w = new THREE.Mesh(new THREE.RingGeometry(0.85, 1.0, 64), mat({ color: 0xffe6a8 })); w.position.copy(P); w.quaternion.copy(camera.quaternion); w.userData.s = 3.6; add(w, "wave", 0.45);
+      const w2 = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.0, 64), mat({ color: 0xffffff })); w2.rotation.x = -Math.PI / 2; w2.position.set(x, FLOOR + 0.05, 0); w2.userData.s = 5; add(w2, "wave", 0.6);
+      // sparks: a burst on contact, then a stream while the blades grind, in both weapons' colours
+      for (let k = 0; k < 70; k++) {
+        const burst = k < 34, c = k % 5 === 0 ? 0xffffff : k % 5 === 1 ? 0xffd070 : k % 2 ? cA : cB;
+        const g = glow(c, 0.12 + Math.random() * 0.2, 1);
+        const a = burst ? Math.random() * Math.PI * 2 : Math.PI * (0.15 + Math.random() * 0.7), sp = burst ? 4 + Math.random() * 7 : 2.5 + Math.random() * 4;
+        g.userData.p0 = P.clone(); g.userData.v = new THREE.Vector3(Math.cos(a) * sp, Math.abs(Math.sin(a)) * sp * (burst ? 1 : 1.2) + 1, (Math.random() - 0.3) * 4);
+        g.position.copy(P); add(g, "spark", 0.45 + Math.random() * 0.5, burst ? 0 : Math.random() * CLASH.hold);
+      }
+    }
     if (kind === "sparks") {
       for (let k = 0; k < 14; k++) {
         const g = glow(k % 3 ? color : 0xffffff, 0.22 + Math.random() * 0.2, 1);
@@ -1440,9 +1472,26 @@ export function createArenaScene(opts) {
       const f = fx[k], a = (clockT - f.born) / f.life;
       if (a < 0) { f.m.visible = false; continue; }
       f.m.visible = true;
+      if (a >= 1 && f.m.isGroup) { scene.remove(f.m); f.m.traverse((o) => { if (o.material) o.material.dispose(); }); fx.splice(k, 1); continue; }
       if (a >= 1) { scene.remove(f.m); if (f.m.geometry && f.m.geometry !== ringGeo && f.m.geometry !== sealGeo) f.m.geometry.dispose(); if (f.m.material) f.m.material.dispose(); fx.splice(k, 1); continue; }
-      f.m.material.opacity = 1 - a;
+      if (f.m.material) f.m.material.opacity = 1 - a;
       if (f.kind === "shock") f.m.scale.setScalar(1 + a * 4);
+      if (f.kind === "cblade") {
+        // in fast, locked and grinding, then thrown apart
+        const u = f.m.userData, tt = clockT - f.born, sd = u.side ? -1 : 1, IN = 0.07;
+        let ang = 0.72, out = 0, slide = 0, jit = 0, fade = 1;
+        if (tt < IN) { const q = 1 - tt / IN; out = q * 1.3; ang += q * 0.55; }
+        else if (tt < CLASH.hold) { const q = (tt - IN) / (CLASH.hold - IN); slide = q * 0.18; jit = Math.sin(tt * 140 + u.side * 2.1) * 0.03; ang += Math.sin(tt * 90) * 0.02; }
+        else { const q = Math.min(1, (tt - CLASH.hold) / 0.45); slide = 0.18; out = ease(q) * 1.7; ang -= q * 1.1; fade = 1 - q; }
+        const rot = u.side ? Math.PI - ang : ang, dx = Math.cos(rot), dy = Math.sin(rot);
+        // the blades cross 62% of the way up the head; "out" pulls each back toward its own fighter
+        const back = u.L * 0.62 - slide + out;
+        f.m.position.set(u.P.x - dx * back + jit, u.P.y - dy * back + jit * 0.6 - (tt > CLASH.hold ? out * 0.25 : 0), u.P.z + (u.side ? -0.02 : 0.02));
+        f.m.rotation.set(0, 0, rot);
+        u.wm.material.uniforms.fade.value = fade; u.am.material.uniforms.strength.value = 0.8 * fade * (tt < CLASH.hold ? 1 + Math.sin(tt * 60) * 0.25 : 1); u.am.material.uniforms.time.value = clockT;
+        continue;
+      }
+      if (f.kind === "streak") { const q = ease(Math.min(1, a * 4)); f.m.scale.set(f.m.userData.sx * (0.25 + 0.75 * q) * (1 + a * 0.3), f.m.userData.sy * (1 - a * 0.6), 1); f.m.material.opacity = a < 0.15 ? 1 : Math.pow(1 - (a - 0.15) / 0.85, 1.5); }
       if (f.kind === "seal") { f.m.material.opacity = Math.min(1, a * 5) * (1 - a * a); f.m.rotation.z = a * 1.5; }
       if (f.kind === "column") { f.m.material.opacity = Math.min(1, a * 6) * (1 - a) * 0.8; f.m.scale.set(1 + a * 0.4, Math.min(1, a * 3), 1 + a * 0.4); }
       if (f.kind === "arc") { f.m.rotation.z = a * 3.2; f.m.scale.setScalar(0.7 + a * 0.5); }
@@ -1760,6 +1809,18 @@ export function createArenaScene(opts) {
         noise("lowpass", 900 * p, 90, 0.3 + 0.4 * m, (0.25 + 0.25 * m) * v, 0.004, 0.7, 0.003, both);     // body
         [[6270, 1], [8370, 0.6], [9400, 0.4]].forEach(([f, w], k) => tone("sine", f * p, f * p, 0.4 + 0.3 * m, 0.028 * w * v, 0.02 + k * 0.012, 0.002, both));  // ting
       },
+      // a weapon clash: two bright inharmonic clangs (one per spear, a little apart in pitch) that ring on, a
+      // sharp crack, a low thump, a short metal grind while the blades are locked and a whoosh as they part
+      clash() {
+        const p = jitter(), v = 0.9, r = room(3, 0.38), both = [out, r];
+        noise("bandpass", 7400 * p, 3000 * p, 0.06, 0.8 * v, 0, 2.5, 0.0005, both);
+        [[1, 1], [1.07, 0.85]].forEach(([d, w]) => [[1320, 1], [2380, 0.75], [3550, 0.55], [4880, 0.4], [6420, 0.25]].forEach(([f, g]) => tone("triangle", f * d * p, f * d * p * 0.992, 1.1, 0.05 * g * w * v, 0, 0.0008, both)));
+        [[7900, 1], [9300, 0.6]].forEach(([f, g], k) => tone("sine", f * p, f * p, 0.9, 0.03 * g * v, 0.01 + k * 0.01, 0.001, both));
+        tone("sine", 120 * p, 48 * p, 0.25, 0.7 * v, 0, 0.002);
+        noise("lowpass", 1500 * p, 120, 0.2, 0.35 * v, 0, 0.8, 0.001);
+        for (let k = 0; k < 6; k++) noise("bandpass", 2600 + k * 380, 3800 + k * 300, 0.05, 0.12 * v, 0.06 + k * 0.04, 6, 0.004, both);   // the grind
+        noise("bandpass", 900 * p, 260 * p, 0.35, 0.22 * v, CLASH.hold, 1.1, 0.06, both);                                       // flung apart
+      },
       // ONE HIT KO: a heavier stinger on top of the crit, a deep drop, a low dark chord and a gong
       koStinger() {
         const p = jitter(), v = SOUND.koStinger, r = room(5, 0.4);
@@ -2016,8 +2077,10 @@ export function createArenaScene(opts) {
       if (age > 1.3) { pops.splice(k, 1); continue; }
       const sp = project(new THREE.Vector3(p.x, FLOOR + (2.1 + p.off) * FIGHTER_SCALE + age * 1.1, 0), w, h);
       hctx.globalAlpha = Math.min(1, 1.6 - age * 1.2); hctx.textAlign = "center";
-      hctx.font = `700 ${Math.round((p.big ? (narrow ? 22 : 28) : p.off ? (narrow ? 11 : 13) : narrow ? 14 : 17) * (narrow ? 1 : S))}px 'Barlow Condensed', sans-serif`; hctx.strokeStyle = "rgba(0,0,0,.85)"; hctx.lineWidth = 4;
-      hctx.strokeText(p.txt, sp[0], sp[1]); hctx.fillStyle = p.col; hctx.fillText(p.txt, sp[0], sp[1]); hctx.globalAlpha = 1;
+      const slam = p.huge ? (age < 0.1 ? 1.9 - age * 9 : 1) : 1;
+      hctx.font = p.huge ? `900 ${Math.round((narrow ? 30 : 44) * (narrow ? 1 : S) * slam)}px Cinzel, Georgia, serif` : `700 ${Math.round((p.big ? (narrow ? 22 : 28) : p.off ? (narrow ? 11 : 13) : narrow ? 14 : 17) * (narrow ? 1 : S))}px 'Barlow Condensed', sans-serif`; hctx.strokeStyle = "rgba(0,0,0,.85)"; hctx.lineWidth = p.huge ? 6 : 4;
+      if (p.huge) { hctx.shadowColor = "rgba(255,190,80,.9)"; hctx.shadowBlur = 18; }
+      hctx.strokeText(p.txt, sp[0], sp[1]); hctx.fillStyle = p.col; hctx.fillText(p.txt, sp[0], sp[1]); hctx.globalAlpha = 1; hctx.shadowBlur = 0;
     }
     if (clockT < flashUntil) { hctx.fillStyle = `rgba(255,225,160,${Math.min(0.32, (flashUntil - clockT) * 1.5)})`; hctx.fillRect(0, 0, w, h); }
     if (cur.idle) {
@@ -2084,7 +2147,21 @@ export function createArenaScene(opts) {
     const t = cur.setup ? clockT : Math.min(clockT - INTRO, F.length + 5);
     const tc = Math.max(0, Math.min(t, F.length));
     const fr = frameAt(tc);
+    // a weapon clash: both fighters hold the moment of contact while the blades are locked, then are thrown
+    // back (only the picture: the fight's own positions and times are unchanged)
+    const CH = cur.clashNow, chAge = CH ? clockT - CH.at : -1, holding = CH && chAge >= 0 && chAge < CLASH.hold;
+    const clashDx = (i) => {
+      if (!CH || chAge < 0) return 0;
+      const d = i ? -1 : 1;
+      if (holding) return Math.sin(clockT * 120 + i * 2) * 0.035 + d * 0.12 * (chAge / CLASH.hold);   // pressing in, shaking
+      const q = chAge - CLASH.hold;
+      if (q > CLASH.back) return 0;
+      return -d * CLASH.push * (q < 0.07 ? q / 0.07 : Math.pow(1 - (q - 0.07) / (CLASH.back - 0.07), 2));
+    };
+    const ptc = holding ? Math.min(tc, CH.t - 0.01) : tc,   // just before contact: the hurt flash plays when they part
+     frP = holding ? frameAt(ptc) : fr;
     [0, 1].forEach((i) => {
+      const tc = ptc, fr = frP;
       const cast = lastEv(i, ["cast"], tc), spin = lastEv(i, ["spin"], tc), hurt = lastHitOn(i, tc), ko = lastEv(i, ["ko"], tc);
       // every move takes its time times the fighter's pace (k on the event: 1 at 100% Speed, less when faster)
       const castD = CAST * ((cast && cast.k) || 1), spinD = SPIN * ((spin && spin.k) || 1);
@@ -2106,7 +2183,7 @@ export function createArenaScene(opts) {
       // a fixed front/back order, so two fighters overlapping (both attack at once) never flicker through
       // each other; the one swinging Skyfall comes to the front
       const zOrder = (i === 0 ? 0.03 : -0.03) + (spinK > 0 ? 0.08 : 0);
-      pose(cur.models[i], { z: zOrder, x: mx.sx, dir: i ? -1 : 1, walk: moving ? tc * 9 : 0, cast: castK, charged: !!fr.charged[i] && !spinK, spin: spinK, follow: spinK ? 0 : followK, hurt: hurtK, dead, koT, shield: (debugBuffs[i] || fr.sk[i]).shield > 0, shieldK, shieldHit, buffK, buffs: debugBuffs[i] || fr.sk[i], reflectK: debugBuffs[i] && debugBuffs[i].reflectK != null ? debugBuffs[i].reflectK : reflectK, buff: fr.buff[i] }, clock);
+      pose(cur.models[i], { z: zOrder, x: mx.sx + clashDx(i), dir: i ? -1 : 1, walk: moving ? tc * 9 : 0, cast: castK, charged: !!fr.charged[i] && !spinK, spin: spinK, follow: spinK ? 0 : followK, hurt: hurtK, dead, koT, shield: (debugBuffs[i] || fr.sk[i]).shield > 0, shieldK, shieldHit, buffK, buffs: debugBuffs[i] || fr.sk[i], reflectK: debugBuffs[i] && debugBuffs[i].reflectK != null ? debugBuffs[i].reflectK : reflectK, buff: fr.buff[i] }, clock);
     });
     for (const fl of flames) { const s = 2.4 + Math.sin(clock * 9 + fl.position.x) * 0.2; fl.scale.set(s, s * 1.3, 1); }
     for (const f of brazierFire) {
@@ -2129,6 +2206,18 @@ export function createArenaScene(opts) {
       quiet = tc - e.t > 1.2 && t < F.length + 0.5;
       const live = !seekPaused && tc - e.t < 0.7 && t < F.length + 0.5, snd = (n) => { if (live) SFX.play(n); };
       const S = (i) => (i ? cur.b : cur.a).name;
+      const cl = cur.clashes.get(e);
+      if (cl && !quiet) {
+        const mx2 = (worldX(fr.x[0]) + worldX(fr.x[1])) / 2;
+        spawnFx("clash", mx2, [cur.models[0].tierColor, cur.models[1].tierColor]);
+        pushPop({ x: mx2, txt: "CLASH!", col: "#ffe08a", big: true, huge: true, born: clockT, off: 0.55 });
+        cur.clashNow = { t: cl.t, at: clockT };
+        flashUntil = Math.max(flashUntil, clockT + 0.06);
+        if (!seekPaused) { hitStopUntil = performance.now() + 140; shakeAmp = 0.14; shakeAt = performance.now(); }
+        if (live) SFX.play("clash");
+        crowd(0, ["😱", "🔥"], 1); crowd(1, ["😱", "⚔️"], 1);
+        if (opts.onLog) opts.onLog({ key: cur.key, t: e.t, html: `<span class="crit"><b>${S(0)}</b> and <b>${S(1)}</b> swing at the same moment: their weapons <b>CLASH</b>!</span>` });
+      }
       const tgt = e.type === "hit" || e.type === "miss" ? 1 - e.who : e.who;
       if (e.type === "first") { /* logged below */ }
       const tx = tgt >= 0 ? worldX(fr.x[tgt]) : worldX((fr.x[0] + fr.x[1]) / 2);
@@ -2348,7 +2437,7 @@ export function createArenaScene(opts) {
     mr.start(500);
     const end = () => { rec = null; if (audio) audio.done(); for (const tr of stream.getTracks()) tr.stop(); };
     return {
-      type, ext: type.startsWith("video/mp4") ? "mp4" : "webm",
+      type, ext: type.startsWith("video/mp4") ? "mp4" : "webm", canvas: c,
       time: () => (rec ? rec.t : 0),
       stop: () => new Promise((ok) => { mr.onstop = () => { end(); ok(new Blob(chunks, { type: type.split(";")[0] })); }; try { mr.stop(); } catch { end(); ok(new Blob(chunks, { type: type.split(";")[0] })); } }),
       cancel: () => { mr.onstop = null; try { mr.stop(); } catch { /* stopped */ } end(); }
@@ -2369,7 +2458,9 @@ export function createArenaScene(opts) {
     setLab(setup);
     const same = cur && cur.key === spec.key && (setup ? cur.setup : cur.fight === spec.fight);
     const fight = setup ? (same ? cur.fight : labFight(a, spec.values)) : spec.fight;
-    cur = { key: spec.key, fight, a, b, setup, models: [ma, mb], values: spec.values, ext: spec.clock || undefined, betting: !!spec.betting, betLeft: 0, ended: false };
+    const clashes = setup || spec.clash === false ? new Map() : same && cur.clashes ? cur.clashes : new Map(findClashes(fight).map((c) => [c.first, c]));
+    const clashNow = same ? cur.clashNow : null;
+    cur = { clashes, clashNow, key: spec.key, fight, a, b, setup, models: [ma, mb], values: spec.values, ext: spec.clock || undefined, betting: !!spec.betting, betLeft: 0, ended: false };
     if (same) return;
     floaters.length = 0; clockT = 0; flashUntil = 0; shownEvents = 0; pops.length = 0;
     for (const f of fx) scene.remove(f.m); fx.length = 0;
