@@ -17,6 +17,7 @@ import * as THREE from "three";
 import {
   SKILLS, WEAPON, MOUNT, PET, petGrowth, CHARGE, BUFF_STACK, BUFF_CAST, CAST, SPIN, RECOVER, POTION, DT, LIMIT, OT, mulberry32, speedNow, paceOf, statsOf as engineStats
 } from "@/lib/arenaEngine";
+import { buildFinisher } from "./finisher";
 
 const A = "/arena/";
 const hexStr = (n) => "#" + n.toString(16).padStart(6, "0");
@@ -1368,7 +1369,7 @@ export function createArenaScene(opts) {
   });
   function spawnFx(kind, x, color, delay = 0) {
     if (quiet) return;
-    const add = (m, k, life, delay = 0) => { scene.add(m); fx.push({ m, kind: k, born: clockT + delay, life }); };
+    const add = (m, k, life, delay = 0) => { scene.add(m); fx.push({ m, kind: k, born: fxT + delay, life }); };
     const mat = (o) => new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, ...o });
     if (kind === "charge") {
       for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2; const m = new THREE.Mesh(sealGeo, mat({ map: sealTex })); m.rotation.x = -Math.PI / 2; m.position.set(x + Math.cos(a) * 1.7, FLOOR + 0.03, Math.sin(a) * 1.7); m.scale.setScalar(0.85); add(m, "seal", CAST + 0.2, k * 0.04); }
@@ -1403,7 +1404,7 @@ export function createArenaScene(opts) {
       }
       const sc = new THREE.Mesh(sealGeo, new THREE.MeshBasicMaterial({ map: glowTex, color: 0x000000, transparent: true, opacity: 0.6, depthWrite: false }));
       sc.rotation.x = -Math.PI / 2; sc.position.set(x, FLOOR + 0.02, 0); sc.scale.setScalar(3.2); add(sc, "scorch", 3.2);
-      impactLight.position.set(x, FLOOR + 1.6, 1.4); impactAt = clockT;
+      impactLight.position.set(x, FLOOR + 1.6, 1.4); impactAt = fxT;
     }
     if (kind === "whirl") {
       const m = new THREE.Mesh(new THREE.TorusGeometry(1.35, 0.06, 6, 48, Math.PI * 1.4), mat({ color }));
@@ -1435,9 +1436,9 @@ export function createArenaScene(opts) {
   const impactLight = new THREE.PointLight(0xffa040, 0, 16); scene.add(impactLight);
   let impactAt = -9;
   function tickFx() {
-    { const a = (clockT - impactAt) / 0.5; impactLight.intensity = a >= 0 && a < 1 ? 7 * (1 - a) * (1 - a) : 0; }
+    { const a = (fxT - impactAt) / 0.5; impactLight.intensity = a >= 0 && a < 1 ? 7 * (1 - a) * (1 - a) : 0; }
     for (let k = fx.length - 1; k >= 0; k--) {
-      const f = fx[k], a = (clockT - f.born) / f.life;
+      const f = fx[k], a = (fxT - f.born) / f.life;
       if (a < 0) { f.m.visible = false; continue; }
       f.m.visible = true;
       if (a >= 1) { scene.remove(f.m); if (f.m.geometry && f.m.geometry !== ringGeo && f.m.geometry !== sealGeo) f.m.geometry.dispose(); if (f.m.material) f.m.material.dispose(); fx.splice(k, 1); continue; }
@@ -1450,12 +1451,12 @@ export function createArenaScene(opts) {
       if (f.kind === "burst") { f.m.scale.setScalar(3.5 + a * 4); }
       if (f.kind === "fire") { f.m.scale.setScalar(f.m.userData.s0 * (0.6 + ease(Math.min(1, a * 2)) * 1.2)); f.m.material.opacity = Math.pow(1 - a, 1.4); }
       if (f.kind === "wave") { f.m.scale.setScalar(1 + ease(a) * f.m.userData.s); f.m.material.opacity = (1 - a) * 0.9; }
-      if (f.kind === "smoke") { const tt = clockT - f.born; f.m.position.y += 0.012; f.m.position.x += f.m.userData.dx * 0.01; f.m.scale.setScalar(f.m.userData.s0 * (1 + a * 1.5)); f.m.material.opacity = 0.65 * Math.min(1, a * 6) * (1 - a); }
+      if (f.kind === "smoke") { const tt = fxT - f.born; f.m.position.y += 0.012; f.m.position.x += f.m.userData.dx * 0.01; f.m.scale.setScalar(f.m.userData.s0 * (1 + a * 1.5)); f.m.material.opacity = 0.65 * Math.min(1, a * 6) * (1 - a); }
       if (f.kind === "scorch") f.m.material.opacity = 0.6 * (a < 0.6 ? 1 : 1 - (a - 0.6) / 0.4);
       if (f.kind === "whirl") { f.m.rotation.z = -a * 9; f.m.material.opacity = Math.sin(a * Math.PI) * 0.85; f.m.scale.setScalar(0.8 + a * 0.35); }
-      if (f.kind === "bolt") { f.m.material.opacity = (Math.sin((clockT - f.born) * 90) > -0.3 ? 1 : 0.25) * (1 - a); f.m.scale.x = 1 + a * 0.5; }
+      if (f.kind === "bolt") { f.m.material.opacity = (Math.sin((fxT - f.born) * 90) > -0.3 ? 1 : 0.25) * (1 - a); f.m.scale.x = 1 + a * 0.5; }
       if (f.kind === "slash") { const s0 = f.m.userData.s; f.m.scale.setScalar(s0 * (0.65 + ease(Math.min(1, a * 2.2)) * 0.45)); f.m.material.rotation += 0.06; f.m.material.opacity = a < 0.2 ? 1 : 1 - (a - 0.2) / 0.8; }
-      if (f.kind === "spark") { const tt = clockT - f.born, v = f.m.userData.v; f.m.position.set(f.m.userData.p0.x + v.x * tt, f.m.userData.p0.y + v.y * tt - 4.9 * tt * tt, f.m.userData.p0.z + v.z * tt); f.m.material.opacity = 1 - a; }
+      if (f.kind === "spark") { const tt = fxT - f.born, v = f.m.userData.v; f.m.position.set(f.m.userData.p0.x + v.x * tt, f.m.userData.p0.y + v.y * tt - 4.9 * tt * tt, f.m.userData.p0.z + v.z * tt); f.m.material.opacity = 1 - a; }
     }
   }
 
@@ -1480,7 +1481,7 @@ export function createArenaScene(opts) {
   const INTRO = opts.intro || 3; // "FIGHT!" on screen before the first move (the server allows for it)
   let hitStopUntil = 0, shakeAmp = 0, shakeAt = 0;
   let lastW = 0, lastH = 0;
-  let clockT = 0, lastNow = 0, speed = 1, shownEvents = 0, flashUntil = 0;   // one camera only: the game's own, fixed overhead (as agreed for the preview)
+  let clockT = 0, lastNow = 0, speed = 1, shownEvents = 0, flashUntil = 0, fxT = 0;   // fxT: the effects' clock, which slows with the finisher   // one camera only: the game's own, fixed overhead (as agreed for the preview)
   const camPos = new THREE.Vector3(0, 4.1, 6.9), camLook = new THREE.Vector3(0, 1.9, 0);
   camera.position.copy(camPos); camera.lookAt(camLook);   // already in place on the first frame (sprites face the camera)
 
@@ -1641,7 +1642,7 @@ export function createArenaScene(opts) {
   // HP potion. A buff that is up gets a ring in its colour and what is left of it in the corner; one cooling
   // down is dimmed with the attacks still to go; a slot lights up while it is being used.
   function skillBar(x0, y0, sz, gap, fr, i) {
-    const tc = Math.max(0, Math.min(clockT - INTRO, cur.fight.length));
+    const tc = Math.max(0, Math.min(fxT - INTRO, cur.fight.length));
     const slots = ["lightning", "slash", ...cur.fight.skills[i], "potion"];
     const cast = lastEv(i, ["cast"], tc), spin = lastEv(i, ["spin"], tc), pot = lastEv(i, ["potion"], tc), bf = lastEv(i, ["buff"], tc), hit = lastHitOn(i, tc);
     hctx.fillStyle = "rgba(10,10,12,.8)"; hctx.fillRect(x0 - 4, y0 - 4, sz * slots.length + gap * (slots.length - 1) + 8, sz + 8);
@@ -1687,7 +1688,7 @@ export function createArenaScene(opts) {
   // The game's own sounds, cut from the recordings: the buff skill's charge, Skyfall's sweep and blast, the leap
   const SAMPLE_SRC = { buff: A + "sfx/buff.mp3", attack: A + "sfx/attack.mp3", dash: A + "sfx/dash.mp3" };
   const SFX = (() => {
-    let ctx = null, out = null, noiseBuf = null, on = true, masterNode = null;
+    let ctx = null, out = null, noiseBuf = null, on = true, masterNode = null, lpf = null;
     const samples = {};
     // one of the game's sounds; false when it has not loaded (the made-up sound plays instead)
     // at < 0 starts that far into the sound (so a faster move still has its blast land on the blow)
@@ -1708,7 +1709,8 @@ export function createArenaScene(opts) {
         const limiter = ctx.createDynamicsCompressor();
         limiter.threshold.value = -6; limiter.knee.value = 4; limiter.ratio.value = 16; limiter.attack.value = 0.002; limiter.release.value = 0.12;
         const master = ctx.createGain(); master.gain.value = SOUND.master;
-        out = ctx.createGain(); out.connect(limiter); limiter.connect(master); master.connect(ctx.destination); masterNode = master;
+        // 6.25: everything goes through a low-pass that the slow-motion finisher closes down (a muffled, underwater feel)
+        out = ctx.createGain(); lpf = ctx.createBiquadFilter(); lpf.type = "lowpass"; lpf.frequency.value = 20000; lpf.Q.value = 0.7; out.connect(lpf); lpf.connect(limiter); limiter.connect(master); master.connect(ctx.destination); masterNode = master;
         noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate); const d = noiseBuf.getChannelData(0); for (let k = 0; k < d.length; k++) d[k] = Math.random() * 2 - 1;
         for (const sec of [0.22, 0.35, 0.5, 0.7, 0.95, 1.6]) irs.push(makeIR(sec));
         for (const [k, url] of Object.entries(SAMPLE_SRC)) fetch(url).then((r) => r.arrayBuffer()).then((b) => new Promise((ok, no) => ctx.decodeAudioData(b, ok, no))).then((buf) => { samples[k] = buf; }).catch(() => {});
@@ -1847,11 +1849,31 @@ export function createArenaScene(opts) {
         for (let k = 0; k < 6; k++) noise("highpass", 3000 + Math.random() * 3000, 1500, 0.04, 0.3, 0.05 + k * 0.06, 0.8, 0.001, both);
         tone("sawtooth", 320 * p, 70 * p, 0.7, 0.07, 0.05, 0.01, both);
       },
+      // 6.25 the finisher: time slows down (a deep falling whoosh, a sub drop and a slow heartbeat)
+      finIn() {
+        const r = room(5, 0.45), both = [out, r];
+        noise("bandpass", 2400, 140, 1.4, 0.35, 0, 1.4, 0.05, both);
+        tone("sine", 160, 38, 1.6, 0.9, 0, 0.02);
+        tone("sawtooth", 220, 55, 1.2, 0.05, 0.05, 0.1, both);
+        [0.55, 0.85, 1.75, 2.05, 2.95, 3.25].forEach((at, k) => tone("sine", k % 2 ? 52 : 60, 34, 0.28, k % 2 ? 0.55 : 0.8, at, 0.004));   // lub-dub
+      },
+      // the frozen impact: a huge boom, a shattering crack and a long ringing tail
+      finHit() {
+        const r = room(5, 0.6), both = [out, r];
+        noise("highpass", 9000, 2500, 0.18, 0.8, 0, 0.7, 0.0005, both);
+        noise("bandpass", 4200, 900, 0.5, 0.6, 0, 2.4, 0.001, both);
+        tone("sine", 75, 22, 2.4, 1.1, 0, 0.002);
+        tone("sine", 41, 20, 2.8, 0.7, 0.02, 0.004);
+        noise("lowpass", 700, 40, 2.2, 0.55, 0.01, 0.6, 0.004, both);
+        [[880, 1], [1318, 0.6], [1760, 0.45], [2637, 0.3]].forEach(([f, w]) => tone("sine", f, f * 0.995, 3.2, 0.06 * w, 0.05, 0.003, both));
+      },
       fight: quiet, shieldCast: quiet, miss: quiet, shieldBreak: quiet, potion: quiet, ko: quiet, pop: quiet
     };
     return {
       play(name, arg) { if (!on) return; if (!ctx || ctx.state !== "running") { ensure(); if (!ctx || ctx.state !== "running") return; } try { S[name](arg); } catch (e) { /* ignore */ } },   // silent until the browser lets sound play (after a tap or key)
       unlock() { if (on) ensure(); },
+      // 0 = clear, 1 = fully muffled (the finisher)
+      muffle(k) { if (!lpf || !ctx) return; const f = 20000 * Math.pow(400 / 20000, Math.max(0, Math.min(1, k))); lpf.frequency.setTargetAtTime(f, ctx.currentTime, 0.05); },
       // sound is switched on but the browser hasn't let it start yet (needs a tap)
       blocked: () => on && (!ctx || ctx.state !== "running"),
       release() { try { if (masterNode) masterNode.disconnect(); } catch { /* gone */ } out = null; masterNode = null; ctx = null; },
@@ -1972,6 +1994,70 @@ export function createArenaScene(opts) {
     if (cur.banner) { hctx.textAlign = "center"; hctx.textBaseline = "middle"; hctx.lineWidth = 4; hctx.strokeStyle = "rgba(0,0,0,.75)"; hctx.font = `600 ${Math.min(18, w * 0.035)}px 'Barlow Condensed', sans-serif`; hctx.fillStyle = "#f1d38c"; hctx.strokeText(cur.banner, w / 2, h * 0.86); hctx.fillText(cur.banner, w / 2, h * 0.86); }
   }
 
+  // ---------- 6.25 the slow-motion finisher ----------
+  // The 3D picture loses its colour and gains contrast as time slows; the impact flashes white, then a frame
+  // in negative; sound goes muffled and comes back. Sounds play once per fight, only when it is watched live.
+  function finisherFrame(W, sNow) {
+    const L = cur.finLv || 0, imp = cur.finImp;
+    let filt = "";
+    if (imp >= 0 && imp < 0.07) filt = "brightness(3) saturate(0)";
+    else if (imp >= 0.07 && imp < 0.2) filt = "invert(1) grayscale(1) contrast(1.6)";
+    else if (L > 0) filt = `saturate(${(1 - 0.75 * L).toFixed(3)}) contrast(${(1 + 0.25 * L).toFixed(3)}) brightness(${(1 - 0.12 * L).toFixed(3)})`;
+    if (glCanvas.__fin !== filt) { glCanvas.style.filter = filt; glCanvas.__fin = filt; }
+    if (!W || cur.betting || cur.idle) { SFX.muffle(0); return; }
+    SFX.muffle(imp >= 0 ? 0 : L * 0.85);
+    const live = !seekPaused && speed <= 1.01;
+    if (live && !cur.finPlayed.in && sNow >= W.sStart && sNow < W.sSlow + 0.5) { cur.finPlayed.in = true; SFX.play("finIn"); }
+    if (live && !cur.finPlayed.hit && sNow >= W.sImpact && sNow < W.sImpact + 0.3) { cur.finPlayed.hit = true; SFX.play("finHit"); shakeAmp = 0.16; shakeAt = performance.now(); }
+    if (sNow < W.sStart - 0.5) { cur.finPlayed.in = false; cur.finPlayed.hit = false; }   // played again on a replay
+  }
+  function drawFinisherHud(w, h, narrow) {
+    const W = cur.fin, L = cur.finLv || 0, imp = cur.finImp;
+    if (!W || L <= 0) return;
+    hctx.save();
+    // a dark red vignette closing in
+    const g = hctx.createRadialGradient(w / 2, h * 0.55, Math.min(w, h) * (0.55 - 0.25 * L), w / 2, h * 0.55, Math.max(w, h) * 0.78);
+    g.addColorStop(0, "rgba(40,0,4,0)"); g.addColorStop(1, `rgba(18,0,2,${(0.78 * L).toFixed(3)})`); hctx.fillStyle = g; hctx.fillRect(0, 0, w, h);
+    // speed lines rushing in at the blow (they slow down with the fight)
+    const cx = w / 2, cy = h * 0.55, n = narrow ? 26 : 40, R = Math.hypot(w, h) * 0.6;
+    hctx.lineCap = "round";
+    for (let k = 0; k < n; k++) {
+      const a0 = k * 2.399 + fxT * 0.35, len = 0.18 + ((k * 37) % 11) / 40, r1 = R * (0.62 + ((k * 13) % 7) / 30 + ((fxT * 0.9 + k * 0.13) % 1) * 0.12);
+      const r0 = r1 * (1 - len);
+      hctx.strokeStyle = `rgba(255,${200 + (k % 3) * 20},${170 + (k % 4) * 20},${(0.1 + 0.18 * ((k * 7) % 5) / 5) * L})`; hctx.lineWidth = 1 + (k % 3);
+      hctx.beginPath(); hctx.moveTo(cx + Math.cos(a0) * r0, cy + Math.sin(a0) * r0); hctx.lineTo(cx + Math.cos(a0) * r1, cy + Math.sin(a0) * r1); hctx.stroke();
+    }
+    // the impact: a white flash, then shockwave rings from the victim
+    if (imp >= 0) {
+      if (imp < 0.07) { hctx.fillStyle = `rgba(255,255,255,${0.9 - imp * 6})`; hctx.fillRect(0, 0, w, h); }
+      const fr = frameAt(Math.min(W.blowAt, cur.fight.length)), v = project(new THREE.Vector3(worldX(fr.x[W.victim]), FLOOR + 1.9 * FIGHTER_SCALE, 0), w, h);
+      for (let k = 0; k < 3; k++) {
+        const a = Math.max(0, Math.min(1, imp * 1.6 - k * 0.18)); if (a <= 0 || a >= 1) continue;
+        hctx.strokeStyle = `rgba(255,${210 - k * 40},${120 - k * 40},${(1 - a) * 0.9})`; hctx.lineWidth = (narrow ? 3 : 5) * (1 - a) + 1;
+        hctx.beginPath(); hctx.arc(v[0], v[1], 20 + a * Math.min(w, h) * (0.45 + k * 0.12), 0, Math.PI * 2); hctx.stroke();
+      }
+    }
+    // letterbox bars sliding in
+    const bh = Math.round(h * 0.11 * L);
+    hctx.fillStyle = "#000"; hctx.fillRect(0, 0, w, bh); hctx.fillRect(0, h - bh, w, bh);
+    hctx.globalAlpha = L;
+    hctx.textBaseline = "middle"; hctx.textAlign = "center";
+    // the title in the bottom bar, the blow in the top bar
+    const title = "FINAL BLOW";
+    hctx.font = `900 ${Math.round(Math.min(bh * 0.55, narrow ? 22 : 34))}px Cinzel, Georgia, serif`;
+    hctx.save(); hctx.shadowColor = "rgba(224,56,62,.9)"; hctx.shadowBlur = 16; hctx.fillStyle = "#f1d38c";
+    if ("letterSpacing" in hctx) hctx.letterSpacing = `${Math.round(6 * L)}px`;
+    hctx.fillText(title, w / 2, h - bh / 2); hctx.restore();
+    if ("letterSpacing" in hctx) hctx.letterSpacing = "0px";
+    const killer = W.killer ? cur.b : cur.a, victim = W.victim ? cur.b : cur.a;
+    hctx.font = `600 ${Math.round(Math.min(bh * 0.32, narrow ? 12 : 17))}px 'Barlow Condensed', sans-serif`; hctx.fillStyle = "#e8e2d6";
+    const sub = `${killer.name.toUpperCase()}  ·  SKYFALL ON ${victim.name.toUpperCase()}${W.crit ? `  ·  CRITICAL ×${W.mult}` : ""}`;
+    hctx.fillText(sub, w / 2, bh / 2);
+    hctx.font = `700 ${narrow ? 10 : 12}px 'Barlow Condensed', sans-serif`; hctx.textAlign = "right"; hctx.fillStyle = "rgba(207,224,255,.85)";
+    const r = W.rateAt(cur.finS); hctx.fillText(r <= 0 ? "■ FROZEN" : r < 0.99 ? `▶ ×1/${Math.max(1, Math.round(1 / r))}` : "", w - 12, h - bh / 2);
+    hctx.restore();
+  }
+
   function drawHud(w, h, fr, t) {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     if (hud.width !== Math.round(w * dpr) || hud.height !== Math.round(h * dpr)) { hud.width = Math.round(w * dpr); hud.height = Math.round(h * dpr); }
@@ -1981,6 +2067,7 @@ export function createArenaScene(opts) {
     // it shrinks just enough to fit the two player frames side by side.
     const narrow = w < 640, S = narrow ? Math.max(0.55, Math.min(0.8, w / 620)) : Math.max(0.9, Math.min(1.45, w / 680));
     if (cur.setup) { drawLabHud(w, h, fr, S, narrow); return; }
+    hctx.globalAlpha = 1 - 0.92 * (cur.finLv || 0);   // 6.25: the usual HUD fades out for the finisher
     // name plates over heads and the red/blue bars at the feet
     [0, 1].forEach((i) => {
       const f = i ? cur.b : cur.a;
@@ -2012,14 +2099,14 @@ export function createArenaScene(opts) {
       } else hctx.fillText(String(Math.max(0, Math.ceil(LIMIT - fr.t))), w / 2, 8 + th / 2 + 0.5); }
     // floating numbers
     for (let k = pops.length - 1; k >= 0; k--) {
-      const p = pops[k], age = clockT - p.born;
+      const p = pops[k], age = fxT - p.born;
       if (age > 1.3) { pops.splice(k, 1); continue; }
       const sp = project(new THREE.Vector3(p.x, FLOOR + (2.1 + p.off) * FIGHTER_SCALE + age * 1.1, 0), w, h);
       hctx.globalAlpha = Math.min(1, 1.6 - age * 1.2); hctx.textAlign = "center";
       hctx.font = `700 ${Math.round((p.big ? (narrow ? 22 : 28) : p.off ? (narrow ? 11 : 13) : narrow ? 14 : 17) * (narrow ? 1 : S))}px 'Barlow Condensed', sans-serif`; hctx.strokeStyle = "rgba(0,0,0,.85)"; hctx.lineWidth = 4;
       hctx.strokeText(p.txt, sp[0], sp[1]); hctx.fillStyle = p.col; hctx.fillText(p.txt, sp[0], sp[1]); hctx.globalAlpha = 1;
     }
-    if (clockT < flashUntil) { hctx.fillStyle = `rgba(255,225,160,${Math.min(0.32, (flashUntil - clockT) * 1.5)})`; hctx.fillRect(0, 0, w, h); }
+    if (fxT < flashUntil) { hctx.fillStyle = `rgba(255,225,160,${Math.min(0.32, (flashUntil - fxT) * 1.5)})`; hctx.fillRect(0, 0, w, h); }
     if (cur.idle) {
       if (cur.banner) { hctx.textAlign = "center"; hctx.textBaseline = "middle"; hctx.lineWidth = 4; hctx.strokeStyle = "rgba(0,0,0,.75)"; hctx.font = `600 ${Math.min(20, w * 0.04)}px 'Barlow Condensed', sans-serif`; hctx.fillStyle = "#f1d38c"; hctx.strokeText(cur.banner, w / 2, h * 0.72); hctx.fillText(cur.banner, w / 2, h * 0.72); }
     }
@@ -2039,7 +2126,9 @@ export function createArenaScene(opts) {
       hctx.strokeText(sub, w / 2, h * 0.42 + 34); hctx.fillText(sub, w / 2, h * 0.42 + 34);
     }
     else if (t < 0) { hctx.font = `900 ${Math.min(58, w * 0.085)}px Cinzel, Georgia, serif`; hctx.fillStyle = "#ca1622"; hctx.strokeStyle = "rgba(0,0,0,.7)"; hctx.lineWidth = 5; hctx.textAlign = "center"; hctx.strokeText("FIGHT!", w / 2, h * 0.42); hctx.fillText("FIGHT!", w / 2, h * 0.42); }
-    if (t >= cur.fight.length) {
+    hctx.globalAlpha = 1;
+    drawFinisherHud(w, h, narrow);
+    if (t >= cur.fight.length && (!cur.fin || cur.finS >= cur.fin.shownLength)) {
       const W = cur.fight.winner === 1 ? cur.b : cur.a; const txt = cur.fight.winner === -1 ? `DRAW · NO KO IN ${LIMIT} SECONDS` : `${W.name.toUpperCase()} WINS${cur.fight.how === "time" ? " ON HP AFTER OVERTIME" : cur.fight.length > LIMIT ? " BY KO IN OVERTIME" : " BY KO"}`;
       // no box behind it: gold letters with a dark edge, so the arena shows through
       hctx.font = `800 ${Math.round(Math.min(34, Math.max(20, w * 0.036)))}px 'Barlow Condensed', sans-serif`; hctx.textAlign = "center"; hctx.textBaseline = "middle";
@@ -2058,7 +2147,7 @@ export function createArenaScene(opts) {
     // drawing buffer, which made the fight stutter on some devices
     if (w !== lastW || h !== lastH) { renderer.setSize(w, h, false); lastW = w; lastH = h; }
     camera.aspect = w / h;
-    const rawDt = Math.min(1, Math.max(0, (now - (lastNow || now)) / 1000)), dt = Math.min(0.1, rawDt); lastNow = now;
+    const rawDt = Math.min(1, Math.max(0, (now - (lastNow || now)) / 1000)), dt = window.__arenaFixedDt || Math.min(0.1, rawDt); lastNow = now;   // __arenaFixedDt: frame-by-frame video capture (dev)
     if (cur.setup) {
       // the Character Lab: its own practice loop, round and round
       const c = cur.ext ? cur.ext() : {};
@@ -2081,7 +2170,13 @@ export function createArenaScene(opts) {
     } else if (cur.betting) clockT = 0;
     else if (!seekPaused) clockT += dt * speed * (performance.now() < hitStopUntil ? 0.06 : 1);   // the game freezes for a beat when a blow lands
     const clock = now / 1000, F = cur.fight;
-    const t = cur.setup ? clockT : Math.min(clockT - INTRO, F.length + 5);
+    // 6.25 the slow-motion finisher: the screen's clock (sNow) runs on, the fight's own clock is stretched
+    const W = cur.setup ? null : cur.fin, sNow = clockT - INTRO;
+    const tRaw = cur.setup ? clockT : W ? W.fightAt(sNow) : sNow;
+    const t = cur.setup ? clockT : Math.min(tRaw, F.length + 5);
+    fxT = cur.setup ? clockT : tRaw + INTRO;
+    cur.finS = sNow; cur.finLv = W && !cur.betting && !cur.idle ? W.level(sNow) : 0; cur.finImp = W && !cur.betting && !cur.idle ? W.impact(sNow) : -1;
+    finisherFrame(W, sNow);
     const tc = Math.max(0, Math.min(t, F.length));
     const fr = frameAt(tc);
     [0, 1].forEach((i) => {
@@ -2117,10 +2212,17 @@ export function createArenaScene(opts) {
     for (const [j, b] of banners.entries()) b.rotation.x = Math.sin(clock * 0.9 + j * 1.7) * 0.025;
     tickFx(); tickLab(clock); tickForge();
     const mid = (worldX(fr.x[0]) + worldX(fr.x[1])) / 2;
-    const [cp, cl, fov] = cur.setup ? labCam(w, h, clock, !!cur.models[0].forge) : camTarget(mid, w, h, clock);
-    const k = 1 - Math.exp(-dt * 3);
+    let [cp, cl, fov] = cur.setup ? labCam(w, h, clock, !!cur.models[0].forge) : camTarget(mid, w, h, clock);
+    if (cur.finLv > 0) {
+      // the finisher: the camera drifts in on the blow and tilts a little, and pulls back out afterwards
+      const L = cur.finLv, vx = worldX(fr.x[cur.fin.victim]), kx = worldX(fr.x[cur.fin.killer]), focus = vx * 0.6 + kx * 0.4;
+      const near = new THREE.Vector3(focus + (cur.fin.victim ? -1.2 : 1.2), 2.6, w / h < 1 ? 7.4 : 4.6), look = new THREE.Vector3(focus, 1.9, 0);
+      cp = cp.clone().lerp(near, L * 0.5); cl = cl.clone().lerp(look, L * 0.6); fov = fov + (fov * 0.84 - fov) * L;
+    }
+    const k = cur.finLv > 0 ? 1 - Math.exp(-dt * 6) : 1 - Math.exp(-dt * 3);
     camPos.lerp(cp, k); camLook.lerp(cl, k); camera.fov += (fov - camera.fov) * k; camera.updateProjectionMatrix();
     camera.position.copy(camPos); camera.lookAt(camLook);
+    if (cur.finLv > 0) camera.rotateZ((cur.fin.victim ? 1 : -1) * 0.055 * cur.finLv);   // a slight dutch angle
     { const age = (performance.now() - shakeAt) / 1000; if (age < 0.4 && shakeAmp > 0) { const k2 = shakeAmp * (1 - age / 0.4); camera.position.x += Math.sin(age * 95) * k2; camera.position.y += Math.cos(age * 77) * k2 * 0.7; } }
     renderer.render(scene, camera);
     // events -> effects, floating numbers and the log
@@ -2149,16 +2251,16 @@ export function createArenaScene(opts) {
         if (live) { if (e.crit) SFX.play("crit", e.mult); else SFX.play("hit"); if (e.oneHit) SFX.play("koStinger"); }
         const kill = F.events.some((x) => x.type === "ko" && Math.abs(x.t - e.t) < 0.01);
         if (!seekPaused && !quiet) { hitStopUntil = performance.now() + (kill ? 90 : e.crit ? 90 : 60); shakeAmp = kill ? 0.03 : e.crit ? 0.1 : 0.03; shakeAt = performance.now(); }
-        if (e.crit) { spawnFx("shock", tx, 0xffd34d); flashUntil = clockT + (kill ? 0.08 : 0.14); }
+        if (e.crit) { spawnFx("shock", tx, 0xffd34d); flashUntil = fxT + (kill ? 0.08 : 0.14); }
         line = `<b>${S(e.who)}</b> Skyfall hits ${S(1 - e.who)} for <span class="${e.crit ? "crit" : ""}">${fmt(e.dmg)}${e.crit ? ` (critical ×${e.mult})` : ""}</span> <span class="t">×${e.power} charge</span>${e.ot ? ` <span class="crit">×${e.ot} overtime</span>` : ""}${e.oneHit ? ' <span class="crit">ONE HIT</span>' : ""}`;
-        if (e.oneHit) pushPop({ x: tx, txt: "ONE HIT KO!", col: "#ff5a3a", big: true, born: clockT + 0.25, off: 0.9 });
-        if (e.shielded) { pushPop({ x: tx, txt: "SHIELD ½", col: "#9fd4ff", big: false, born: clockT + 0.1, off: 0.45 }); spawnFx("burst", tx, 0x5aa8ff); spawnFx("shock", tx, 0x5aa8ff); line += ` <span class="buff">· Heavenly Shield takes half (${fmt(e.shielded)} → ${fmt(e.dmg)})</span>`; }
+        if (e.oneHit) pushPop({ x: tx, txt: "ONE HIT KO!", col: "#ff5a3a", big: true, born: fxT + 0.25, off: 0.9 });
+        if (e.shielded) { pushPop({ x: tx, txt: "SHIELD ½", col: "#9fd4ff", big: false, born: fxT + 0.1, off: 0.45 }); spawnFx("burst", tx, 0x5aa8ff); spawnFx("shock", tx, 0x5aa8ff); line += ` <span class="buff">· Heavenly Shield takes half (${fmt(e.shielded)} → ${fmt(e.dmg)})</span>`; }
         const boosted = [e.blow && "Heavenly Blow", e.spirits && "Spirits Within", e.blood && "Blood Lust"].filter(Boolean);
         if (boosted.length) line += ` <span class="buff">· with ${boosted.join(" and ")}</span>`;
         if (e.nirvana) line += ` <span class="buff">· into Nirvana Soul Blast</span>`;
         if (e.reflect) {
           const ax = worldX(fr.x[e.who]);
-          pushPop({ x: ax, txt: "REFLECT " + fmt(e.reflect), col: "#7dffa8", big: false, born: clockT + 0.15, off: 0.6 });
+          pushPop({ x: ax, txt: "REFLECT " + fmt(e.reflect), col: "#7dffa8", big: false, born: fxT + 0.15, off: 0.6 });
           spawnFx("shock", ax, 0x40e070, 0.1); spawnFx("sparks", ax, 0x40e070);
           line += ` <span class="heal">· Extreme Bullet Proof sends ${fmt(e.reflect)} back at ${S(e.who)}</span>`;
         }
@@ -2167,13 +2269,13 @@ export function createArenaScene(opts) {
       else if (e.type === "miss" && (crowd(e.who, ["🤡", "😂", "🫵"], 2), snd("miss"), false)) {}
       else if (e.type === "miss") { if (!cur.models[e.who].flip) spawnFx("arc", worldX(fr.x[e.who]), 0x6a7aa0); txt = e.dodge ? "DODGE" : "MISS"; col = e.dodge ? "#d8b8ff" : "#9fd0ff"; line = `<b>${S(e.who)}</b>'s Skyfall misses ${S(1 - e.who)} (charge spent)${e.dodge ? ' <span class="buff">· dodged under Garuda\'s Prayer</span>' : ""}`; }
       else if (e.type === "ko" && (crowd(e.who, ["💀", "👋", "😂", "🤡"], 4), crowd(1 - e.who, ["👑", "🔥"], 2), snd("ko"), false)) {}
-      else if (e.type === "ko") { if (!e.oneHit) pushPop({ x: worldX(fr.x[e.who]), txt: "K.O.", col: "#ff3b2a", big: true, born: clockT + 0.35, off: 0.9 }); spawnFx("dust", worldX(fr.x[e.who]) - (e.who ? -1 : 1) * 0.9, 0x8a7f70, 0.75); line = `<b>${S(e.who)}</b> is knocked out${e.reflect ? " by their own blow, sent back by Extreme Bullet Proof" : ""}`; }
+      else if (e.type === "ko") { if (!e.oneHit) pushPop({ x: worldX(fr.x[e.who]), txt: "K.O.", col: "#ff3b2a", big: true, born: fxT + 0.35, off: 0.9 }); spawnFx("dust", worldX(fr.x[e.who]) - (e.who ? -1 : 1) * 0.9, 0x8a7f70, 0.75); line = `<b>${S(e.who)}</b> is knocked out${e.reflect ? " by their own blow, sent back by Extreme Bullet Proof" : ""}`; }
       else if (e.type === "again") { txt = "AGAIN!"; col = "#ffe08a"; off = 1.1; line = `<span class="skill"><b>${S(e.who)}</b> is faster and attacks again</span>`; }
       else if (e.type === "overtime") { snd("koStinger"); line = `<span class="crit">Time! No knockout in ${LIMIT} seconds: <b>OVERTIME</b>.</span> Sudden death: no more potions, every hit does ×${e.mult} damage, rising by one every ${OT.every} seconds`; }
       else if (e.type === "otup") { txt = `×${e.mult} DAMAGE`; col = "#ff8a6a"; off = -0.9; line = `<span class="crit">Overtime: every hit now does ×${e.mult} damage</span>`; }
       else if (e.type === "time") line = `Overtime is over. <b>${S(e.who)}</b> wins on HP left`;
       else if (e.type === "draw") line = `Time. No knockout in ${LIMIT} seconds: a <b>Draw</b>`;
-      if (txt) pushPop({ x: tx, txt, col, big, born: clockT, off });
+      if (txt) pushPop({ x: tx, txt, col, big, born: fxT, off });
       quiet = false;
       if (line && opts.onLog) opts.onLog({ key: cur.key, t: e.t, html: line });
     }
@@ -2324,7 +2426,8 @@ export function createArenaScene(opts) {
   const recType = () => { if (typeof MediaRecorder === "undefined" || !HTMLCanvasElement.prototype.captureStream) return ""; return REC_TYPES.find((m) => { try { return MediaRecorder.isTypeSupported(m); } catch { return false; } }) || ""; };
   function recordFrame(t) {
     const { c, x, label } = rec, W = c.width, H = c.height;
-    x.drawImage(glCanvas, 0, 0, W, H); x.drawImage(hud, 0, 0, W, H);
+    // the finisher's colour grading is a CSS filter on the 3D canvas: the recording applies it too
+    x.filter = glCanvas.style.filter || "none"; x.drawImage(glCanvas, 0, 0, W, H); x.filter = "none"; x.drawImage(hud, 0, 0, W, H);
     if (label) {
       const fs = Math.max(12, Math.round(H * 0.026));
       x.font = `600 ${fs}px 'Barlow Condensed', sans-serif`; x.textAlign = "left"; x.textBaseline = "bottom"; x.lineWidth = 3; x.strokeStyle = "rgba(0,0,0,.8)"; x.fillStyle = "rgba(241,211,140,.92)";
@@ -2348,7 +2451,7 @@ export function createArenaScene(opts) {
     mr.start(500);
     const end = () => { rec = null; if (audio) audio.done(); for (const tr of stream.getTracks()) tr.stop(); };
     return {
-      type, ext: type.startsWith("video/mp4") ? "mp4" : "webm",
+      type, ext: type.startsWith("video/mp4") ? "mp4" : "webm", canvas: c,
       time: () => (rec ? rec.t : 0),
       stop: () => new Promise((ok) => { mr.onstop = () => { end(); ok(new Blob(chunks, { type: type.split(";")[0] })); }; try { mr.stop(); } catch { end(); ok(new Blob(chunks, { type: type.split(";")[0] })); } }),
       cancel: () => { mr.onstop = null; try { mr.stop(); } catch { /* stopped */ } end(); }
@@ -2369,7 +2472,8 @@ export function createArenaScene(opts) {
     setLab(setup);
     const same = cur && cur.key === spec.key && (setup ? cur.setup : cur.fight === spec.fight);
     const fight = setup ? (same ? cur.fight : labFight(a, spec.values)) : spec.fight;
-    cur = { key: spec.key, fight, a, b, setup, models: [ma, mb], values: spec.values, ext: spec.clock || undefined, betting: !!spec.betting, betLeft: 0, ended: false };
+    cur = { key: spec.key, fight, a, b, setup, models: [ma, mb], values: spec.values, ext: spec.clock || undefined, betting: !!spec.betting, betLeft: 0, ended: false,
+      fin: setup || spec.finisher === false ? null : (same && cur.fin ? cur.fin : buildFinisher(fight)), finPlayed: same && cur ? cur.finPlayed : {} };
     if (same) return;
     floaters.length = 0; clockT = 0; flashUntil = 0; shownEvents = 0; pops.length = 0;
     for (const f of fx) scene.remove(f.m); fx.length = 0;

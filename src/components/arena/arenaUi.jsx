@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import {
   SKILLS, WEAPON, PET, MOUNT, STAT_NAME, UPGRADES, PER_STAT, TOTAL_CAP, petGrowth, petBonus, statsOf, mountText, lineLabel, lineReturn, DRAW_REFUND, LIMIT, CONFLICT, DEFAULT_EDGES
 } from "@/lib/arenaEngine";
+import { buildFinisher } from "./finisher";
 import { createArenaScene, LOOKS, lookTitle, lookColor } from "./arenaScene";
 import "./arena.css";
 
@@ -232,7 +233,9 @@ export function useReplayClock(length, intro = 3) {
 // 6.22: onVideo(blob, ext) adds a "Send to Discord" button (the Guild Leader, for the final): it records the
 // replay the same way and hands the file over instead of saving it.
 export function ReplayStage({ spec, crowd, onVideo, videoLabel = "Send to Discord" }) {
-  const { clock, controls, restart } = useReplayClock(spec.fight.length);
+  // 6.25: the slow-motion finisher makes the fight longer on screen
+  const shownLength = useMemo(() => { const w = buildFinisher(spec.fight); return w ? w.shownLength : spec.fight.length; }, [spec.fight]);
+  const { clock, controls, restart } = useReplayClock(shownLength);
   const api = useRef(null);
   const [rec, setRec] = useState(null);   // { at, length } while recording
   const [recError, setRecError] = useState("");
@@ -244,7 +247,7 @@ export function ReplayStage({ spec, crowd, onVideo, videoLabel = "Send to Discor
     const sc = api.current;
     setRecError("");
     if (!sc || !sc.canRecord || !sc.canRecord()) { setRecError("This browser can't record the replay. Try Chrome, Edge, Firefox or a recent Safari."); return; }
-    const length = spec.fight.length;
+    const length = shownLength;
     restart(1);   // always recorded at normal speed
     await new Promise((ok) => setTimeout(ok, 120));
     let r;
