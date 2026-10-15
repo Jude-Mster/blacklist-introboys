@@ -50,6 +50,7 @@ def layer(name, regions):
     return {'box': [x0, y0, x1, y1], 'png': png, 'v': [c for p in verts for c in p], 'uv': [round(c, 5) for p in uvs for c in p], 'i': tris, 'si': [c for p in sk for c in p], 'sw': [c for p in sw for c in p]}
 rig = {'bones': [{'n': n, 'p': p, 'x': x, 'y': y} for n, p, x, y in BONES], 'tips': TIPS,
        'layers': {'wing': layer('wing', WING_REGIONS), 'body': layer('body', REGIONS)}}
+rig['arm'] = base64.b64encode(open('L_arm.png', 'rb').read()).decode()
 rig['weapon'] = base64.b64encode(open('/home/claude/blacklist-introboys/public/arena/weapon.webp', 'rb').read()).decode()
 json.dump(rig, open("rig.json", "w"), separators=(",", ":"), default=int)
 import os; print('rig.json', os.path.getsize('rig.json') // 1024, 'KB')

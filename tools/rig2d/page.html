@@ -42,7 +42,7 @@ li b { color: var(--fg); font-weight: 600 }
   <header>
     <div class="eyebrow">Blacklist Arena · rig preview · not live</div>
     <h1>Juts, Rigged in 2D</h1>
-    <p class="lede">Your character cut from the game frame and put back together on a skeleton. The body bends as one mesh, so knees, hips and the waist flex without seams. The big wing is its own layer, and the spear is held in the hand. Everything below plays live: pick a move.</p>
+    <p class="lede">Your character cut from the game frame and put back together on a skeleton. The body bends as one mesh, so knees, hips and the waist flex without seams. The big wing is its own layer, and the spear is held in both hands. Everything below plays live: pick a move.</p>
   </header>
 
   <div>
@@ -79,7 +79,7 @@ li b { color: var(--fg); font-weight: 600 }
         <li><b>One bending mesh</b> of about 4,000 points over the body, each tied to up to four bones, so joints bend smoothly.</li>
         <li><b>Feet stay planted:</b> the legs solve their knees to keep the feet on the floor while the hips move, crouch and lunge.</li>
         <li><b>Follow-through:</b> the head, wings, cape and the hanging ring lag and settle on springs, so nothing stops dead.</li>
-        <li>The spear is your weapon picture on a shaft, held at the hand.</li>
+        <li><b>Held in both hands:</b> each arm is two armoured segments (the crimson guard from your frame) with a gauntleted fist. The front hand holds the spear where the move puts it, the back hand grips the shaft behind it, and both elbows bend to reach.</li>
       </ul>
     </div>
   </section>
@@ -133,6 +133,22 @@ const RIG = __RIG__;
   }
 
   const loader = new THREE.TextureLoader();
+  const FIST = (() => {
+    const c = document.createElement('canvas'); c.width = 96; c.height = 80; const g = c.getContext('2d');
+    // the cuff (gold-trimmed crimson)
+    g.fillStyle = '#5a1216'; g.beginPath(); g.roundRect(4, 22, 30, 36, 6); g.fill();
+    g.fillStyle = '#d8b25a'; g.fillRect(28, 20, 6, 40); g.fillRect(8, 22, 3, 36);
+    // the hand closed round the shaft
+    const body = g.createLinearGradient(0, 14, 0, 66); body.addColorStop(0, '#7a2026'); body.addColorStop(0.5, '#3a0c10'); body.addColorStop(1, '#1c0507');
+    g.fillStyle = body; g.beginPath(); g.roundRect(30, 14, 52, 52, 16); g.fill();
+    // the curled fingers and the knuckle plates
+    g.strokeStyle = 'rgba(0,0,0,.65)'; g.lineWidth = 3; [30, 42, 54].forEach((y) => { g.beginPath(); g.moveTo(58, y); g.quadraticCurveTo(82, y + 2, 80, y + 10); g.stroke(); });
+    g.fillStyle = '#c99a48'; [24, 36, 48].forEach((y) => { g.beginPath(); g.ellipse(70, y + 3, 6, 4, 0, 0, Math.PI * 2); g.fill(); });
+    // the thumb over the top
+    g.fillStyle = '#5e161b'; g.beginPath(); g.ellipse(50, 18, 15, 7, -0.25, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = 'rgba(255,210,150,.35)'; g.lineWidth = 2; g.beginPath(); g.moveTo(36, 18); g.lineTo(62, 14); g.stroke();
+    const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t;
+  })();
   const tex = (b64, type) => { const t = loader.load('data:' + type + ';base64,' + b64); t.anisotropy = 4; return t; };
 
   function makeFighter(tint) {
@@ -165,24 +181,35 @@ const RIG = __RIG__;
       const wire = new THREE.SkinnedMesh(g, wm); wire.renderOrder = 9; wire.frustumCulled = false; wire.visible = false; group.add(wire); wire.bind(skeleton);
       meshes[name] = { mesh, wire }; mats.push(m);
     });
-    // the spear: the weapon picture on a dark shaft, held at the front hand
-    const spear = new THREE.Group(); bones.foreF.add(spear);
-    const hand = TIP.foreF, fore = REST.foreF; spear.position.set(hand[0] - fore[0], hand[1] - fore[1], 0);
+    // the spear: the weapon picture on a dark shaft; it sits in the front hand (its origin), the back hand
+    // grips the shaft further back
+    const spear = new THREE.Group(); group.add(spear);
     const shaftC = document.createElement('canvas'); shaftC.width = 256; shaftC.height = 8; const sx = shaftC.getContext('2d');
     const gr = sx.createLinearGradient(0, 0, 0, 8); gr.addColorStop(0, '#9a3a2a'); gr.addColorStop(0.5, '#4a1410'); gr.addColorStop(1, '#1e0808'); sx.fillStyle = gr; sx.fillRect(0, 0, 256, 8);
-    sx.fillStyle = '#d8b25a'; [10, 60, 200, 246].forEach((x) => sx.fillRect(x, 0, 5, 8));
-    const shaft = new THREE.Mesh(new THREE.PlaneGeometry(84, 4.5), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(shaftC), transparent: true, depthTest: false, color: tint }));
-    shaft.position.x = -12; shaft.renderOrder = 3; spear.add(shaft);
+    sx.fillStyle = '#d8b25a'; [4, 120, 236, 250].forEach((x) => sx.fillRect(x, 0, 4, 8));
+    const shaft = new THREE.Mesh(new THREE.PlaneGeometry(150, 4.5), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(shaftC), transparent: true, depthTest: false, color: tint }));
+    shaft.position.x = -45; shaft.renderOrder = 4; spear.add(shaft);
     const HW = 331, HH = HW / 1.8696, head = new THREE.Mesh(new THREE.PlaneGeometry(HW, HH), new THREE.MeshBasicMaterial({ map: tex(RIG.weapon, 'image/webp'), transparent: true, depthTest: false, color: tint }));
-    head.scale.y = -1;   // pointing forward (left) the picture is turned over: keep the edge on top
-    head.position.set(30 + (0.5 - 0.1538) * HW, (0.5 - 0.4577) * HH, 0); head.renderOrder = 4; spear.add(head);
+    head.position.set(30 + (0.5 - 0.1538) * HW, -(0.5 - 0.4577) * HH, 0); head.renderOrder = 5; spear.add(head);
     const SPEAR_REST = Math.atan2(-58, -128);   // down and forward, as the frame holds it
+    // the arms: two armoured segments each (the crimson guard from the frame) and a gauntleted fist
+    const armTex = tex(RIG.arm, 'image/png');
+    const seg = (u0, u1, order) => {
+      const g = new THREE.PlaneGeometry(1, 1); g.translate(0.5, 0, 0);
+      const uv = g.attributes.uv; for (let k = 0; k < uv.count; k++) uv.setX(k, u0 + uv.getX(k) * (u1 - u0));
+      const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: armTex, transparent: true, depthTest: false, color: tint })); m.renderOrder = order; group.add(m); return m;
+    };
+    const fist = (order) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: FIST, transparent: true, depthTest: false, color: tint })); m.renderOrder = order; group.add(m); return m; };
+    const arms = {
+      B: { upper: seg(0.05, 0.6, 3), fore: seg(0.35, 1, 3), fist: fist(6) },   // the far arm: behind the shaft, its fist over it
+      F: { upper: seg(0.05, 0.6, 7), fore: seg(0.35, 1, 7), fist: fist(8) }    // the near arm: in front of everything
+    };
     // a shadow on the floor
     const sh = new THREE.Mesh(new THREE.CircleGeometry(1, 32), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45, depthTest: false }));
     sh.scale.set(95, 13, 1); sh.position.set(5, -4, 0); sh.renderOrder = 0; group.add(sh);
     // springs for the follow-through: angle, speed
     const springs = {}; ['neck', 'wingR', 'wingR2', 'wingL', 'cape', 'foreB', 'spear'].forEach((k) => { springs[k] = { v: 0, d: 0 }; });
-    return { group, bones, meshes, mats, spear, SPEAR_REST, shadow: sh, springs, prev: null, tint, flash: 0 };
+    return { group, bones, meshes, mats, spear, SPEAR_REST, arms, shadow: sh, springs, prev: null, tint, flash: 0 };
   }
 
   // ---------- easing and keyframes ----------
@@ -216,7 +243,7 @@ const RIG = __RIG__;
       chest: 0.012 * sin(t, 3.2, 0.15), neck: 0.02 * sin(t, 7.3) - 0.008 * sin(t, 3.2, 0.3),
       upperF: 0.025 * sin(t, 3.2, 0.2), foreF: 0.03 * sin(t, 4.1), upperB: 0.03 * sin(t, 3.6, 0.4), foreB: 0.05 * sin(t, 3.6, 0.1),
       wingR: 0.05 * sin(t, 2.6), wingR2: 0.08 * sin(t, 2.6, -0.12), wingL: 0.05 * sin(t, 2.6, 0.08), cape: 0.04 * sin(t, 3.1, 0.3),
-      spear: 0.02 * sin(t, 4.1, 0.2), fBx: 0, fBy: 0, fFx: 0, fFy: 0
+      spear: 0.02 * sin(t, 4.1, 0.2), gx: 1.5 * sin(t, 4.1), gy: 1.2 * sin(t, 3.2, 0.2), fBx: 0, fBy: 0, fFx: 0, fFy: 0
     };
   }
   const mix = (a, b, k) => { const o = {}; for (const key in a) o[key] = a[key] + ((b[key] ?? a[key]) - a[key]) * k; return o; };
@@ -232,6 +259,8 @@ const RIG = __RIG__;
       upperF: K(t, [[0, 0], [0.42, -0.28], [0.6, 0.32, 'snap'], [1.05, 0.28], [1.7, 0]]),
       foreF: K(t, [[0, 0], [0.42, -0.1], [0.6, 0.12, 'snap'], [1.05, 0.1], [1.7, 0]]),
       spear: K(t, [[0, 0], [0.42, -0.5], [0.6, -0.4, 'snap'], [1.05, -0.42], [1.7, 0]]),
+      gx: K(t, [[0, 0], [0.42, 30], [0.6, -26, 'snap'], [1.05, -22], [1.7, 0]]),
+      gy: K(t, [[0, 0], [0.42, 16], [0.6, 12, 'snap'], [1.05, 12], [1.7, 0]]),
       upperB: K(t, [[0, 0], [0.42, 0.2], [0.6, -0.35, 'snap'], [1.05, -0.3], [1.7, 0]]),
       wingR: K(t, [[0, 0], [0.42, 0.3], [0.6, -0.2, 'snap'], [1.05, -0.14], [1.7, 0]]),
       wingR2: K(t, [[0, 0], [0.42, 0.35], [0.6, -0.3, 'snap'], [1.05, -0.2], [1.7, 0]]),
@@ -252,7 +281,7 @@ const RIG = __RIG__;
     const settle = q > 0 ? clamp(1 - (q - 0.25) / 0.9, 0, 1) : 0, s = snap * EASE.io(settle) * k;
     return {
       px: 26 * s, py: -6 * s, pr: -0.05 * s,
-      chest: -0.24 * s + 0.04 * wob * k, neck: -0.2 * s, upperF: -0.35 * s, foreF: -0.3 * s, spear: 0.35 * s,
+      chest: -0.24 * s + 0.04 * wob * k, neck: -0.2 * s, upperF: -0.35 * s, foreF: -0.3 * s, spear: 0.35 * s, gx: 22 * s, gy: 18 * s,
       upperB: 0.3 * s, wingR: 0.25 * s, wingR2: 0.35 * s, wingL: 0.2 * s, cape: 0.2 * s,
       fFx: 18 * EASE.io(clamp(q / 0.25, 0, 1)) * EASE.io(settle) * k, fFy: 6 * Math.sin(clamp(q / 0.25, 0, 1) * Math.PI) * k
     };
@@ -272,6 +301,44 @@ const RIG = __RIG__;
     F.bones[L.shin].rotation.z = d2 - d1;
     F.bones[L.foot].rotation.z = -d2;   // the foot stays flat on the floor
   }
+  // ---------- the arms and the spear ----------
+  // The spear sits in the front hand at a place the pose gives (relative to the chest, so it moves with the
+  // body) and at the angle the pose gives on the screen. Each arm reaches its hand: the front fist to that
+  // grip, the back fist to the nearest point of the shaft behind it it can reach. Elbows bend downward.
+  const ARM = {
+    F: { sh: W(320, 298), l1: 28, l2: 34, w1: 13, w2: 12, fist: 15 },
+    B: { sh: W(386, 303), l1: 34, l2: 40, w1: 15, w2: 14, fist: 16 }
+  };
+  const GRIP = W(272, 341);   // where the front hand holds the shaft in the frame
+  function limb(m, a, b, w) { const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy); m.position.set(a[0], a[1], 0); m.rotation.z = Math.atan2(dy, dx); m.scale.set(L + w * 0.35, w, 1); }
+  function reach(sh, hand, l1, l2) {
+    const dx = hand[0] - sh[0], dy = hand[1] - sh[1], d = clamp(Math.hypot(dx, dy), Math.abs(l1 - l2) + 0.5, l1 + l2 - 0.3), a = Math.atan2(dy, dx);
+    const c = Math.acos(clamp((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1, 1));
+    const e1 = [sh[0] + Math.cos(a + c) * l1, sh[1] + Math.sin(a + c) * l1], e2 = [sh[0] + Math.cos(a - c) * l1, sh[1] + Math.sin(a - c) * l1];
+    const elbow = e1[1] < e2[1] ? e1 : e2;   // the elbow that hangs lower
+    const h = [sh[0] + Math.cos(a) * d, sh[1] + Math.sin(a) * d];
+    return { elbow, hand: h };
+  }
+  function placeArms(F, P, spearOff) {
+    const pel = [REST.pelvis[0] + P.px, REST.pelvis[1] + P.py], rc = P.pr + P.chest;
+    const cr = rot([REST.chest[0] - REST.pelvis[0], REST.chest[1] - REST.pelvis[1]], P.pr), chest = [pel[0] + cr[0], pel[1] + cr[1]];
+    const inChest = (p) => { const r = rot([p[0] - REST.chest[0], p[1] - REST.chest[1]], rc); return [chest[0] + r[0], chest[1] + r[1]]; };
+    const sF = inChest(ARM.F.sh), sB = inChest(ARM.B.sh);
+    let g1 = inChest([GRIP[0] + (P.gx || 0), GRIP[1] + (P.gy || 0)]);
+    // the front hand can only be as far as the arm reaches
+    { const dx = g1[0] - sF[0], dy = g1[1] - sF[1], d = Math.hypot(dx, dy), m = (ARM.F.l1 + ARM.F.l2) * 0.97; if (d > m) g1 = [sF[0] + dx / d * m, sF[1] + dy / d * m]; }
+    const A = F.SPEAR_REST + spearOff, u = [Math.cos(A), Math.sin(A)];
+    F.spear.position.set(g1[0], g1[1], 0); F.spear.rotation.z = A;
+    // the back hand: the point of the shaft behind the front hand nearest the back shoulder
+    const back = clamp(-((sB[0] - g1[0]) * u[0] + (sB[1] - g1[1]) * u[1]), 24, 92);
+    const g2 = [g1[0] - u[0] * back, g1[1] - u[1] * back];
+    for (const [k, g] of [['F', g1], ['B', g2]]) {
+      const a = ARM[k], sh = k === 'F' ? sF : sB, r = reach(sh, g, a.l1, a.l2), M = F.arms[k];
+      limb(M.upper, sh, r.elbow, a.w1); limb(M.fore, r.elbow, r.hand, a.w2);
+      const fa = Math.atan2(r.hand[1] - r.elbow[1], r.hand[0] - r.elbow[0]);
+      M.fist.position.set(r.hand[0], r.hand[1], 0); M.fist.rotation.z = fa; M.fist.scale.set(a.fist * 1.2, a.fist, 1);
+    }
+  }
   const STEP = 1 / 120;
   function spring(s, target, k, c, kick, dt) {
     for (let t = 0; t < dt; t += STEP) { const a = k * (target - s.v) - c * s.d + kick; s.d += a * STEP; s.v += s.d * STEP; }
@@ -287,13 +354,13 @@ const RIG = __RIG__;
     B.chest.rotation.z = P.chest;
     const S = F.springs, kick = clamp(ax * 0.0009, -40, 40);
     B.neck.rotation.z = spring(S.neck, P.neck, 150, 15, kick * 0.6 - vc * 4, dt);
-    B.upperF.rotation.z = P.upperF; B.foreF.rotation.z = P.foreF;
+    B.upperF.rotation.z = 0; B.foreF.rotation.z = 0;
     B.upperB.rotation.z = P.upperB; B.foreB.rotation.z = spring(S.foreB, P.foreB, 90, 7, -kick * 0.5, dt);
     B.wingR.rotation.z = spring(S.wingR, P.wingR, 80, 9, kick * 0.8 + vy * 0.004, dt);
     B.wingR2.rotation.z = spring(S.wingR2, P.wingR2, 60, 6, kick * 1.2 + vy * 0.006, dt);
     B.wingL.rotation.z = spring(S.wingL, P.wingL, 90, 9, kick * 0.6, dt);
     B.cape.rotation.z = spring(S.cape, P.cape, 70, 6, -kick * 0.9, dt);
-    F.spear.rotation.z = F.SPEAR_REST + spring(S.spear, P.spear, 260, 22, 0, dt) - (P.pr + P.chest + P.upperF + P.foreF);   // the spear's own angle on screen
+    placeArms(F, P, spring(S.spear, P.spear, 260, 22, 0, dt));
     // the legs: hips from the hip bone's place, the feet where the pose puts them
     const baseRot = P.pr;
     for (const k of ['B', 'F']) {
@@ -327,7 +394,7 @@ const RIG = __RIG__;
   }
   // where two spears cross (their lines on the screen)
   const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(), _d = new THREE.Vector3();
-  function spearLine(F, o, e) { F.spear.updateWorldMatrix(true, false); o.set(-20, 0, 0); F.spear.localToWorld(o); e.set(30 + 0.69 * 331, 0, 0); F.spear.localToWorld(e); }
+  function spearLine(F, o, e) { F.spear.updateWorldMatrix(true, false); o.set(-60, 0, 0); F.spear.localToWorld(o); e.set(30 + 0.69 * 331, 0, 0); F.spear.localToWorld(e); }
   function crossing(A, Bf) {
     spearLine(A, _a, _b); spearLine(Bf, _c, _d);
     const d1x = _b.x - _a.x, d1y = _b.y - _a.y, d2x = _d.x - _c.x, d2y = _d.y - _c.y, den = d1x * d2y - d1y * d2x;
@@ -365,6 +432,7 @@ const RIG = __RIG__;
       chest: 0.26 * inK + (locked ? 0.03 * Math.sin(lockT * 4.7 + side) : 0), neck: -0.1 * inK,
       upperF: 0.3 * inK, foreF: 0.1 * inK, upperB: -0.3 * inK,
       spear: (-0.42 + (side ? -0.13 : 0.13)) * inK + (locked ? 0.03 * Math.sin(lockT * 6 + side * 2) : 0),
+      gx: -24 * inK + (locked ? 2.5 * Math.sin(lockT * 9 + side) : 0), gy: 12 * inK,
       wingR: -0.15 * inK, wingR2: -0.22 * inK,
       fBx: -66 * K(t, [[0, 0], [0.55, 0], [0.78, 1, 'out']]), fBy: K(t, [[0, 0], [0.55, 0], [0.66, 12, 'out'], [0.78, 0, 'in']]),
       fFx: -20 * K(t, [[0, 0], [0.75, 0], [0.95, 1, 'io']])
