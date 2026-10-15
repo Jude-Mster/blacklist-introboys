@@ -1,0 +1,517 @@
+<title>Juts 2D Rig</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0b0a0d; --panel: #15131a; --line: #2b2833; --fg: #ece6dc; --mist: #a39c92;
+  --gold: #f1d38c; --crimson: #e0383e;
+  --display: "Cinzel", Georgia, serif; --label: "Barlow Condensed", "Arial Narrow", sans-serif; --body: "Barlow", system-ui, sans-serif;
+}
+* { box-sizing: border-box }
+[hidden] { display: none !important }
+body { background: var(--bg); color: var(--fg); font: 16px/1.55 var(--body); margin: 0 }
+.wrap { max-width: 1060px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 56px; display: grid; gap: 24px }
+header { display: grid; gap: 6px }
+.eyebrow { font: 600 13px var(--label); letter-spacing: .14em; text-transform: uppercase; color: var(--crimson) }
+h1 { font: 900 clamp(30px, 6vw, 48px)/1.05 var(--display); margin: 0; color: var(--gold); letter-spacing: .04em; text-wrap: balance }
+.lede { color: var(--mist); max-width: 68ch; margin: 0 }
+.stage { position: relative; background: #0b0a0d; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; aspect-ratio: 16 / 9; max-width: 100% }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block }
+.stage .tag { position: absolute; left: 12px; top: 10px; font: 600 13px var(--label); letter-spacing: .12em; text-transform: uppercase; color: var(--gold); background: rgba(0,0,0,.45); padding: 3px 8px; border-radius: 3px }
+.stage .load { position: absolute; inset: 0; display: grid; place-items: center; color: var(--mist); font: 600 15px var(--label); letter-spacing: .1em; text-transform: uppercase }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
+.bar .grp { display: flex; flex-wrap: wrap; gap: 6px; align-items: center }
+.bar .sep { width: 1px; height: 26px; background: var(--line); margin: 0 4px }
+button { font: 600 15px var(--label); letter-spacing: .07em; text-transform: uppercase; color: var(--fg); background: #211e27; border: 1px solid var(--line); border-radius: 4px; padding: 7px 13px; cursor: pointer }
+button:hover { border-color: var(--gold); color: var(--gold) }
+button[aria-pressed="true"] { border-color: var(--gold); color: #0b0a0d; background: var(--gold) }
+.small { font-size: 13px; padding: 5px 10px }
+h2 { font: 700 22px var(--display); margin: 0 0 12px; color: var(--gold); letter-spacing: .03em }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 24px }
+.refs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 14px }
+figure { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; display: grid; align-content: start }
+figure img { width: 100%; max-width: 100%; display: block; background: #3c8c3c }
+figcaption { padding: 9px 12px 11px; color: var(--mist); font-size: 14px }
+ul { margin: 0; padding-left: 18px; color: var(--mist); display: grid; gap: 6px }
+li b { color: var(--fg); font-weight: 600 }
+.callout { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--crimson); border-radius: 6px; padding: 14px 16px; color: var(--mist) }
+.callout b { color: var(--fg) }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Blacklist Arena · rig preview v2 · not live</div>
+    <h1>Juts, Rigged in 2D</h1>
+    <p class="lede">Rebuilt from your new screenshots and recordings. A bare base body sits on one skeleton, and your armour is fitted onto the same bones as a costume layer. The arms are real jointed limbs from your own model: both hands grip the shaft and the elbows bend to follow the spear. Skyfall is now the game's big circular sweep.</p>
+  </header>
+
+  <div class="stage" id="stage"><canvas id="c"></canvas><div class="tag" id="tag">Idle</div><div class="load" id="load">Building the rig…</div></div>
+  <div class="bar">
+    <div class="grp" id="moves">
+      <button data-a="idle" aria-pressed="true">Idle</button>
+      <button data-a="skyfall">Skyfall</button>
+      <button data-a="clash">Weapon clash</button>
+      <button data-a="hit">Hit &amp; recoil</button>
+      <button data-a="step">Step in &amp; out</button>
+    </div>
+    <span class="sep"></span>
+    <div class="grp" id="speeds">
+      <button class="small" data-s="1" aria-pressed="true">1×</button>
+      <button class="small" data-s="0.5">½×</button>
+      <button class="small" data-s="0.25">¼×</button>
+    </div>
+    <span class="sep"></span>
+    <div class="grp">
+      <button class="small" id="armor" aria-pressed="true">Armour</button>
+      <button class="small" id="bones" aria-pressed="false">Skeleton</button>
+      <button class="small" id="mesh" aria-pressed="false">Mesh</button>
+    </div>
+  </div>
+
+  <section>
+    <h2>Built from your references</h2>
+    <div class="refs">
+      <figure><img src="data:image/jpeg;base64,__REF_BASE__" alt="The bare base body cut from the recording, with its skeleton drawn over it"><figcaption>The base body: cut from your recording, skeleton marked on it. Every costume fits onto these bones.</figcaption></figure>
+      <figure><img src="data:image/jpeg;base64,__REF_ARMOR__" alt="The armoured costume cut from the screenshot, with the matching joints drawn over it"><figcaption>The armour: cut from your screenshot, with the same joints marked so it fits the base skeleton bone by bone.</figcaption></figure>
+      <figure><img src="data:image/jpeg;base64,__REF_SKY__" alt="Frames of Skyfall from the original recording"><figcaption>Skyfall in the game: the spear goes overhead, then sweeps a full circle around the body and ends in a red burst.</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="cols">
+    <div>
+      <h2>What changed</h2>
+      <ul>
+        <li><b>A proper base body:</b> head, torso, both legs, and both arms as separate jointed pieces (shoulder, elbow, wrist, hand). Joints bend smoothly with no seams.</li>
+        <li><b>Real hands:</b> the spear hand is your own fist from the recording, closed on the shaft. When both hands are needed, the other hand closes into a fist and slides onto the shaft too.</li>
+        <li><b>How it holds the weapon:</b> the spear has a real direction in depth. It shortens as it points toward or away from you, and passes behind the body or in front of it.</li>
+        <li><b>Skyfall:</b> crouch and coil, lift the spear overhead, sweep it in a full circle around the body with a green-gold trail, red burst, recover.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Ready for costumes</h2>
+      <ul>
+        <li>The <b>skeleton belongs to the base body</b>. A costume is a picture in the same idle pose with its joints marked. It's cut into the same pieces (body, arms, hands, extras like wings) and fitted onto the bones.</li>
+        <li>Your current armour is the first costume, wings included. Switch it off to see the base body underneath.</li>
+        <li>New armour or a custom mesh later goes through the same path, so every move works with it straight away.</li>
+      </ul>
+    </div>
+  </section>
+
+  <div class="callout"><b>Still a preview:</b> the body is flat (2D), so it can't truly turn its back. In the sweep the torso twists and leans while the spear does the turning in depth. It's not in the arena yet.</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const RIG = __RIG__;
+(function () {
+  const stage = document.getElementById('stage'), canvas = document.getElementById('c');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, preserveDrawingBuffer: true });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.setClearColor(0x0b0a0d, 1);
+  const scene = new THREE.Scene();
+  let VIEW_H = 640;
+  const camera = new THREE.OrthographicCamera(-400, 400, 360, -80, -1000, 1000); camera.position.z = 10;
+  let bg = null;
+  function resize() {
+    const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false);
+    const half = VIEW_H * (w / h) / 2, bottom = -VIEW_H * 0.12;
+    camera.left = -half; camera.right = half; camera.bottom = bottom; camera.top = bottom + VIEW_H; camera.updateProjectionMatrix();
+    if (bg) { bg.scale.set(half * 2.04, VIEW_H * 1.6, 1); bg.position.set(0, -6 + (214 / 288 - 0.5) * VIEW_H * 1.6, -5); }
+  }
+  window.addEventListener('resize', resize);
+  {
+    const bc = document.createElement('canvas'); bc.width = 512; bc.height = 288; const g = bc.getContext('2d');
+    const r = g.createRadialGradient(256, 300, 10, 256, 260, 330); r.addColorStop(0, '#3a3240'); r.addColorStop(0.45, '#1b1720'); r.addColorStop(1, '#0b0a0d'); g.fillStyle = r; g.fillRect(0, 0, 512, 288);
+    g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(0, 214, 512, 74);
+    const fl = g.createLinearGradient(0, 213, 0, 216); fl.addColorStop(0, 'rgba(241,211,140,0)'); fl.addColorStop(1, 'rgba(241,211,140,.2)'); g.fillStyle = fl; g.fillRect(0, 212, 512, 3);
+    bg = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(bc), depthTest: false }));
+    bg.renderOrder = -10; scene.add(bg);
+  }
+
+  // ---------- the skeleton (from the base body; world: x right, y up, the feet at 0) ----------
+  const ROOTJ = RIG.bones[0];
+  const W = (x, y) => [x - ROOTJ.x, ROOTJ.y - y];
+  const J = {}, TIPJ = {}; RIG.bones.forEach((b) => { J[b.n] = W(b.x, b.y); TIPJ[b.n] = W(b.tx, b.ty); });
+  const ang = (a, b) => Math.atan2(b[1] - a[1], b[0] - a[0]), dist = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const rot = (p, a) => [p[0] * Math.cos(a) - p[1] * Math.sin(a), p[0] * Math.sin(a) + p[1] * Math.cos(a)];
+  // two-bone chains: legs and arms
+  function chain(a, b, c, bendHint) {
+    const L = { a, b, c, l1: dist(J[a], J[b]), l2: dist(J[b], J[c]), a1: ang(J[a], J[b]), a2: ang(J[b], J[c]) };
+    const tip = c === 'ftR' || c === 'ftL' || c === 'haR' || c === 'haL' ? J[c] : TIPJ[b];
+    const h = J[a], kn = J[b], an = J[c] || tip, d = dist(h, an), aa = ang(h, an), cc = Math.acos(clamp((L.l1 * L.l1 + d * d - L.l2 * L.l2) / (2 * L.l1 * d), -1, 1));
+    const k1 = [h[0] + Math.cos(aa - cc) * L.l1, h[1] + Math.sin(aa - cc) * L.l1], k2 = [h[0] + Math.cos(aa + cc) * L.l1, h[1] + Math.sin(aa + cc) * L.l1];
+    L.sign = dist(k1, kn) <= dist(k2, kn) ? 1 : -1;
+    return L;
+  }
+  const LEG = { R: chain('thR', 'shnR', 'ftR'), L: chain('thL', 'shnL', 'ftL') };
+  const ARM = { R: chain('upR', 'foR', 'haR'), L: chain('upL', 'foL', 'haL') };
+  // the spear hand's grip in the frame: where the shaft runs through the fist, and at what angle
+  const GRIP_R = W(64, 214), SHAFT_REST = Math.atan2(-34, -65);
+  const GRIP_R_OFF = [GRIP_R[0] - J.haR[0], GRIP_R[1] - J.haR[1]];
+  // the game's camera looks down on the fighters a little: things nearer the camera sit lower on the screen,
+  // so a circle swept round the body shows as an ellipse
+  const ELEV = 0.44, cE = Math.cos(ELEV), sE = Math.sin(ELEV);
+  const view3 = (d) => [d[0], d[1] * cE - d[2] * sE, d[2] * cE + d[1] * sE];   // [screen x, screen y, toward the camera]
+  const REST_PITCH = -Math.atan(Math.tan(Math.PI + SHAFT_REST) / cE);   // pointing forward (yaw = PI) and down, as the frame holds it
+  const GRIP_L_OFF = [-GRIP_R_OFF[0], GRIP_R_OFF[1]], SHAFT_REST_L = Math.PI - SHAFT_REST;   // the mirrored fist on the near hand
+
+  const loader = new THREE.TextureLoader();
+  const tex = (b64, type) => { const t = loader.load('data:' + type + ';base64,' + b64); t.anisotropy = 4; return t; };
+  const ORDER = { wings: 0, armR: 1, body: 2, armL: 3, handL: 3.2, handR: 6 };
+
+  function makeFighter(tint) {
+    const group = new THREE.Group(); scene.add(group);
+    const bones = {}, list = [];
+    RIG.bones.forEach((b) => {
+      const bone = new THREE.Bone(); bone.name = b.n;
+      const p = J[b.n], q = b.p ? J[b.p] : [0, 0];
+      bone.position.set(p[0] - q[0], p[1] - q[1], 0); bones[b.n] = bone; list.push(bone);
+      if (b.p) bones[b.p].add(bone);
+    });
+    group.add(bones.root); group.updateMatrixWorld(true);
+    const skeleton = new THREE.Skeleton(list);
+    const parts = { base: {}, armor: {} }, mats = [], wires = [];
+    const mk = (L, order, transform) => {
+      const g = new THREE.BufferGeometry(), n = L.v.length / 2, pos = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { let w = W(L.v[i * 2], L.v[i * 2 + 1]); if (transform) w = transform(w); pos[i * 3] = w[0]; pos[i * 3 + 1] = w[1]; }
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(L.uv), 2));
+      g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(L.si, 4)); g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(L.sw, 4)); g.setIndex(L.i);
+      const m = new THREE.MeshBasicMaterial({ map: tex(L.png, 'image/png'), transparent: true, depthWrite: false, depthTest: false, side: THREE.DoubleSide, skinning: true, color: tint });
+      const mesh = new THREE.SkinnedMesh(g, m); mesh.renderOrder = order; mesh.frustumCulled = false; group.add(mesh); mesh.bind(skeleton);
+      const wire = new THREE.SkinnedMesh(g, new THREE.MeshBasicMaterial({ color: 0x7fd6ff, wireframe: true, transparent: true, opacity: 0.3, skinning: true, depthTest: false }));
+      wire.renderOrder = 30; wire.frustumCulled = false; wire.visible = false; group.add(wire); wire.bind(skeleton); wires.push(wire);
+      mats.push(m); return { mesh, wire };
+    };
+    const BI = {}; RIG.bones.forEach((b, i) => { BI[b.n] = i; });
+    for (const L of RIG.layers) {
+      parts[L.costume][L.part] = mk(L, ORDER[L.part]);
+      // the near hand closed on the shaft: the spear hand's fist, mirrored onto the near wrist and moved by its bone
+      if (L.part === 'handR') {
+        const wR = J.haR, wL = J.haL;
+        const G = { ...L, si: L.si.map(() => 0), sw: L.sw.map((v, k) => (k % 4 === 0 ? 1 : 0)) };
+        G.si = L.si.map((v, k) => (k % 4 === 0 ? BI.haL : 0));
+        parts[L.costume].gripL = mk(G, 6.1, (p) => [wL[0] - (p[0] - wR[0]), wL[1] + (p[1] - wR[1])]);
+      }
+    }
+    // the spear: the weapon picture on a dark shaft; its origin is the spear hand's grip
+    const spear = new THREE.Group(); group.add(spear);
+    const shaftC = document.createElement('canvas'); shaftC.width = 512; shaftC.height = 8; const sx = shaftC.getContext('2d');
+    const gr = sx.createLinearGradient(0, 0, 0, 8); gr.addColorStop(0, '#a04a2a'); gr.addColorStop(0.5, '#4a1410'); gr.addColorStop(1, '#1e0808'); sx.fillStyle = gr; sx.fillRect(0, 0, 512, 8);
+    sx.fillStyle = '#d8b25a'; [2, 40, 300, 500, 506].forEach((x) => sx.fillRect(x, 0, 5, 8));
+    const SH0 = -16, SH1 = 196;   // the shaft: from just behind the fist to the head's socket
+    const shaftG = new THREE.PlaneGeometry(SH1 - SH0, 6); shaftG.translate((SH0 + SH1) / 2, 0, 0);
+    const shaft = new THREE.Mesh(shaftG, new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(shaftC), transparent: true, depthTest: false, color: tint }));
+    spear.add(shaft);
+    const HL = 268, HW = HL / (0.8485 - 0.1538), HH = HW / 1.8696;
+    const headG = new THREE.PlaneGeometry(HW, HH); headG.translate(SH1 + (0.5 - 0.1538) * HW, -(0.5 - 0.4577) * HH, 0);
+    const head = new THREE.Mesh(headG, new THREE.MeshBasicMaterial({ map: tex(RIG.weapon, 'image/webp'), transparent: true, depthTest: false, color: tint }));
+    spear.add(head);
+    const sh = new THREE.Mesh(new THREE.CircleGeometry(1, 32), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45, depthTest: false }));
+    sh.scale.set(150, 18, 1); sh.position.set(-12, -4, 0); sh.renderOrder = -1; group.add(sh);
+    const springs = {}; ['head', 'wingR', 'wingL', 'armL'].forEach((k) => { springs[k] = { v: 0, d: 0 }; });
+    return { group, bones, parts, mats, wires, spear, shaft, head, shadow: sh, springs, tint, flash: 0, prev: null, reach: SH1 + HL };
+  }
+
+  // ---------- easing, keys ----------
+  const EASE = { lin: (x) => x, io: (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2), out: (x) => 1 - Math.pow(1 - x, 3), in: (x) => x * x * x, snap: (x) => 1 - Math.pow(1 - x, 5) };
+  function K(t, keys) {
+    if (t <= keys[0][0]) return keys[0][1];
+    for (let i = 1; i < keys.length; i++) { const [t1, v1, e] = keys[i], [t0, v0] = keys[i - 1]; if (t <= t1) return v0 + (v1 - v0) * EASE[e || 'io']((t - t0) / (t1 - t0)); }
+    return keys[keys.length - 1][1];
+  }
+  const sin = (t, per, ph = 0) => Math.sin((t / per + ph) * Math.PI * 2);
+  const add = (a, d) => { const o = { ...a }; for (const k in d) o[k] = (o[k] || 0) + d[k]; return o; };
+
+  // a pose: hips (px, py, pr), waist (chest), head, the spear (grip offset gx/gy from the frame's grip, yaw and
+  // pitch in depth), how much the near hand holds the shaft (two), wings, and each foot's offset
+  function idlePose(t, ph = 0) {
+    t += ph;
+    return {
+      px: 3 * sin(t, 5.5), py: -2 + 2 * sin(t, 3.2), pr: 0.008 * sin(t, 5.5, 0.25),
+      chest: 0.012 * sin(t, 3.2, 0.15), head: 0.02 * sin(t, 7.3) - 0.01 * sin(t, 3.2, 0.3),
+      gx: 1.5 * sin(t, 4.1), gy: 1.5 * sin(t, 3.2, 0.2), yaw: Math.PI, pitch: REST_PITCH + 0.015 * sin(t, 4.1, 0.3), two: 0, slide: 60,
+      armL: 0.03 * sin(t, 3.6, 0.1), wingR: 0.05 * sin(t, 2.6), wingL: 0.06 * sin(t, 2.6, -0.1),
+      fRx: 0, fRy: 0, fLx: 0, fLy: 0
+    };
+  }
+  // Skyfall: crouch and coil, lift the spear overhead with both hands, sweep it a full circle round the body
+  // (behind, across the back, round the far side, in front), the burst, then back to guard
+  const SKY = { coil: 0.32, lift: 0.5, sweep0: 0.56, sweep1: 1.06, burst: 1.06, end: 1.85 };
+  function skyD(t) {
+    const S = SKY;
+    const yaw = K(t, [[0, Math.PI], [S.coil, Math.PI * 0.9], [S.lift, Math.PI * 0.94], [S.sweep0, Math.PI * 0.62], [S.sweep1, Math.PI * 0.62 - Math.PI * 2.12, 'in'], [S.end, -Math.PI * 1.0, 'io']]);
+    const pitch = K(t, [[0, REST_PITCH], [S.coil, -0.18], [S.lift, 0.06], [S.sweep0, 0.02], [S.sweep0 + 0.18, -0.12], [S.sweep1, -0.2], [S.end, REST_PITCH]]);
+    return {
+      px: K(t, [[0, 0], [S.coil, 14], [S.lift, 8], [S.sweep1, -26], [S.sweep1 + 0.1, -30], [S.end, 0]]),
+      py: K(t, [[0, 0], [S.coil, -22], [S.lift, -4], [S.sweep0, -16], [S.sweep1, -30], [S.sweep1 + 0.12, -34], [S.end, 0]]),
+      pr: K(t, [[0, 0], [S.coil, -0.05], [S.sweep0, -0.02], [S.sweep1, 0.07], [S.end, 0]]),
+      chest: K(t, [[0, 0], [S.coil, -0.14], [S.lift, -0.06], [S.sweep0, -0.1], [(S.sweep0 + S.sweep1) / 2, 0.06], [S.sweep1, 0.2], [S.sweep1 + 0.14, 0.22], [S.end, 0]]),
+      head: K(t, [[0, 0], [S.coil, 0.06], [S.sweep1, -0.08], [S.end, 0]]),
+      gx: K(t, [[0, 0], [S.coil, 30], [S.lift, 52], [S.sweep0, 48], [(S.sweep0 + S.sweep1) / 2, 34], [S.sweep1, -10], [S.end, 0]]),
+      gy: K(t, [[0, 0], [S.coil, 50], [S.lift, 178], [S.sweep0, 120], [(S.sweep0 + S.sweep1) / 2, 34], [S.sweep1, 22], [S.end, 0]]),
+      two: K(t, [[0, 0], [0.1, 0], [S.coil, 1], [S.sweep1 + 0.1, 1], [S.end - 0.25, 0]]),
+      wingR: K(t, [[0, 0], [S.coil, 0.25], [S.sweep0, -0.15], [S.sweep1, 0.3], [S.end, 0]]),
+      wingL: K(t, [[0, 0], [S.coil, 0.3], [S.sweep0, -0.2], [S.sweep1, 0.35], [S.end, 0]]),
+      fRx: K(t, [[0, 0], [S.coil, 0], [S.sweep0, -18, 'out'], [S.end - 0.3, -18], [S.end, 0]]), fRy: K(t, [[0, 0], [S.coil, 0], [S.coil + 0.12, 10, 'out'], [S.sweep0, 0, 'in'], [S.end - 0.3, 0], [S.end - 0.15, 6], [S.end, 0]]),
+      fLx: K(t, [[0, 0], [S.sweep0, 0], [S.sweep1, 16, 'io'], [S.end - 0.2, 16], [S.end, 0]]),
+      _yaw: yaw, _pitch: pitch
+    };
+  }
+  function hitD(t, k = 1) {
+    const q = t < 0.15 ? 0 : t - 0.15, snap = q > 0 ? EASE.snap(Math.min(1, q / 0.09)) : 0, settle = q > 0 ? clamp(1 - (q - 0.25) / 0.9, 0, 1) : 0, s = snap * EASE.io(settle) * k;
+    return { px: 30 * s, py: -8 * s, pr: -0.06 * s, chest: -0.24 * s, head: -0.22 * s, gx: 18 * s, gy: 26 * s, pitch: 0.35 * s, armL: -0.4 * s, wingR: 0.25 * s, wingL: 0.35 * s, fLx: 20 * EASE.io(clamp(q / 0.25, 0, 1)) * EASE.io(settle) * k, fLy: 7 * Math.sin(clamp(q / 0.25, 0, 1) * Math.PI) * k };
+  }
+
+  // ---------- applying a pose ----------
+  const STEP = 1 / 120;
+  function spring(s, target, k, c, kick, dt) { for (let t = 0; t < dt; t += STEP) { const a = k * (target - s.v) - c * s.d + kick; s.d += a * STEP; s.v += s.d * STEP; } return s.v; }
+  function solve(C, root, target, baseRot, B, elbowDown) {
+    const dx = target[0] - root[0], dy = target[1] - root[1], d = clamp(Math.hypot(dx, dy), Math.abs(C.l1 - C.l2) + 1, C.l1 + C.l2 - 0.4), a = Math.atan2(dy, dx);
+    const c = Math.acos(clamp((C.l1 * C.l1 + d * d - C.l2 * C.l2) / (2 * C.l1 * d), -1, 1));
+    let t1 = a - C.sign * c;
+    if (elbowDown) { const o1 = a + c, o2 = a - c; t1 = Math.sin(o1) < Math.sin(o2) ? o1 : o2; }   // the elbow that hangs lower
+    const mid = [root[0] + Math.cos(t1) * C.l1, root[1] + Math.sin(t1) * C.l1], t2 = Math.atan2(target[1] - mid[1], target[0] - mid[0]);
+    const d1 = t1 - C.a1, d2 = t2 - C.a2;
+    B[C.a].rotation.z = d1 - baseRot; B[C.b].rotation.z = d2 - d1;
+    return { d1, d2, end: [mid[0] + Math.cos(t2) * C.l2, mid[1] + Math.sin(t2) * C.l2] };
+  }
+  function apply(F, P, dt, yaw, pitch) {
+    const B = F.bones, S = F.springs;
+    const prev = F.prev || P, vx = dt > 0 ? (P.px - prev.px) / dt : 0, ax = dt > 0 && F.pvx != null ? (vx - F.pvx) / dt : 0; F.pvx = vx; F.prev = P;
+    const kick = clamp(ax * 0.0008, -40, 40);
+    B.pelvis.position.set(J.pelvis[0] - J.root[0] + P.px, J.pelvis[1] - J.root[1] + P.py, 0); B.pelvis.rotation.z = P.pr;
+    B.chest.rotation.z = P.chest;
+    B.head.rotation.z = spring(S.head, P.head, 140, 14, kick * 0.5, dt);
+    B.wingR.rotation.z = spring(S.wingR, P.wingR, 70, 8, kick * 0.9, dt);
+    B.wingL.rotation.z = spring(S.wingL, -P.wingL, 55, 6, -kick * 1.1, dt);
+    // where things are now (in the fighter's own space)
+    const pel = [J.pelvis[0] + P.px, J.pelvis[1] + P.py];
+    const inP = (p) => { const r = rot([p[0] - J.pelvis[0], p[1] - J.pelvis[1]], P.pr); return [pel[0] + r[0], pel[1] + r[1]]; };
+    const chest = inP(J.chest), rc = P.pr + P.chest;
+    const inC = (p) => { const r = rot([p[0] - J.chest[0], p[1] - J.chest[1]], rc); return [chest[0] + r[0], chest[1] + r[1]]; };
+    // legs: the feet stay where the pose puts them
+    for (const k of ['R', 'L']) {
+      const C = LEG[k], hip = inP(J[C.a]), foot = [J[C.c][0] + P['f' + k + 'x'], J[C.c][1] + P['f' + k + 'y']];
+      const r = solve(C, hip, foot, P.pr, B); B[C.c].rotation.z = -r.d2;
+    }
+    // the spear: its direction in depth, shown shortened on the screen
+    const cp = Math.cos(pitch), d3 = view3([cp * Math.cos(yaw), Math.sin(pitch), cp * Math.sin(yaw)]);
+    const A = Math.atan2(d3[1], d3[0]), fore = Math.max(0.06, Math.hypot(d3[0], d3[1])), front = d3[2] > -0.05;
+    let g1 = inC([GRIP_R[0] + P.gx, GRIP_R[1] + P.gy]);
+    // the spear hand's arm: reach for the grip, the fist turned with the shaft
+    const shR = inC(J.upR), Rr = ARM.R.l1 + ARM.R.l2;
+    const delta = A - SHAFT_REST, wristT = [g1[0] - rot(GRIP_R_OFF, delta)[0], g1[1] - rot(GRIP_R_OFF, delta)[1]];
+    { const dx = wristT[0] - shR[0], dy = wristT[1] - shR[1], dd = Math.hypot(dx, dy); if (dd > Rr * 0.98) { const s = (Rr * 0.98) / dd; wristT[0] = shR[0] + dx * s; wristT[1] = shR[1] + dy * s; } }
+    const rr = solve(ARM.R, shR, wristT, rc, B, true);
+    B.haR.rotation.z = delta - (rc + rr.d2);
+    const gr = rot(GRIP_R_OFF, delta); g1 = [rr.end[0] + gr[0], rr.end[1] + gr[1]];
+    F.spear.position.set(g1[0], g1[1], 0); F.spear.rotation.z = A; F.spear.scale.set(fore, 1, 1);
+    F.head.scale.y = d3[0] < 0 ? 1 : -1;   // the blade's curve points down whichever way it faces
+    // the near hand: hanging, or closed on the shaft further up it
+    const two = clamp(P.two || 0, 0, 1), shL = inC(J.upL);
+    if (two > 0.01) {
+      const u = [Math.cos(A) * fore, Math.sin(A) * fore], g2 = [g1[0] + u[0] * (P.slide || 60), g1[1] + u[1] * (P.slide || 60)];
+      // the mirrored fist turned so the shaft runs through it; the wrist goes where that puts the fist on the shaft
+      const dL = A - SHAFT_REST_L, off = rot(GRIP_L_OFF, dL), wrist = [g2[0] - off[0], g2[1] - off[1]];
+      const rest = inC(J.haL), tgt = [rest[0] + (wrist[0] - rest[0]) * two, rest[1] + (wrist[1] - rest[1]) * two];
+      const rl = solve(ARM.L, shL, tgt, rc, B, true);
+      B.haL.rotation.z = dL * two - (rc + rl.d2);
+    } else {
+      B.upL.rotation.z = spring(S.armL, P.armL, 60, 7, -kick * 0.6, dt); B.foL.rotation.z = P.armL * 0.6; B.haL.rotation.z = 0;
+    }
+    const gripOn = two > 0.5;
+    for (const c of ['base', 'armor']) { const p = F.parts[c]; if (p.handL) p.handL.mesh.userData.hide = gripOn; if (p.gripL) p.gripL.mesh.userData.hide = !gripOn; }
+    // what is in front of what: the spear and the far arm go behind the body when the spear points away
+    F.spear.children.forEach((m) => { m.renderOrder = front ? 5 : 1.5; });
+    for (const c of ['base', 'armor']) {
+      const p = F.parts[c];
+      if (p.armR) p.armR.mesh.renderOrder = front ? 4.6 : 1;
+      if (p.handR) p.handR.mesh.renderOrder = front ? 6 : 1.6;
+      if (p.gripL) p.gripL.mesh.renderOrder = front ? 6.1 : 1.7;
+    }
+    F.shadow.position.x = -12 + (P.fRx + P.fLx) * 0.5 + P.px * 0.3;
+    F.view = { g1, A, fore, front, d3, chest };
+  }
+  function showCostume(F, armorOn) {
+    for (const c of ['base', 'armor']) {
+      const on = (c === 'armor') === armorOn;
+      for (const k in F.parts[c]) { const m = F.parts[c][k].mesh; m.visible = on && !m.userData.hide; F.parts[c][k].wire.visible = m.visible && wiresOn; }
+    }
+  }
+
+  // ---------- effects: the sweep's trail, sparks, the burst ----------
+  const glowC = document.createElement('canvas'); glowC.width = glowC.height = 64; { const g = glowC.getContext('2d'), r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.3, 'rgba(255,255,255,.5)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64); }
+  const glowT = new THREE.CanvasTexture(glowC);
+  // the trail: a ribbon round the body from the shaft out to the blade's tip, the newest part brightest
+  const trailC = document.createElement('canvas'); trailC.width = 256; trailC.height = 64; {
+    const g = trailC.getContext('2d'), h = g.createLinearGradient(0, 0, 0, 64);
+    h.addColorStop(0, 'rgba(255,240,170,0)'); h.addColorStop(0.35, 'rgba(230,240,120,.75)'); h.addColorStop(0.7, 'rgba(150,210,80,.6)'); h.addColorStop(0.92, 'rgba(255,120,60,.55)'); h.addColorStop(1, 'rgba(255,90,40,0)');
+    g.fillStyle = h; g.fillRect(0, 0, 256, 64);
+    const fade = g.createLinearGradient(0, 0, 256, 0); fade.addColorStop(0, 'rgba(0,0,0,1)'); fade.addColorStop(1, 'rgba(0,0,0,0)');
+    g.globalCompositeOperation = 'destination-out'; g.fillStyle = fade; g.fillRect(0, 0, 256, 64);
+  }
+  const trailT = new THREE.CanvasTexture(trailC);
+  function makeTrail() {
+    const N = 48, mk = (order) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array((N + 1) * 2 * 3), 3)); g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array((N + 1) * 2 * 2), 2)); const idx = []; for (let i = 0; i < N; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } g.setIndex(idx); const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: trailT, transparent: true, blending: THREE.AdditiveBlending, depthTest: false, side: THREE.DoubleSide })); m.renderOrder = order; m.frustumCulled = false; scene.add(m); m.visible = false; return m; };
+    return { N, back: mk(1.45), front: mk(5.5) };
+  }
+  const trail = makeTrail();
+  // one point of the trail at a yaw: from the shaft's middle out to the tip, as the camera sees it
+  function trailPoints(F, yaw, pitch, rIn, rOut) {
+    const cp = Math.cos(pitch), d = view3([cp * Math.cos(yaw), Math.sin(pitch), cp * Math.sin(yaw)]);
+    const o = F.view.g1, p = (r) => { const v = new THREE.Vector3(o[0] + d[0] * r, o[1] + d[1] * r, 0); F.group.localToWorld(v); return v; };
+    return { a: p(rIn), b: p(rOut), z: d[2] };
+  }
+  function drawTrail(F, yawNow, pitch, span, alpha) {
+    const { N } = trail;
+    for (const half of ['back', 'front']) {
+      const m = trail[half], pos = m.geometry.attributes.position.array, uv = m.geometry.attributes.uv.array;
+      for (let i = 0; i <= N; i++) {
+        const f = i / N, yaw = yawNow + span * (1 - f), P = trailPoints(F, yaw, pitch, F.reach * 0.35, F.reach * 1.02);
+        const show = half === 'front' ? P.z > -0.02 : P.z < 0.02, k = show ? 1 : 0;
+        pos.set([P.a.x, P.a.y, 0, P.b.x, P.b.y, 0], i * 6);
+        uv.set([f * k + (1 - k) * 0, 1, f * k, 0], i * 4);
+      }
+      m.geometry.attributes.position.needsUpdate = true; m.geometry.attributes.uv.needsUpdate = true;
+      m.material.opacity = alpha; m.visible = alpha > 0.01;
+    }
+  }
+  const sparks = [];
+  function spark(p, n, speed, cols, size = 7) {
+    for (let i = 0; i < n; i++) {
+      const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowT, color: cols[i % cols.length], blending: THREE.AdditiveBlending, transparent: true, depthTest: false }));
+      const a = Math.random() * Math.PI * 2, v = speed * (0.4 + Math.random());
+      m.position.set(p[0], p[1], 0); m.scale.setScalar(size * (0.5 + Math.random())); m.renderOrder = 10; scene.add(m);
+      sparks.push({ m, vx: Math.cos(a) * v, vy: Math.abs(Math.sin(a)) * v * 0.9 + 40, life: 0.35 + Math.random() * 0.4, age: 0 });
+    }
+  }
+  const bursts = [];
+  function burst(p) {
+    const add = (col, s0, s1, life, order, ring) => { const m = ring ? new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 64), new THREE.MeshBasicMaterial({ color: col, transparent: true, blending: THREE.AdditiveBlending, depthTest: false })) : new THREE.Sprite(new THREE.SpriteMaterial({ map: glowT, color: col, transparent: true, blending: THREE.AdditiveBlending, depthTest: false })); m.position.set(p[0], p[1], 0); if (ring) m.scale.set(1, 0.35, 1); m.renderOrder = order; scene.add(m); bursts.push({ m, s0, s1, life, age: 0, ring }); };
+    add(0xff3a20, 120, 620, 0.55, 9); add(0xff8a40, 60, 360, 0.4, 9.1); add(0xfff0d0, 30, 160, 0.22, 9.2); add(0xff5030, 60, 520, 0.6, 9.3, true);
+    spark(p, 40, 380, [0xffffff, 0xffa040, 0xff4020], 9);
+  }
+  function tickFx(dt) {
+    for (let i = sparks.length - 1; i >= 0; i--) { const s = sparks[i]; s.age += dt; if (s.age >= s.life) { scene.remove(s.m); s.m.material.dispose(); sparks.splice(i, 1); continue; } s.vy -= 520 * dt; s.m.position.x += s.vx * dt; s.m.position.y += s.vy * dt; s.m.material.opacity = 1 - s.age / s.life; }
+    for (let i = bursts.length - 1; i >= 0; i--) { const b = bursts[i]; b.age += dt; const a = b.age / b.life; if (a >= 1) { scene.remove(b.m); b.m.material.dispose(); bursts.splice(i, 1); continue; } const s = b.s0 + (b.s1 - b.s0) * EASE.out(a); if (b.ring) b.m.scale.set(s, s * 0.32, 1); else b.m.scale.setScalar(s); b.m.material.opacity = (1 - a) * (b.ring ? 0.9 : 1); }
+  }
+  const flare = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowT, color: 0xfff0c8, blending: THREE.AdditiveBlending, transparent: true, depthTest: false })); flare.renderOrder = 11; flare.visible = false; scene.add(flare);
+  const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(), _d = new THREE.Vector3();
+  function bladeLine(F, o, e) { F.spear.updateWorldMatrix(true, false); o.set(120, 0, 0); F.spear.localToWorld(o); e.set(F.reach * 0.95, 0, 0); F.spear.localToWorld(e); }
+  function crossing(A, Bf) {
+    bladeLine(A, _a, _b); bladeLine(Bf, _c, _d);
+    const d1x = _b.x - _a.x, d1y = _b.y - _a.y, d2x = _d.x - _c.x, d2y = _d.y - _c.y, den = d1x * d2y - d1y * d2x;
+    let k = 0.8; if (Math.abs(den) > 1e-6) k = clamp(((_c.x - _a.x) * d2y - (_c.y - _a.y) * d2x) / den, 0.2, 1);
+    return [_a.x + d1x * k, _a.y + d1y * k];
+  }
+
+  // ---------- the moves ----------
+  const juts = makeFighter(new THREE.Color(1, 1, 1)), foe = makeFighter(new THREE.Color(0.86, 0.9, 1.08));
+  const MOVES = { idle: { len: 9e9, solo: true }, skyfall: { len: SKY.end + 0.5, solo: true }, hit: { len: 2.2, solo: true }, step: { len: 3.6, solo: true }, clash: { len: 4.4, solo: false } };
+  let move = 'idle', mt = 0, speed = 1, last = 0, shown = -1, armorOn = true, wiresOn = false, shake = 0;
+  function layout() {
+    const solo = MOVES[move].solo; foe.group.visible = !solo;
+    VIEW_H = solo ? 700 : 820; resize();
+    if (solo) { juts.group.position.set(110, 0, 0); juts.group.scale.set(1, 1, 1); }
+    else { juts.group.position.set(-420, 0, 0); juts.group.scale.set(-1, 1, 1); foe.group.position.set(420, 0, 0); foe.group.scale.set(1, 1, 1); }
+  }
+  function clashPose(t, side) {
+    const base = idlePose(t, side * 1.7), inK = K(t, [[0, 0], [0.55, 0], [0.85, 1, 'snap']]);
+    const lockT = clamp(t - 0.85, 0, 1.55), locked = t >= 0.85 && t < 2.4;
+    const sway = locked ? Math.sin(lockT * Math.PI * 2 * 0.75) * 18 * Math.min(1, lockT / 0.3) : 0, strain = locked ? Math.sin(t * 61 + side * 2) * 0.8 : 0;
+    const lunge = {
+      px: -70 * inK + (side ? -sway : sway) + strain, py: -26 * inK, pr: 0.05 * inK, chest: 0.2 * inK + (locked ? 0.03 * Math.sin(lockT * 4.7 + side) : 0), head: -0.08 * inK,
+      gx: -10 * inK, gy: 46 * inK, two: inK, pitch: ((side ? 0.12 : -0.12) - REST_PITCH) * inK + (locked ? 0.025 * Math.sin(lockT * 6 + side * 2) : 0),
+      wingR: -0.15 * inK, wingL: -0.2 * inK,
+      fRx: -76 * K(t, [[0, 0], [0.55, 0], [0.78, 1, 'out']]), fRy: K(t, [[0, 0], [0.55, 0], [0.66, 14, 'out'], [0.78, 0, 'in']]), fLx: -24 * K(t, [[0, 0], [0.75, 0], [0.95, 1, 'io']])
+    };
+    if (t < 2.4) return add(base, lunge);
+    const q = t - 2.4, out = EASE.io(clamp((q - 0.5) / 1.1, 0, 1)), h = hitD(q + 0.15, 1.05);
+    return add(add(base, Object.fromEntries(Object.entries(lunge).map(([k, v]) => [k, v * (1 - out)]))), h);
+  }
+  function stepPose(t) {
+    const base = idlePose(t), w = (a, b) => K(t, [[0, 0], [a, 0], [b, 1, 'io']]), lift = (a, b) => (t > a && t < b ? Math.sin(((t - a) / (b - a)) * Math.PI) : 0);
+    const inR = w(0.2, 0.6) - w(2.0, 2.4), inL = w(0.55, 0.95) - w(2.35, 2.75), body = (w(0.2, 0.95) - w(2.0, 2.75)) * -60;
+    return add(base, { px: body, py: -5 * (lift(0.2, 0.6) + lift(0.55, 0.95) + lift(2.0, 2.4) + lift(2.35, 2.75)), fRx: -60 * inR, fRy: 14 * (lift(0.2, 0.6) + lift(2.0, 2.4)), fLx: -60 * inL, fLy: 14 * (lift(0.55, 0.95) + lift(2.35, 2.75)), chest: 0.05 * lift(0.2, 0.95) - 0.04 * lift(2.0, 2.75), wingR: -0.12 * (lift(0.2, 0.95) + lift(2.0, 2.75)), wingL: -0.16 * (lift(0.2, 0.95) + lift(2.0, 2.75)) });
+  }
+  function poseAt(t, dt) {
+    trail.back.visible = trail.front.visible = false; flare.visible = false;
+    if (move === 'idle') { const p = idlePose(t); apply(juts, p, dt, p.yaw, p.pitch); return; }
+    if (move === 'skyfall') {
+      const d = skyD(t), p = add(idlePose(t), d); apply(juts, p, dt, d._yaw, d._pitch);
+      const S = SKY;
+      if (t > S.sweep0 - 0.05 && t < S.sweep1 + 0.35) {
+        const span = Math.min(Math.PI * 1.6, Math.max(0.05, (Math.PI * 0.62 - d._yaw) * 0.9)), fade = t < S.sweep1 ? 1 : 1 - (t - S.sweep1) / 0.35;
+        drawTrail(juts, d._yaw, d._pitch, span, clamp(fade, 0, 1));
+      }
+      if (t >= S.burst && shown !== 1) { shown = 1; const v = juts.view, P = new THREE.Vector3(v.g1[0] - 150, 120, 0); juts.group.localToWorld(P); burst([P.x, P.y]); shake = 0.35; }
+      return;
+    }
+    if (move === 'hit') { const p = add(idlePose(t), hitD(t)); juts.flash = t > 0.15 && t < 0.3 ? (0.3 - t) * 4 : 0; apply(juts, p, dt, p.yaw, p.pitch); if (t > 0.15 && shown !== 1) { shown = 1; const P = new THREE.Vector3(-30, 300, 0); juts.group.localToWorld(P); spark([P.x, P.y], 28, 280, [0xffffff, 0xffc060, 0xff5030]); shake = 0.15; } return; }
+    if (move === 'step') { const p = stepPose(t); apply(juts, p, dt, p.yaw, p.pitch); return; }
+    if (move === 'clash') {
+      const a = clashPose(t, 0), b = clashPose(t, 1); apply(juts, a, dt, a.yaw, a.pitch); apply(foe, b, dt, b.yaw, b.pitch);
+      const lockOn = t >= 0.82 && t < 2.45; flare.visible = lockOn;
+      if (lockOn) {
+        scene.updateMatrixWorld(true); const P = crossing(juts, foe);
+        flare.position.set(P[0], P[1], 0); flare.scale.setScalar(34 + Math.random() * 22); flare.material.opacity = 0.55 + Math.random() * 0.4;
+        if (shown !== 1) { shown = 1; spark(P, 44, 360, [0xffffff, 0xffd070, 0xff6a3a, 0x9fd8ff], 8); shake = 0.2; }
+        if (t < 2.4 && Math.random() < 0.8) spark(P, 2, 180, [0xfff0c0, 0xffb050], 6);
+        if (t >= 2.4 && shown !== 2) { shown = 2; spark(P, 30, 320, [0xffffff, 0xff8040], 8); shake = 0.2; }
+      }
+    }
+  }
+
+  // ---------- the skeleton overlay ----------
+  const boneLines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xffe36a, depthTest: false, transparent: true })); boneLines.renderOrder = 40; boneLines.visible = false; scene.add(boneLines);
+  const joints = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: 0xff4040, size: 6, depthTest: false, sizeAttenuation: false })); joints.renderOrder = 41; joints.visible = false; scene.add(joints);
+  const _p = new THREE.Vector3(), _q = new THREE.Vector3();
+  function drawBones() {
+    const seg = [], pts = [];
+    for (const F of [juts, foe]) {
+      if (!F.group.visible) continue;
+      for (const b of RIG.bones) {
+        if (b.n === 'root') continue;
+        const bone = F.bones[b.n]; bone.getWorldPosition(_p); pts.push(_p.x, _p.y, 0);
+        const t = TIPJ[b.n], r = J[b.n]; _q.set(t[0] - r[0], t[1] - r[1], 0); bone.localToWorld(_q); seg.push(_p.x, _p.y, 0, _q.x, _q.y, 0);
+      }
+    }
+    boneLines.geometry.setAttribute('position', new THREE.Float32BufferAttribute(seg, 3)); joints.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  }
+
+  function frame(now, manualDt) {
+    if (manualDt == null) { if (window.__manual) return; requestAnimationFrame(frame); }
+    const rawDt = Math.min(0.05, Math.max(0, (now - (last || now)) / 1000)); last = now;
+    const dt = (manualDt != null ? manualDt : rawDt) * speed;
+    mt += dt;
+    const M = MOVES[move];
+    if (mt > M.len + 0.6) { mt = 0; shown = -1; }
+    poseAt(Math.min(mt, M.len), dt);
+    for (const F of [juts, foe]) { showCostume(F, armorOn); const fl = F.flash; F.mats.forEach((m) => m.color.setRGB(F.tint.r + fl, F.tint.g + fl * 0.4, F.tint.b + fl * 0.4)); }
+    tickFx(dt);
+    if (shake > 0) { shake = Math.max(0, shake - dt); camera.position.x = Math.sin(mt * 90) * 6 * shake; camera.position.y = Math.cos(mt * 77) * 4 * shake; } else camera.position.set(0, 0, 10);
+    if (boneLines.visible) { scene.updateMatrixWorld(true); drawBones(); }
+    renderer.render(scene, camera);
+  }
+
+  // ---------- controls ----------
+  const tag = document.getElementById('tag');
+  const label = { idle: 'Idle', skyfall: 'Skyfall', clash: 'Weapon clash', hit: 'Hit & recoil', step: 'Step in & out' };
+  function setMove(m) { move = m; mt = 0; shown = -1; juts.prev = foe.prev = null; layout(); tag.textContent = label[m]; document.querySelectorAll('#moves button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.a === m))); }
+  document.querySelectorAll('#moves button').forEach((b) => b.addEventListener('click', () => setMove(b.dataset.a)));
+  document.querySelectorAll('#speeds button').forEach((b) => b.addEventListener('click', () => { speed = Number(b.dataset.s); document.querySelectorAll('#speeds button').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); }));
+  const toggle = (id, fn) => { const b = document.getElementById(id); b.addEventListener('click', () => { const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', String(on)); fn(on); }); };
+  toggle('armor', (on) => { armorOn = on; });
+  toggle('bones', (on) => { boneLines.visible = joints.visible = on; });
+  toggle('mesh', (on) => { wiresOn = on; });
+  window.__rig = { setMove, step: (n, dt) => { for (let i = 0; i < n; i++) frame(0, dt); return mt; }, toggle: (id) => document.getElementById(id).click() };
+  resize(); layout();
+  const wait = setInterval(() => {
+    const ready = [juts, foe].every((F) => F.mats.every((m) => m.map && m.map.image && m.map.image.complete));
+    if (!ready) return;
+    clearInterval(wait); document.getElementById('load').hidden = true; requestAnimationFrame(frame);
+  }, 50);
+})();
+</script>
