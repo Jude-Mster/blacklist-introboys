@@ -6,7 +6,7 @@ import { memo, bust } from '../../shared/memo.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
 import {
   MAX_LEN, SEND_GAP_MS, PUBLIC_WINDOW, DM_WINDOW, HIDE_AFTER_REPORTS,
-  blockedReason, cleanText, nameProblem, anonVid, tagOf, pairOf, decodeImage, publicView, dmView,
+  blockedReason, cleanText, nameProblem, anonVid, sha256Hex, tagOf, pairOf, decodeImage, publicView, dmView,
   translateAll, DEFAULT_TRANSLATE_PER_MIN, ipAllowed, gapLeft, noteSend, clientIp
 } from '../../shared/buysell.ts';
 
@@ -31,16 +31,26 @@ const perMinute = (s) => {
   return Number.isFinite(n) && s.buysell_translate_per_min !== '' && s.buysell_translate_per_min != null ? n : DEFAULT_TRANSLATE_PER_MIN;
 };
 
-type Who = { vid: string; kind: 'member' | 'anon'; member?: any; hash?: string };
+// 6.27: everyone also has a second id (`alias`) used while they hide their name, so what they post hidden
+// can't be matched to their named posts. A visitor's alias comes from their own secret (no database read);
+// a member's is a random id kept on their BuySellUser row. `vids` = every id the caller owns.
+type Who = { vid: string; kind: 'member' | 'anon'; member?: any; hash?: string; alias: string; vids: string[]; row?: any };
 
 async function identify(b, req, p, poll: boolean): Promise<Who | null> {
   const user = await sessionUser(b, req, poll ? POLL_REUSE_MS : 0);
   if (user) {
     const m = await getMemberByUserId(b, user.id);
-    if (m) return { vid: `m_${m.id}`, kind: 'member', member: m };
+    if (m) {
+      const vid = `m_${m.id}`;
+      const row = await userRow(b, vid);
+      const alias = row && VID_RE.test(String(row.alias_vid || '')) ? row.alias_vid : '';
+      return { vid, kind: 'member', member: m, alias, vids: alias ? [vid, alias] : [vid], row };
+    }
   }
   const a = await anonVid(p._a);
-  return a ? { vid: a.vid, kind: 'anon', hash: a.hash } : null;
+  if (!a) return null;
+  const alias = (await sha256Hex('wxh:' + a.hash)).slice(0, 24);
+  return { vid: a.vid, kind: 'anon', hash: a.hash, alias, vids: [a.vid, alias] };
 }
 
 const userRow = (b, vid: string) => memo(`bsu:${vid}`, USER_MS, async () => {
@@ -48,24 +58,38 @@ const userRow = (b, vid: string) => memo(`bsu:${vid}`, USER_MS, async () => {
   return items[0] || null;
 });
 
-// How a visitor appears on a message.
-function face(who: Who, row) {
+// Linked to Discord: a member always is; a visitor once they linked.
+function linkedOf(who: Who, row) {
+  if (who.kind === 'member') return { id: String(who.member.discord_id || ''), name: who.member.discord_name || '', username: who.member.discord_username || '' };
+  return row && row.discord_id ? { id: String(row.discord_id), name: row.discord_name || '', username: row.discord_username || '' } : null;
+}
+const isHidden = (who: Who, row) => !!(row && row.hide_name && linkedOf(who, row) && who.alias);
+
+// How someone appears on a message. asAlias: posting under the hidden id.
+function face(who: Who, row, asAlias = isHidden(who, row)) {
+  if (asAlias && who.alias) return { vid: who.alias, name: '', tag: tagOf(who.alias), kind: 'anon', role: '' };
   if (who.kind === 'member') {
     const m = who.member;
-    return { name: m.discord_name || 'Member', tag: '', kind: 'member', role: m.role || 'member' };
+    return { vid: who.vid, name: m.discord_name || 'Member', tag: '', kind: 'member', role: m.role || 'member' };
   }
   const named = row && row.discord_id && row.name;
-  return { name: named ? row.name : '', tag: tagOf(who.vid), kind: named ? 'discord' : 'anon', role: '' };
+  return { vid: who.vid, name: named ? row.name : '', tag: tagOf(who.vid), kind: named ? 'discord' : 'anon', role: '' };
 }
 
 function meView(who: Who, row) {
   const f = face(who, row);
-  const mod = who.kind === 'member' && ['officer', 'leader'].includes(who.member.role);
+  const shown = face(who, row, false);
+  const link = linkedOf(who, row);
   return {
-    vid: who.vid, ...f,
-    discord: who.kind === 'anon' && row && row.discord_id ? (row.discord_name || 'Discord') : '',
+    ...f,
+    vids: who.vids,
+    alias: who.alias,
+    discord: link ? (link.name || link.username || 'Discord') : '',
+    hidden: isHidden(who, row),
+    shownAs: { name: shown.name, tag: shown.tag, kind: shown.kind },   // how they look with their name showing
+    member: who.kind === 'member',
     banned: !!(row && row.banned),
-    moderator: mod
+    moderator: who.kind === 'member' && ['officer', 'leader'].includes(who.member.role)
   };
 }
 
@@ -138,25 +162,27 @@ export default async function(req) {
       const trSince = typeof p.trSince === 'string' ? p.trSince : '';
       const [open, dms] = await Promise.all([p.lite ? Promise.resolve(null) : openWindow(b), dmWindow(b)]);
       const fresh = (x, cursor) => !cursor || x.at > cursor || (!!trSince && !!x.tr_at && x.tr_at > trSince);
-      const mine = dms.items.filter((d) => (d.from === who.vid || d.to === who.vid) && fresh(d, dmSince));
+      const mine = dms.items.filter((d) => (who.vids.includes(d.from) || who.vids.includes(d.to)) && fresh(d, dmSince));
       const items = open ? open.items.filter((m) => fresh(m, since)) : [];
       const now = open && open.at < dms.at ? open.at : dms.at;
-      return Response.json({ ok: true, items, dms: mine, vid: who.vid, now });
+      return Response.json({ ok: true, items, dms: mine, vids: who.vids, now });
     }
 
     if (action === 'hello') {
-      const row = who.kind === 'anon' ? await userRow(b, who.vid) : null;
+      const row = who.kind === 'anon' ? await userRow(b, who.vid) : who.row;
       return Response.json({ ok: true, off, me: meView(who, row) });
     }
 
     // Older private messages (when the chat opens): the caller's own conversations only.
     if (action === 'inbox') {
       const D = b.asServiceRole.entities.BuySellDM;
-      const [a, c] = await Promise.all([
-        D.filter({ from_vid: who.vid }, { sort: '-created_date', limit: 100 }),
-        D.filter({ to_vid: who.vid }, { sort: '-created_date', limit: 100 })
-      ]);
-      const all = [...a.items, ...c.items].filter((d) => !d.hidden).map(dmView).sort((x, y) => (x.at < y.at ? -1 : 1));
+      const lists = await Promise.all(who.vids.flatMap((v) => [
+        D.filter({ from_vid: v }, { sort: '-created_date', limit: 100 }),
+        D.filter({ to_vid: v }, { sort: '-created_date', limit: 100 })
+      ]));
+      const byId = new Map();
+      for (const l of lists) for (const d of l.items) if (!d.hidden) byId.set(d.id, d);
+      const all = [...byId.values()].map(dmView).sort((x, y) => (x.at < y.at ? -1 : 1));
       return Response.json({ ok: true, dms: all });
     }
 
@@ -170,21 +196,21 @@ export default async function(req) {
       const blocked = blockedReason(text);
       if (blocked) throw new UserError(blocked);
       const to = typeof p.to === 'string' ? p.to.trim() : '';
-      if (to && to === who.vid) throw new UserError("You can't message yourself.");
+      if (to && who.vids.includes(to)) throw new UserError("You can't message yourself.");
 
       if (gapLeft(who.vid) > 0) throw new UserError('Slow down a little: one message every 3 seconds.', 429);
       if (!ipAllowed(clientIp(req))) throw new UserError('Too many messages from your connection. Wait a minute.', 429);
 
-      let row = null;
-      if (who.kind === 'member') {
-        if (who.member.banned) throw new UserError("You can't chat while banned.", 403);
-      } else {
-        row = await userRow(b, who.vid);
-        if (row && row.banned) throw new UserError('You have been removed from Buy and Sell.', 403);
-      }
+      let row = who.kind === 'member' ? who.row : await userRow(b, who.vid);
+      if (who.kind === 'member' && who.member.banned) throw new UserError("You can't chat while banned.", 403);
+      if (row && row.banned) throw new UserError('You have been removed from Buy and Sell.', 403);
+      // Which of my ids this goes out under: the hidden one while hiding; in a private chat the screen may
+      // ask for the id that conversation already uses, so it stays one conversation.
+      const asAlias = to && typeof p.from === 'string' && who.vids.includes(p.from) ? p.from === who.alias : isHidden(who, row);
+      const f = face(who, row, asAlias);
       // The same check against the database, so other running copies are covered too.
       const E = to ? b.asServiceRole.entities.BuySellDM : b.asServiceRole.entities.BuySellMessage;
-      const { items: last } = await E.filter(to ? { from_vid: who.vid } : { author_vid: who.vid }, { sort: '-created_date', limit: 1, fields: ['created_date'] });
+      const { items: last } = await E.filter({ owner_vid: who.vid }, { sort: '-created_date', limit: 1, fields: ['created_date'] });
       if (last[0] && Date.now() - Date.parse(last[0].created_date) < SEND_GAP_MS) throw new UserError('Slow down a little: one message every 3 seconds.', 429);
       noteSend(who.vid);
 
@@ -193,7 +219,6 @@ export default async function(req) {
         row = await b.asServiceRole.entities.BuySellUser.create({ vid: who.vid, tag: tagOf(who.vid), name: '', name_lower: '', discord_id: '', discord_name: '', banned: false });
         bust(`bsu:${who.vid}`);
       }
-      const f = face(who, row);
       // 6.26: posted straight away, untranslated; the sender's screen asks for the translation next
       // (action 'translate'), so nobody waits for the translator.
       const imageUrl = image ? await uploadImage(b, image) : '';
@@ -201,7 +226,7 @@ export default async function(req) {
 
       if (target) {
         const dm = await b.asServiceRole.entities.BuySellDM.create({
-          from_vid: who.vid, to_vid: to, pair: pairOf(who.vid, to),
+          from_vid: f.vid, to_vid: to, pair: pairOf(f.vid, to), owner_vid: who.vid,
           from_name: f.name, from_tag: f.tag, from_kind: f.kind,
           to_name: target.name, to_tag: target.tag, to_kind: target.kind,
           text, lang: t.lang, tr: t.tr, image_url: imageUrl, hidden: false
@@ -210,7 +235,7 @@ export default async function(req) {
         return Response.json({ ok: true, dm: dmView(dm) });
       }
       const msg = await b.asServiceRole.entities.BuySellMessage.create({
-        author_vid: who.vid, name: f.name, tag: f.tag, kind: f.kind, role: f.role,
+        author_vid: f.vid, owner_vid: who.vid, name: f.name, tag: f.tag, kind: f.kind, role: f.role,
         text, lang: t.lang, tr: t.tr, image_url: imageUrl, hidden: false, reporters: []
       });
       bust('bs:pub');
@@ -224,7 +249,7 @@ export default async function(req) {
       const m = await E.get(String(p.id || '')).catch(() => null);
       if (!m) throw new UserError('Message not found.', 404);
       const author = where === 'private' ? m.from_vid : m.author_vid;
-      if (author !== who.vid) throw new UserError('Message not found.', 404);
+      if (!who.vids.includes(author)) throw new UserError('Message not found.', 404);
       const view = where === 'private' ? dmView : publicView;
       if (m.tr || m.tr_at || !m.text) return Response.json({ ok: true, message: view(m) });
       const t = await translateAll(b, m.text, perMinute(settings));
@@ -242,8 +267,8 @@ export default async function(req) {
       const m = await E.get(id).catch(() => null);
       if (!m) throw new UserError('Message not found.', 404);
       const author = where === 'private' ? m.from_vid : m.author_vid;
-      if (where === 'private' && m.from_vid !== who.vid && m.to_vid !== who.vid) throw new UserError('Message not found.', 404);
-      if (author === who.vid) throw new UserError("You can't report your own message.");
+      if (where === 'private' && !who.vids.includes(m.from_vid) && !who.vids.includes(m.to_vid)) throw new UserError('Message not found.', 404);
+      if (who.vids.includes(author)) throw new UserError("You can't report your own message.");
       if (where === 'open') {
         const reporters = Array.isArray(m.reporters) ? m.reporters : [];
         if (!reporters.includes(who.vid)) {
@@ -268,20 +293,77 @@ export default async function(req) {
       return Response.json({ ok: true });
     }
 
+    // Ban the person behind a message. A hidden name is banned too: the ban goes on whoever owns the message.
     if (action === 'ban') {
       mustModerate(who);
-      const vid = String(p.vid || '');
-      if (!VID_RE.test(vid)) throw new UserError('Only anonymous visitors can be removed here.');
+      let owner = '';
+      if (p.id) {
+        const E = p.where === 'private' ? b.asServiceRole.entities.BuySellDM : b.asServiceRole.entities.BuySellMessage;
+        const m = await E.get(String(p.id)).catch(() => null);
+        if (!m) throw new UserError('Message not found.', 404);
+        owner = String(m.owner_vid || m.author_vid || m.from_vid || '');
+      } else owner = String(p.vid || '');
+      if (MEMBER_VID_RE.test(owner)) throw new UserError('That is a guild member. Handle it in the guild instead.');
+      if (!VID_RE.test(owner)) throw new UserError('Only anonymous visitors can be removed here.');
       const U = b.asServiceRole.entities.BuySellUser;
-      const { items } = await U.filter({ vid }, { limit: 1 });
+      const { items } = await U.filter({ vid: owner }, { limit: 1 });
       if (items[0]) await U.update(items[0].id, { banned: true, banned_by: who.member.id });
-      else await U.create({ vid, tag: tagOf(vid), name: '', name_lower: '', discord_id: '', discord_name: '', banned: true, banned_by: who.member.id });
-      bust(`bsu:${vid}`);
-      // Hide what they posted recently.
-      const { items: theirs } = await b.asServiceRole.entities.BuySellMessage.filter({ author_vid: vid, hidden: false }, { sort: '-created_date', limit: 50 });
-      for (const m of theirs) await b.asServiceRole.entities.BuySellMessage.update(m.id, { hidden: true }).catch(() => {});
+      else await U.create({ vid: owner, tag: tagOf(owner), name: '', name_lower: '', discord_id: '', discord_name: '', banned: true, banned_by: who.member.id });
+      bust(`bsu:${owner}`);
+      // Hide what they posted recently (named or hidden).
+      const M = b.asServiceRole.entities.BuySellMessage;
+      const [x, y] = await Promise.all([
+        M.filter({ owner_vid: owner, hidden: false }, { sort: '-created_date', limit: 50 }),
+        M.filter({ author_vid: owner, hidden: false }, { sort: '-created_date', limit: 50 })
+      ]);
+      const theirs = new Map([...x.items, ...y.items].map((m) => [m.id, m]));
+      for (const m of theirs.values()) await M.update(m.id, { hidden: true }).catch(() => {});
       bust('bs:pub');
-      return Response.json({ ok: true, hidden: theirs.length });
+      return Response.json({ ok: true, hidden: theirs.size, vids: [...new Set([...theirs.values()].map((m) => m.author_vid))] });
+    }
+
+    // ----- 6.27: show or hide my name (Discord-linked visitors and members) -----
+    if (action === 'setHidden') {
+      const U = b.asServiceRole.entities.BuySellUser;
+      const { items } = await U.filter({ vid: who.vid }, { limit: 1 });
+      let row = items[0];
+      if (!linkedOf(who, row)) throw new UserError('Link your Discord first.', 403);
+      const fields: Record<string, any> = { hide_name: p.hide === true };
+      if (who.kind === 'member' && !(row && VID_RE.test(String(row.alias_vid || '')))) {
+        const a = new Uint8Array(12); crypto.getRandomValues(a);
+        fields.alias_vid = Array.from(a).map((x) => x.toString(16).padStart(2, '0')).join('');
+      }
+      if (row) row = await U.update(row.id, fields);
+      else row = await U.create({ vid: who.vid, tag: who.kind === 'member' ? '' : tagOf(who.vid), name: '', name_lower: '', discord_id: '', discord_name: '', banned: false, ...fields });
+      bust(`bsu:${who.vid}`);
+      const next = who.kind === 'member' && row.alias_vid ? { ...who, alias: row.alias_vid, vids: [who.vid, row.alias_vid] } : who;
+      return Response.json({ ok: true, me: meView(next, row) });
+    }
+
+    // ----- 6.27: send my Discord to the other person in a private chat -----
+    // The only way a Discord link can be sent: the server makes it from the account the sender really linked.
+    if (action === 'shareDiscord') {
+      if (off) throw new UserError('Buy and Sell is closed right now.');
+      const to = typeof p.to === 'string' ? p.to.trim() : '';
+      if (!to || who.vids.includes(to)) throw new UserError('Open a private chat first.');
+      const row = who.kind === 'member' ? who.row : await userRow(b, who.vid);
+      if (row && row.banned) throw new UserError('You have been removed from Buy and Sell.', 403);
+      const link = linkedOf(who, row);
+      if (!link || !/^\d{5,25}$/.test(link.id)) throw new UserError('Link your Discord first.', 403);
+      if (gapLeft(who.vid) > 0) throw new UserError('Slow down a little: one message every 3 seconds.', 429);
+      noteSend(who.vid);
+      const target = await recipient(b, to);
+      const asAlias = typeof p.from === 'string' && who.vids.includes(p.from) ? p.from === who.alias : isHidden(who, row);
+      const f = face(who, row, asAlias);
+      const dm = await b.asServiceRole.entities.BuySellDM.create({
+        from_vid: f.vid, to_vid: to, pair: pairOf(f.vid, to), owner_vid: who.vid,
+        from_name: f.name, from_tag: f.tag, from_kind: f.kind,
+        to_name: target.name, to_tag: target.tag, to_kind: target.kind,
+        text: '', lang: '', tr: null, image_url: '', hidden: false,
+        card_discord_id: link.id, card_discord_name: String(link.name || link.username).slice(0, 40), card_discord_username: String(link.username || '').slice(0, 40)
+      });
+      bust('bs:dm');
+      return Response.json({ ok: true, dm: dmView(dm) });
     }
 
     // ----- A name, by linking Discord (optional) -----
@@ -315,7 +397,7 @@ export default async function(req) {
       if (who.kind !== 'anon') throw new UserError('Nothing to unlink.');
       const U = b.asServiceRole.entities.BuySellUser;
       const { items } = await U.filter({ vid: who.vid }, { limit: 1 });
-      if (items[0]) await U.update(items[0].id, { name: '', name_lower: '', discord_id: '', discord_name: '' });
+      if (items[0]) await U.update(items[0].id, { name: '', name_lower: '', discord_id: '', discord_name: '', discord_username: '', hide_name: false });
       bust(`bsu:${who.vid}`);
       return Response.json({ ok: true, me: meView(who, null) });
     }
@@ -367,7 +449,7 @@ export default async function(req) {
       let row = mine[0];
       const carried = older.find((x) => x.vid !== who.vid && x.name);
       for (const x of older) if (x.vid !== who.vid) { await U.update(x.id, { discord_id: '', discord_name: '', name: '', name_lower: '' }); bust(`bsu:${x.vid}`); }
-      const fields = { discord_id: String(du.id), discord_name: discordName, ...(carried && !(row && row.name) ? { name: carried.name, name_lower: carried.name_lower } : {}) };
+      const fields = { discord_id: String(du.id), discord_name: discordName, discord_username: String(du.username || '').slice(0, 40), ...(carried && !(row && row.name) ? { name: carried.name, name_lower: carried.name_lower } : {}) };
       if (row) row = await U.update(row.id, fields);
       else row = await U.create({ vid: who.vid, tag: tagOf(who.vid), name: '', name_lower: '', banned: false, ...fields });
       bust(`bsu:${who.vid}`);

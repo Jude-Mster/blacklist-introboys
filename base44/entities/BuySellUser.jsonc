@@ -28,6 +28,18 @@
     },
     "banned_by": {
       "type": "string"
+    },
+    "discord_username": {
+      "type": "string"
+    },
+    "hide_name": {
+      "type": "boolean",
+      "default": false,
+      "description": "6.27: post as Anonymous (under alias_vid for members, a secret-derived id for visitors)"
+    },
+    "alias_vid": {
+      "type": "string",
+      "description": "6.27: members only: the random id used while their name is hidden"
     }
   },
   "rls": {

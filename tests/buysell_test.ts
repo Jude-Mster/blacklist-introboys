@@ -206,4 +206,78 @@ const back2 = await call(D, { action: 'rename', name: '' });
 ok(back2.ok && back2.me.kind === 'anon' && back2.me.name === '', 'can go back to Anonymous');
 ok(tagOf('ffffffff0000') === tagOf('ffffffff1111'), 'the tag comes from the visitor id');
 
+// ---------- 6.27: hide my name, share my Discord ----------
+{
+  advance(5000);
+  const V = anon(), W = anon();
+  const hv = await call(V, { action: 'hello' });
+  ok((await call(V, { action: 'setHidden', hide: true })).status === 403, 'hiding needs Discord linked');
+  const lsx = await call(V, { action: 'linkStart' });
+  const stx = new URL(lsx.url).searchParams.get('state');
+  const rf = globalThis.fetch;
+  globalThis.fetch = (async (url) => {
+    const u = String(url);
+    if (u.endsWith('/oauth2/token')) return new Response(JSON.stringify({ access_token: 't' }), { status: 200 });
+    if (u.endsWith('/users/@me')) return new Response(JSON.stringify({ id: '123456789012345678', username: 'seller_v', global_name: 'Seller V' }), { status: 200 });
+    return new Response('{}', { status: 404 });
+  }) as any;
+  await call(V, { action: 'linkFinish', code: 'c', state: stx });
+  globalThis.fetch = rf;
+  await call(V, { action: 'rename', name: 'SellerV' });
+  advance(3500);
+  const named = await call(V, { action: 'send', text: 'named post' });
+  ok(named.message.name === 'SellerV' && named.message.vid === hv.me.vid, 'shown: posts with the name');
+  const hid = await call(V, { action: 'setHidden', hide: true });
+  ok(hid.ok && hid.me.hidden && hid.me.kind === 'anon' && hid.me.vid !== hv.me.vid && hid.me.shownAs.name === 'SellerV', 'hidden: shows as Anonymous under a different id');
+  advance(3500);
+  const anonPost = await call(V, { action: 'send', text: 'hidden post' });
+  ok(anonPost.message.kind === 'anon' && anonPost.message.name === '' && anonPost.message.vid === hid.me.vid && anonPost.message.tag !== named.message.tag, "hidden posts can't be matched to the named ones (other id, other tag)");
+  ok(!JSON.stringify(anonPost).includes(hv.me.vid), 'the real id is nowhere in what others receive');
+  advance(3500);
+  const toHidden = await call(W, { action: 'send', to: hid.me.vid, text: 'is it still for sale?' });
+  advance(3000);
+  const pv = await call(V, { action: 'poll', lite: true });
+  ok(pv.dms.some((d) => d.id === toHidden.dm.id), 'private messages to the hidden id still arrive');
+  ok((await call(V, { action: 'translate', id: anonPost.message.id })).ok, 'the hidden author can still ask for the translation');
+  ok((await call(V, { action: 'report', id: toHidden.dm.id, where: 'private' })).ok, 'and report a message sent to the hidden id');
+  // reply in that conversation keeps the same (hidden) id
+  advance(3500);
+  const reply = await call(V, { action: 'send', to: (await call(W, { action: 'hello' })).me.vid, from: hid.me.vid, text: 'yes, 2m' });
+  ok(reply.dm.from === hid.me.vid, 'a reply keeps the id the conversation uses');
+  // share Discord
+  advance(3500);
+  const sh = await call(V, { action: 'shareDiscord', to: reply.dm.to, from: hid.me.vid });
+  ok(sh.ok && sh.dm.card && sh.dm.card.url === 'https://discord.com/users/123456789012345678' && sh.dm.card.username === 'seller_v' && sh.dm.from === hid.me.vid, 'Share my Discord sends a card with the real linked profile link');
+  advance(3500);
+  ok((await call(W, { action: 'shareDiscord', to: hid.me.vid })).status === 403, "a visitor without Discord can't send a Discord card");
+  ok((await call(V, { action: 'send', to: reply.dm.to, text: 'add me discord.com/users/1' })).status === 400, 'typed Discord links are still blocked');
+  advance(3500);
+  const pw = await call(W, { action: 'poll', lite: true });
+  ok(pw.dms.some((d) => d.card && d.card.id === '123456789012345678'), 'the other person receives the card');
+  // a moderator can still ban someone posting hidden
+  const banH = await call(leader, { action: 'ban', id: anonPost.message.id });
+  ok(banH.ok && banH.hidden >= 2, 'banning a hidden post bans its real owner and hides their named posts too');
+  advance(3500);
+  ok((await call(V, { action: 'send', text: 'back?' })).status === 403, 'the banned owner cannot post, hidden or not');
+  // show again
+  const V2 = anon();
+  // members can hide too
+  advance(3500);
+  const mh = await call(plain, { action: 'setHidden', hide: true });
+  ok(mh.ok && mh.me.hidden && mh.me.kind === 'anon' && /^[a-f0-9]{24}$/.test(mh.me.vid), 'members can hide their name (random hidden id)');
+  advance(3500);
+  const mpost = await call(plain, { action: 'send', text: 'member hidden post' });
+  ok(mpost.message.kind === 'anon' && mpost.message.vid === mh.me.vid && !mpost.message.name, 'a hidden member posts as Anonymous, no badge');
+  ok((await call(leader, { action: 'ban', id: mpost.message.id })).status === 400, "a hidden member can't be banned from here");
+  const ms2 = await call(plain, { action: 'setHidden', hide: false });
+  advance(3500);
+  const mshown = await call(plain, { action: 'send', text: 'member shown again' });
+  ok(!ms2.me.hidden && mshown.message.kind === 'member' && mshown.message.name === 'zKushina', 'and show it again');
+  advance(3500);
+  const toMemberAlias = await call(V2, { action: 'send', to: mh.me.vid, text: 'hi hidden member' });
+  advance(3000);
+  ok((await call(plain, { action: 'poll', lite: true })).dms.some((d) => d.id === toMemberAlias.dm.id), "a member gets messages sent to their hidden id after showing their name again");
+  ok((await call(plain, { action: 'shareDiscord', to: toMemberAlias.dm.from })).ok, 'members can share their Discord');
+}
+
 done();

@@ -57,6 +57,10 @@
     "tr_at": {
       "type": "string",
       "description": "6.26: when the translation was saved (set once, even if the translator gave nothing)"
+    },
+    "owner_vid": {
+      "type": "string",
+      "description": "6.27: the id of who really sent it (their main id, also when they posted with their name hidden). Never shown"
     }
   },
   "rls": {
