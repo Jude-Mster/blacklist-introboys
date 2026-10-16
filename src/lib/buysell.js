@@ -18,8 +18,8 @@ export const LANGS = [
 ];
 export const LANG_NAME = Object.fromEntries(LANGS.map((l) => [l.code, l.name]));
 export const MAX_LEN = 300;
-export const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
-export const SEND_GAP_MS = 3000;
+export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;   // 6.28: 10 MB (was 3)
+export const SEND_GAP_MS = 1500;   // 6.28: the server allows one message every 1.5 s
 export const NAME_RE = /^[A-Za-z0-9_]{3,16}$/;
 export const RESERVED = /juts|introboys|blacklist|admin|officer|moderator|anonymous|staff|official/i;
 // The same checks the server makes, so a message is refused before it is sent.
@@ -154,7 +154,7 @@ export function conversations(s) {
     const mine = isMine(s, d.from);
     const peer = mine ? d.to : d.from;
     if (s.blocked.includes(peer)) continue;
-    const who = mine ? { name: d.to_name, tag: d.to_tag, kind: d.to_kind } : { name: d.name, tag: d.tag, kind: d.kind };
+    const who = mine ? { name: d.to_name, tag: d.to_tag, kind: d.to_kind, avatar: d.to_avatar || "" } : { name: d.name, tag: d.tag, kind: d.kind, avatar: d.avatar || "" };
     const c = map.get(peer) || { vid: peer, ...who, last: null, unread: 0 };
     if (!mine && (who.name || who.kind)) Object.assign(c, who);   // their latest name
     c.last = d;
@@ -184,6 +184,47 @@ async function hello() {
   set({ me: r.me, off: !!r.off });
 }
 
+// ---------- 6.28: live updates ----------
+// The server touches a public BuySellPulse row on every change. Open-chat messages arrive inside the pulse
+// itself (no call at all); for private messages the pulse only names a bucket of 64, and a screen whose
+// ids fall in that bucket asks for its messages right away. If live updates never arrive (blocked, offline)
+// the regular asking below still catches everything up.
+const DM_BUCKETS = 64;
+export function bucketOf(vid) {
+  let h = 5381;
+  const t = String(vid || "");
+  for (let i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) >>> 0;
+  return h % DM_BUCKETS;
+}
+let live = false;          // a pulse has arrived: live updates work here
+let liveUnsub = null;
+let after = "";            // the newest change we were told about: the server must answer from after it
+let soonTimer = 0;
+let lastSoon = 0;
+function pollSoon(at) {
+  if (at && at > after) after = at;
+  if (soonTimer) return;
+  const wait = Math.max(0, 600 - (Date.now() - lastSoon));   // at most ~1.5 asks a second, however busy
+  soonTimer = setTimeout(() => { soonTimer = 0; lastSoon = Date.now(); schedule(0); }, wait);
+}
+function onPulse(ev) {
+  const d = ev && ev.data;
+  if (!d || !d.key) return;
+  live = true;
+  if (d.key === "open") {
+    if (!wanted.full) return;
+    if (d.op === "msg" && d.msg && d.msg.id) { mergeOpen([d.msg]); lastNews = Date.now(); }
+    else if (d.op === "gone" && Array.isArray(d.ids)) set({ open: state.open.filter((m) => !d.ids.includes(m.id)) });
+    return;
+  }
+  const mine = state.me ? (state.me.vids || [state.me.vid]).map((v) => `dm:${bucketOf(v)}`) : [];
+  if (mine.includes(d.key)) pollSoon(d.at);
+}
+function startLive() {
+  if (liveUnsub || typeof window === "undefined") return;
+  try { liveUnsub = base44.entities.BuySellPulse.subscribe(onPulse) || null; } catch { liveUnsub = null; }
+}
+
 async function tick() {
   timer = 0;
   if (!wanted.full && !wanted.lite) return;
@@ -199,7 +240,9 @@ async function tick() {
       mergeDms(ib.dms, true);
       for (const d of ib.dms) if (d.at > dmSince) dmSince = d.at;
     }
-    const r = await api("poll", { lite: !full, since: full ? since : "", dmSince, trSince });
+    const askAfter = after;
+    const r = await api("poll", { lite: !full, since: full ? since : "", dmSince, trSince, after: askAfter || undefined });
+    if (after === askAfter) after = "";
     if (r.off) set({ off: true });
     if (r.now) trSince = r.now;
     let news = false;
@@ -221,7 +264,9 @@ async function tick() {
 }
 
 function interval() {
-  if (!wanted.full) return 15000;
+  // With live updates working, asking is only a safety net.
+  if (!wanted.full) return live ? 30000 : 15000;
+  if (live) return 12000;
   const quiet = Date.now() - lastNews;
   return quiet < 30000 ? 3000 : quiet < 120000 ? 5000 : 9000;
 }
@@ -240,6 +285,7 @@ if (typeof document !== "undefined") {
 export function useBuySell(mode = "full") {
   useEffect(() => {
     wanted[mode]++;
+    startLive();
     if (mode === "full") lastNews = Date.now();
     schedule(0);
     return () => { wanted[mode]--; schedule(); };
@@ -257,6 +303,26 @@ export const cooldownLeft = () => Math.max(0, SEND_GAP_MS - (Date.now() - lastSe
 let tmpN = 0;
 const nowIso = () => new Date().toISOString();
 const dropTmp = (id) => set({ open: state.open.filter((m) => m.id !== id), dms: state.dms.filter((m) => m.id !== id) });
+// 6.28: never refused for being quick: a message typed within 1.5 s of the last one shows at once and goes
+// out the moment the gap has passed.
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let chain = Promise.resolve();   // messages go out one after another, in the order they were typed
+let lastAck = 0;                 // when the server took the last one (its 1.5 s gap starts about then)
+const tooSoon = (e) => { const st = (e && (e.status || (e.response && e.response.status))) || 0; return st === 429 || (e && e.rateLimited); };
+async function sendNow(payload) {
+  for (let attempt = 0; ; attempt++) {
+    const wait = Math.max(0, SEND_GAP_MS + 150 - (Date.now() - lastAck));
+    if (wait > 0) await sleep(wait);
+    try {
+      const r = await api("send", payload);
+      lastAck = Date.now();
+      return r;
+    } catch (e) {
+      if (!tooSoon(e) || attempt >= 3) throw e;
+      lastAck = Date.now();   // "too soon" or a busy moment: wait a gap and try again, quietly
+    }
+  }
+}
 export async function send({ text, image, to, peer, from }) {
   lastSent = Date.now();
   const me = state.me || {};
@@ -264,14 +330,16 @@ export async function send({ text, image, to, peer, from }) {
   const at = nowIso();
   if (to) {
     const p = peer || {};
-    set({ dms: [...state.dms, { id, pending: true, from: from || me.vid, to, name: me.name, tag: me.tag, kind: me.kind, to_name: p.name || "", to_tag: p.tag || "", to_kind: p.kind || "anon", text, image: image || "", lang: "", tr: null, at }] });
+    set({ dms: [...state.dms, { id, pending: true, from: from || me.vid, to, name: me.name, tag: me.tag, kind: me.kind, avatar: me.avatar || "", to_name: p.name || "", to_tag: p.tag || "", to_kind: p.kind || "anon", text, image: image || "", lang: "", tr: null, at }] });
   } else {
-    set({ open: [...state.open, { id, pending: true, vid: me.vid, name: me.name, tag: me.tag, kind: me.kind, role: me.role, text, image: image || "", lang: "", tr: null, at }] });
+    set({ open: [...state.open, { id, pending: true, vid: me.vid, name: me.name, tag: me.tag, kind: me.kind, role: me.role, avatar: me.avatar || "", text, image: image || "", lang: "", tr: null, at }] });
   }
   lastNews = Date.now();
   let r;
   try {
-    r = await api("send", { text, image: image || undefined, to: to || undefined, from: from || undefined });
+    const job = chain.catch(() => {}).then(() => sendNow({ text, image: image || undefined, to: to || undefined, from: from || undefined }));
+    chain = job;
+    r = await job;
   } catch (e) {
     dropTmp(id);
     throw e;
@@ -286,6 +354,17 @@ export async function send({ text, image, to, peer, from }) {
       .then((t) => { if (t && t.message) { if (r.dm) mergeDms([t.message], true); else mergeOpen([t.message]); } })
       .catch(() => { /* stays in its original language */ });
   }
+  return r;
+}
+
+// 6.28: link or unlink Discord (visitors; members are linked through their guild sign-in).
+export async function linkDiscord() {
+  const r = await api("linkStart");
+  window.location.assign(r.url);
+}
+export async function unlinkDiscord() {
+  const r = await api("unlink");
+  set({ me: r.me });
   return r;
 }
 
@@ -313,23 +392,28 @@ export async function moderate(action, data) {
   return r;
 }
 
-// Pictures: up to 3 MB as picked. Photos are made smaller before sending (the longest side at most
+// Pictures: up to 10 MB as picked. Photos are made smaller before sending (the longest side at most
 // 1600 px) so they go up quickly on a phone; GIFs are sent as they are.
 export async function readImage(file) {
   if (!file || !/^image\/(jpeg|png|webp|gif)$/.test(file.type)) throw new Error("Pick a JPG, PNG, WebP or GIF picture.");
-  if (file.size > MAX_IMAGE_BYTES) throw new Error("Pictures can be up to 3 MB.");
+  if (file.size > MAX_IMAGE_BYTES) throw new Error("Pictures can be up to 10 MB.");
   const original = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = () => no(new Error("Couldn't read that picture.")); r.readAsDataURL(file); });
-  if (file.type === "image/gif") return original;
+  // 6.28: animated GIFs up to 4 MB go as they are; bigger ones are sent as a still picture so they go up fast.
+  if (file.type === "image/gif" && file.size <= 4 * 1024 * 1024) return original;
   try {
     const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = original; });
     const scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
     const w = Math.max(1, Math.round(img.naturalWidth * scale)), h = Math.max(1, Math.round(img.naturalHeight * scale));
     const c = document.createElement("canvas");
     c.width = w; c.height = h;
-    c.getContext("2d").drawImage(img, 0, 0, w, h);
-    const small = c.toDataURL("image/jpeg", 0.85);
+    const g = c.getContext("2d");
+    g.fillStyle = "#000"; g.fillRect(0, 0, w, h);   // see-through PNGs get a dark backing, not black-on-black
+    g.drawImage(img, 0, 0, w, h);
+    let q = 0.85, small = c.toDataURL("image/jpeg", q);
+    while (small.length > 4 * 1024 * 1024 && q > 0.4) { q -= 0.15; small = c.toDataURL("image/jpeg", q); }
     return small.length < original.length ? small : original;
   } catch {
+    if (original.length > 14 * 1024 * 1024) throw new Error("That picture is too big to send. Try a smaller one.");
     return original;
   }
 }

@@ -1,0 +1,35 @@
+{
+  "name": "BuySellPulse",
+  "type": "object",
+  "description": "6.28: Wuxen2 Buy and Sell live updates. The ONLY Buy and Sell table browsers may read: it holds the newest OPEN-chat message (public anyway) and, for private messages, only a bucket number (never who, never what).",
+  "properties": {
+    "key": {
+      "type": "string",
+      "description": "'open' or 'dm:<0-63>'"
+    },
+    "at": {
+      "type": "string",
+      "description": "server time of the change"
+    },
+    "op": {
+      "type": "string",
+      "description": "open row: 'msg' (msg added or translated) or 'gone' (ids removed)"
+    },
+    "msg": {
+      "type": "object",
+      "description": "open row: the open-chat message as every screen shows it"
+    },
+    "ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "rls": {
+    "read": true,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}
