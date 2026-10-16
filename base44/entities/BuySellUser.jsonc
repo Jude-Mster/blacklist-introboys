@@ -40,6 +40,10 @@
     "alias_vid": {
       "type": "string",
       "description": "6.27: members only: the random id used while their name is hidden"
+    },
+    "discord_avatar": {
+      "type": "string",
+      "description": "6.28: the linked Discord account's picture"
     }
   },
   "rls": {

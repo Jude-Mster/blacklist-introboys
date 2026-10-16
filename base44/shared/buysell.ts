@@ -12,10 +12,10 @@
 
 export const LANGS = ['en', 'tl', 'th', 'es', 'pt', 'id', 'zh'] as const;   // 6.26: zh = Traditional Chinese (Taiwan)
 export const MAX_LEN = 300;
-export const SEND_GAP_MS = 3000;            // one message every 3 s per visitor
+export const SEND_GAP_MS = 1500;            // 6.28: one message every 1.5 s per visitor (was 3 s)
 export const IP_WINDOW_MS = 60000;
 export const IP_MAX_SENDS = 20;             // per address per minute (per running copy)
-export const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
+export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;   // 6.28: 10 MB (was 3)
 export const PUBLIC_WINDOW = 80;            // newest open messages every screen shares
 export const DM_WINDOW = 300;               // newest private messages every screen shares
 export const HIDE_AFTER_REPORTS = 3;        // different people reporting a message hides it
@@ -108,6 +108,7 @@ export function publicView(m) {
     tr: m.tr || null,
     tr_at: m.tr_at || '',
     image: m.image_url || '',
+    avatar: m.avatar || '',            // 6.28: Discord / member picture (none while hidden)
     at: m.created_date
   };
 }
@@ -123,6 +124,8 @@ export function dmView(m) {
     to_name: m.to_name || '',
     to_tag: m.to_tag || '',
     to_kind: m.to_kind || 'anon',
+    avatar: m.from_avatar || '',
+    to_avatar: m.to_avatar || '',
     // 6.27: "my Discord" card, made by the server from the sender's linked account
     card: m.card_discord_id ? { id: String(m.card_discord_id), name: m.card_discord_name || '', username: m.card_discord_username || '', url: `https://discord.com/users/${m.card_discord_id}` } : null,
     text: m.text || '',
@@ -208,3 +211,53 @@ export const clientIp = (req) => {
   const f = req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || req.headers.get('x-real-ip') || '';
   return String(f).split(',')[0].trim().slice(0, 64);
 };
+
+// ---------- 6.28: Discord pictures ----------
+export function discordAvatar(u) {
+  if (!u || !u.id) return '';
+  if (!u.avatar) {
+    let idx = 0;
+    try { idx = Number((BigInt(u.id) >> 22n) % 6n); } catch { idx = 0; }
+    return `https://cdn.discordapp.com/embed/avatars/${idx}.png`;
+  }
+  const ext = String(u.avatar).startsWith('a_') ? 'gif' : 'png';
+  return `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.${ext}?size=128`;
+}
+// Only pictures from Discord's own servers are shown on messages.
+export const safeAvatar = (url) => (/^https:\/\/cdn\.discordapp\.com\//.test(String(url || '')) ? String(url).slice(0, 300) : '');
+
+// ---------- 6.28: live updates ----------
+// BuySellPulse is the one table every browser may read (rls read: true) and is told about the moment it
+// changes. Row 'open' carries the newest open-chat message itself (open messages are public anyway), so
+// screens add it without asking the server at all. Private messages are never put there: row 'dm:<n>'
+// only says "something arrived for one of the people in bucket n" (64 buckets, so it doesn't say who),
+// and the screens in that bucket then ask for their own messages.
+export const DM_BUCKETS = 64;
+export function bucketOf(vid: string): number {
+  let h = 5381;
+  const t = String(vid || '');
+  for (let i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) >>> 0;
+  return h % DM_BUCKETS;
+}
+const pulseIds = new Map<string, string>();
+export async function pulse(b, key: string, data: Record<string, any>) {
+  try {
+    const P = b.asServiceRole.entities.BuySellPulse;
+    const row = { key, at: new Date().toISOString(), op: '', msg: null, ids: [], ...data };
+    let id = pulseIds.get(key);
+    if (!id) {
+      const { items } = await P.filter({ key }, { limit: 1 });
+      id = items[0] && items[0].id;
+      if (id) pulseIds.set(key, id);
+    }
+    if (id) {
+      try { await P.update(id, row); return row.at; } catch { pulseIds.delete(key); }
+    }
+    const made = await P.create(row);
+    if (made && made.id) pulseIds.set(key, made.id);
+    return row.at;
+  } catch (e) {
+    console.log('pulse skipped', String(e && (e as any).message || e));   // screens still catch up by asking
+    return '';
+  }
+}

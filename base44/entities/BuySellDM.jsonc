@@ -65,6 +65,12 @@
     },
     "card_discord_username": {
       "type": "string"
+    },
+    "from_avatar": {
+      "type": "string"
+    },
+    "to_avatar": {
+      "type": "string"
     }
   },
   "rls": {

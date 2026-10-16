@@ -14,7 +14,6 @@ export default function BuySell() {
   const location = useLocation();
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const [suggest, setSuggest] = useState(null);
   const [linkNote, setLinkNote] = useState("");
 
   useEffect(() => {
@@ -25,9 +24,15 @@ export default function BuySell() {
     finishing = state;
     navigate("/buysell", { replace: true });
     api("linkFinish", { code, state })
-      .then((r) => { setMe(r.me); setSuggest(r.suggest || ""); setLinkNote("Discord linked. Pick the name others will see."); })
+      .then((r) => { setMe(r.me); setLinkNote(r.me && r.me.name ? `Discord linked. You now show as ${r.me.name} with your Discord picture.` : "Discord linked. Pick a chat name under \"You are\" to show a name."); })
       .catch((e) => setLinkNote((e && e.response && e.response.data && e.response.data.error) || "Linking Discord didn't work. Try again."));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {   // the note fades after a while
+    if (!linkNote) return;
+    const t = setTimeout(() => setLinkNote(""), 10000);
+    return () => clearTimeout(t);
+  }, [linkNote]);
 
   useEffect(() => {
     const t = document.title;
@@ -48,7 +53,7 @@ export default function BuySell() {
         <p role="status" className="m-0 border-b border-[#241f1f] bg-[#121010] px-4 py-2 text-sm text-[#cfc9c4]">{linkNote}</p>
       )}
       <div className="min-h-0 flex-1 p-0 sm:p-3">
-        <BuySellChat className="rounded-none border-0 sm:rounded-[10px] sm:border" autoName={suggest} />
+        <BuySellChat className="rounded-none border-0 sm:rounded-[10px] sm:border" />
       </div>
     </div>
   );

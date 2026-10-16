@@ -6,7 +6,7 @@ import { memo, bust } from '../../shared/memo.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
 import {
   MAX_LEN, SEND_GAP_MS, PUBLIC_WINDOW, DM_WINDOW, HIDE_AFTER_REPORTS,
-  blockedReason, cleanText, nameProblem, anonVid, sha256Hex, tagOf, pairOf, decodeImage, publicView, dmView,
+  blockedReason, cleanText, nameProblem, anonVid, sha256Hex, tagOf, bucketOf, pulse, discordAvatar, safeAvatar, pairOf, decodeImage, publicView, dmView,
   translateAll, DEFAULT_TRANSLATE_PER_MIN, ipAllowed, gapLeft, noteSend, clientIp
 } from '../../shared/buysell.ts';
 
@@ -67,13 +67,14 @@ const isHidden = (who: Who, row) => !!(row && row.hide_name && linkedOf(who, row
 
 // How someone appears on a message. asAlias: posting under the hidden id.
 function face(who: Who, row, asAlias = isHidden(who, row)) {
-  if (asAlias && who.alias) return { vid: who.alias, name: '', tag: tagOf(who.alias), kind: 'anon', role: '' };
+  if (asAlias && who.alias) return { vid: who.alias, name: '', tag: tagOf(who.alias), kind: 'anon', role: '', avatar: '' };
   if (who.kind === 'member') {
     const m = who.member;
-    return { vid: who.vid, name: m.discord_name || 'Member', tag: '', kind: 'member', role: m.role || 'member' };
+    return { vid: who.vid, name: m.discord_name || 'Member', tag: '', kind: 'member', role: m.role || 'member', avatar: safeAvatar(m.avatar_url) };
   }
-  const named = row && row.discord_id && row.name;
-  return { vid: who.vid, name: named ? row.name : '', tag: tagOf(who.vid), kind: named ? 'discord' : 'anon', role: '' };
+  // 6.28: linked = shown with the Discord badge and picture straight away (name: the one picked at linking)
+  if (row && row.discord_id) return { vid: who.vid, name: row.name || '', tag: tagOf(who.vid), kind: 'discord', role: '', avatar: safeAvatar(row.discord_avatar) };
+  return { vid: who.vid, name: '', tag: tagOf(who.vid), kind: 'anon', role: '', avatar: '' };
 }
 
 function meView(who: Who, row) {
@@ -86,7 +87,9 @@ function meView(who: Who, row) {
     alias: who.alias,
     discord: link ? (link.name || link.username || 'Discord') : '',
     hidden: isHidden(who, row),
-    shownAs: { name: shown.name, tag: shown.tag, kind: shown.kind },   // how they look with their name showing
+    shownAs: { name: shown.name, tag: shown.tag, kind: shown.kind, avatar: shown.avatar },   // how they look with their name showing
+    discordUser: link ? link.username : '',
+    discordAvatar: who.kind === 'member' ? safeAvatar(who.member.avatar_url) : safeAvatar(row && row.discord_avatar),
     member: who.kind === 'member',
     banned: !!(row && row.banned),
     moderator: who.kind === 'member' && ['officer', 'leader'].includes(who.member.role)
@@ -95,28 +98,30 @@ function meView(who: Who, row) {
 
 // The newest open messages and private messages, shared by everyone asking within READ_MS.
 // Each carries the time the read STARTED: a translation saved after that is sure to be in the next read.
-const openWindow = (b) => memo('bs:pub', READ_MS, async () => {
+// 6.28: after = the time of a change a screen was just told about: an answer read before it is read again.
+const fresh = (after: string) => (v) => !after || v.at > after;
+const openWindow = (b, after = '') => memo('bs:pub', READ_MS, async () => {
   const at = new Date().toISOString();
   const { items } = await b.asServiceRole.entities.BuySellMessage.filter({ hidden: false }, { sort: '-created_date', limit: PUBLIC_WINDOW });
   return { at, items: items.map(publicView).reverse() };
-});
-const dmWindow = (b) => memo('bs:dm', READ_MS, async () => {
+}, fresh(after));
+const dmWindow = (b, after = '') => memo('bs:dm', READ_MS, async () => {
   const at = new Date().toISOString();
   const { items } = await b.asServiceRole.entities.BuySellDM.filter({ hidden: false }, { sort: '-created_date', limit: DM_WINDOW });
   return { at, items: items.map(dmView).reverse() };
-});
+}, fresh(after));
 
 async function recipient(b, vid: string) {
   if (MEMBER_VID_RE.test(vid)) {
     let m = null;
     try { m = await b.asServiceRole.entities.Member.get(vid.slice(2)); } catch { m = null; }
     if (!m || m.no_access) throw new UserError('That member is not available.', 404);
-    return { name: m.discord_name || 'Member', tag: '', kind: 'member' };
+    return { name: m.discord_name || 'Member', tag: '', kind: 'member', avatar: safeAvatar(m.avatar_url) };
   }
   if (!VID_RE.test(vid)) throw new UserError('Pick who to message.');
   const row = await userRow(b, vid);
-  const named = row && row.discord_id && row.name;
-  return { name: named ? row.name : '', tag: tagOf(vid), kind: named ? 'discord' : 'anon' };
+  if (row && row.discord_id && !row.hide_name) return { name: row.name || '', tag: tagOf(vid), kind: 'discord', avatar: safeAvatar(row.discord_avatar) };
+  return { name: '', tag: tagOf(vid), kind: 'anon', avatar: '' };
 }
 
 async function uploadImage(b, dataUrl: string) {
@@ -160,10 +165,11 @@ export default async function(req) {
       // 6.26: trSince = the `now` of the caller's last poll: messages translated since then come again
       // (with their translations) even though they aren't new.
       const trSince = typeof p.trSince === 'string' ? p.trSince : '';
-      const [open, dms] = await Promise.all([p.lite ? Promise.resolve(null) : openWindow(b), dmWindow(b)]);
-      const fresh = (x, cursor) => !cursor || x.at > cursor || (!!trSince && !!x.tr_at && x.tr_at > trSince);
-      const mine = dms.items.filter((d) => (who.vids.includes(d.from) || who.vids.includes(d.to)) && fresh(d, dmSince));
-      const items = open ? open.items.filter((m) => fresh(m, since)) : [];
+      const after = typeof p.after === 'string' && p.after.length < 40 ? p.after : '';
+      const [open, dms] = await Promise.all([p.lite ? Promise.resolve(null) : openWindow(b, after), dmWindow(b, after)]);
+      const isNew = (x, cursor) => !cursor || x.at > cursor || (!!trSince && !!x.tr_at && x.tr_at > trSince);
+      const mine = dms.items.filter((d) => (who.vids.includes(d.from) || who.vids.includes(d.to)) && isNew(d, dmSince));
+      const items = open ? open.items.filter((m) => isNew(m, since)) : [];
       const now = open && open.at < dms.at ? open.at : dms.at;
       return Response.json({ ok: true, items, dms: mine, vids: who.vids, now });
     }
@@ -227,18 +233,20 @@ export default async function(req) {
       if (target) {
         const dm = await b.asServiceRole.entities.BuySellDM.create({
           from_vid: f.vid, to_vid: to, pair: pairOf(f.vid, to), owner_vid: who.vid,
-          from_name: f.name, from_tag: f.tag, from_kind: f.kind,
-          to_name: target.name, to_tag: target.tag, to_kind: target.kind,
+          from_name: f.name, from_tag: f.tag, from_kind: f.kind, from_avatar: f.avatar,
+          to_name: target.name, to_tag: target.tag, to_kind: target.kind, to_avatar: target.avatar,
           text, lang: t.lang, tr: t.tr, image_url: imageUrl, hidden: false
         });
         bust('bs:dm');
+        await pulse(b, `dm:${bucketOf(to)}`, {});
         return Response.json({ ok: true, dm: dmView(dm) });
       }
       const msg = await b.asServiceRole.entities.BuySellMessage.create({
-        author_vid: f.vid, owner_vid: who.vid, name: f.name, tag: f.tag, kind: f.kind, role: f.role,
+        author_vid: f.vid, owner_vid: who.vid, name: f.name, tag: f.tag, kind: f.kind, role: f.role, avatar: f.avatar,
         text, lang: t.lang, tr: t.tr, image_url: imageUrl, hidden: false, reporters: []
       });
       bust('bs:pub');
+      await pulse(b, 'open', { op: 'msg', msg: publicView(msg) });
       return Response.json({ ok: true, message: publicView(msg) });
     }
 
@@ -256,7 +264,10 @@ export default async function(req) {
       // tr_at is set even when nothing came back, so the message is never sent to the translator twice.
       const saved = await E.update(m.id, { lang: t.lang, tr: t.tr, tr_at: new Date().toISOString() });
       bust(where === 'private' ? 'bs:dm' : 'bs:pub');
-      return Response.json({ ok: true, message: view({ ...m, ...saved }) });
+      const out = view({ ...m, ...saved });
+      if (where === 'private') await pulse(b, `dm:${bucketOf(m.to_vid)}`, {});
+      else await pulse(b, 'open', { op: 'msg', msg: out });
+      return Response.json({ ok: true, message: out });
     }
 
     // ----- Safety -----
@@ -275,7 +286,7 @@ export default async function(req) {
           const next = [...reporters, who.vid].slice(-20);
           const hide = next.length >= HIDE_AFTER_REPORTS;
           await E.update(m.id, { reporters: next, ...(hide ? { hidden: true } : {}) });
-          if (hide) bust('bs:pub');
+          if (hide) { bust('bs:pub'); await pulse(b, 'open', { op: 'gone', ids: [m.id] }); }
         }
       }
       await b.asServiceRole.entities.BuySellReport.create({ message_id: m.id, where, reporter_vid: who.vid, author_vid: author, text: m.text || '', image_url: m.image_url || '' });
@@ -290,7 +301,15 @@ export default async function(req) {
       if (!m) throw new UserError('Message not found.', 404);
       await E.update(m.id, { hidden: true });
       bust(where === 'private' ? 'bs:dm' : 'bs:pub');
+      if (where === 'open') await pulse(b, 'open', { op: 'gone', ids: [m.id] });
       return Response.json({ ok: true });
+    }
+
+    // 6.28: officers can check that live updates reach browsers (touches only the 'test' pulse row).
+    if (action === 'pulseTest') {
+      mustModerate(who);
+      const at = await pulse(b, 'test', { op: 'test' });
+      return Response.json({ ok: !!at, at });
     }
 
     // Ban the person behind a message. A hidden name is banned too: the ban goes on whoever owns the message.
@@ -319,6 +338,7 @@ export default async function(req) {
       const theirs = new Map([...x.items, ...y.items].map((m) => [m.id, m]));
       for (const m of theirs.values()) await M.update(m.id, { hidden: true }).catch(() => {});
       bust('bs:pub');
+      if (theirs.size) await pulse(b, 'open', { op: 'gone', ids: [...theirs.keys()].slice(0, 50) });
       return Response.json({ ok: true, hidden: theirs.size, vids: [...new Set([...theirs.values()].map((m) => m.author_vid))] });
     }
 
@@ -357,12 +377,13 @@ export default async function(req) {
       const f = face(who, row, asAlias);
       const dm = await b.asServiceRole.entities.BuySellDM.create({
         from_vid: f.vid, to_vid: to, pair: pairOf(f.vid, to), owner_vid: who.vid,
-        from_name: f.name, from_tag: f.tag, from_kind: f.kind,
-        to_name: target.name, to_tag: target.tag, to_kind: target.kind,
+        from_name: f.name, from_tag: f.tag, from_kind: f.kind, from_avatar: f.avatar,
+        to_name: target.name, to_tag: target.tag, to_kind: target.kind, to_avatar: target.avatar,
         text: '', lang: '', tr: null, image_url: '', hidden: false,
         card_discord_id: link.id, card_discord_name: String(link.name || link.username).slice(0, 40), card_discord_username: String(link.username || '').slice(0, 40)
       });
       bust('bs:dm');
+      await pulse(b, `dm:${bucketOf(to)}`, {});
       return Response.json({ ok: true, dm: dmView(dm) });
     }
 
@@ -397,7 +418,7 @@ export default async function(req) {
       if (who.kind !== 'anon') throw new UserError('Nothing to unlink.');
       const U = b.asServiceRole.entities.BuySellUser;
       const { items } = await U.filter({ vid: who.vid }, { limit: 1 });
-      if (items[0]) await U.update(items[0].id, { name: '', name_lower: '', discord_id: '', discord_name: '', discord_username: '', hide_name: false });
+      if (items[0]) await U.update(items[0].id, { name: '', name_lower: '', discord_id: '', discord_name: '', discord_username: '', discord_avatar: '', hide_name: false });
       bust(`bsu:${who.vid}`);
       return Response.json({ ok: true, me: meView(who, null) });
     }
@@ -422,9 +443,9 @@ export default async function(req) {
       const { items } = await O.filter({ state }, { limit: 1 });
       const st = items[0];
       // Only the browser that started the link may finish it, once, within 10 minutes.
-      if (!st || st.nonce_hash !== who.hash || st.consumed_at || !st.expires_at || Date.parse(st.expires_at) < Date.now()) {
-        throw new UserError('That Discord link has expired. Try again.');
-      }
+      if (!st || st.consumed_at || !st.expires_at || Date.parse(st.expires_at) < Date.now()) throw new UserError('That Discord link has expired. Press Link Discord again.');
+      // e.g. started in the app and Discord came back in the phone's browser: a different chat identity.
+      if (st.nonce_hash !== who.hash) throw new UserError('Finish linking in the same browser or app where you pressed Link Discord.');
       await O.update(st.id, { consumed_at: new Date().toISOString(), result: 'buysell' });
       const tokenRes = await fetch(`${DISCORD_API}/oauth2/token`, {
         method: 'POST',
@@ -448,8 +469,23 @@ export default async function(req) {
       const { items: mine } = await U.filter({ vid: who.vid }, { limit: 1 });
       let row = mine[0];
       const carried = older.find((x) => x.vid !== who.vid && x.name);
-      for (const x of older) if (x.vid !== who.vid) { await U.update(x.id, { discord_id: '', discord_name: '', name: '', name_lower: '' }); bust(`bsu:${x.vid}`); }
-      const fields = { discord_id: String(du.id), discord_name: discordName, discord_username: String(du.username || '').slice(0, 40), ...(carried && !(row && row.name) ? { name: carried.name, name_lower: carried.name_lower } : {}) };
+      for (const x of older) if (x.vid !== who.vid) { await U.update(x.id, { discord_id: '', discord_name: '', discord_avatar: '', name: '', name_lower: '' }); bust(`bsu:${x.vid}`); }
+      const fields: Record<string, any> = { discord_id: String(du.id), discord_name: discordName, discord_username: String(du.username || '').slice(0, 40), discord_avatar: discordAvatar(du) };
+      if (carried && !(row && row.name)) Object.assign(fields, { name: carried.name, name_lower: carried.name_lower });
+      else if (!(row && row.name)) {
+        // 6.28: show the Discord name straight away: the first of their Discord display name / username that
+        // is a valid chat name, not reserved, not taken and not a guild member's name.
+        const candidates = [du.global_name, du.username].map((x) => String(x || '').replace(/[^A-Za-z0-9_]/g, '').slice(0, 16)).filter((x, i, a) => x && a.indexOf(x) === i);
+        for (const c of candidates) {
+          if (nameProblem(c)) continue;
+          const { items: taken } = await U.filter({ name_lower: c.toLowerCase() }, { limit: 2 });
+          if (taken.some((x) => x.vid !== who.vid)) continue;
+          const { items: members } = await b.asServiceRole.entities.Member.filter({ discord_name: c }, { limit: 1 });
+          if (members.length) continue;
+          Object.assign(fields, { name: c, name_lower: c.toLowerCase() });
+          break;
+        }
+      }
       if (row) row = await U.update(row.id, fields);
       else row = await U.create({ vid: who.vid, tag: tagOf(who.vid), name: '', name_lower: '', banned: false, ...fields });
       bust(`bsu:${who.vid}`);

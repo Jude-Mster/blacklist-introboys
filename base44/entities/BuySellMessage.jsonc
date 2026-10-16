@@ -61,6 +61,10 @@
     "owner_vid": {
       "type": "string",
       "description": "6.27: the id of who really sent it (their main id, also when they posted with their name hidden). Never shown"
+    },
+    "avatar": {
+      "type": "string",
+      "description": "6.28: Discord or member picture shown on the message"
     }
   },
   "rls": {

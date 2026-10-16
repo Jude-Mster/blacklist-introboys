@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Flag, ImagePlus, Languages, MessageSquare, X, Ban, Trash2, ShieldAlert, Loader2, EyeOff, ExternalLink } from "lucide-react";
 import {
   LANGS, LANG_NAME, MAX_LEN, NAME_RE, RESERVED, blockedReason, useBuySell, conversations, unreadTotal, send, report, moderate,
-  readImage, displayName, bodyOf, ago, hueOf, setLang, setAuto, setViewing, dismissBanner, block, cooldownLeft, api, setMe,
-  isMine, setHidden, shareDiscord
+  readImage, displayName, bodyOf, ago, hueOf, setLang, setAuto, setViewing, dismissBanner, block, api, setMe,
+  isMine, setHidden, shareDiscord, linkDiscord, unlinkDiscord
 } from "@/lib/buysell";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +19,12 @@ const errText = (e, fallback = "Something went wrong. Try again.") => {
 function Avatar({ x, size = 36 }) {
   const label = displayName(x);
   const initial = x.kind === "anon" ? "#" : label.slice(0, 1).toUpperCase();
+  const [broken, setBroken] = useState(false);
+  // 6.28: the Discord (or member) picture when there is one
+  if (x.avatar && !broken) {
+    return <img src={x.avatar} alt="" aria-hidden="true" loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)}
+      className="shrink-0 rounded-full bg-[#1d1a1a] object-cover" style={{ width: size, height: size }} />;
+  }
   return (
     <span aria-hidden="true" className="grid shrink-0 place-items-center rounded-full font-heading font-bold text-[#0b0a0a]"
       style={{ width: size, height: size, fontSize: Math.round(size * 0.45), background: x.kind === "member" ? "#f1d38c" : hueOf(x.vid || x.from) }}>
@@ -47,7 +53,7 @@ function Translated({ m, s, original, onFlip, dark }) {
 }
 
 // compact: the narrow layout (tabs, no side list) at every screen width, for the members' chat drawer.
-export default function BuySellChat({ className = "", member = false, autoName = null, compact = false }) {
+export default function BuySellChat({ className = "", member = false, compact = false }) {
   const s = useBuySell("full");
   const me = s.me;
   const [view, setView] = useState("open");        // open | dms | <peer vid>
@@ -72,7 +78,6 @@ export default function BuySellChat({ className = "", member = false, autoName =
   const openList = s.open.filter((m) => !s.blocked.includes(m.vid));
 
   useEffect(() => { setViewing(inThread ? view : ""); return () => setViewing(""); }, [view, inThread]);
-  useEffect(() => { if (autoName) setNameOpen(true); }, [autoName]);
 
   // Keep the newest message in sight unless the reader scrolled up to read older ones.
   const count = inThread ? thread.length : openList.length;
@@ -101,16 +106,14 @@ export default function BuySellChat({ className = "", member = false, autoName =
     catch (err) { setNote({ text: errText(err), bad: true }); }
   };
 
-  // 6.26: sending is instant: the message shows straight away (marked "Sending…" until the server has it)
-  // and the box is cleared at once, so the next message can be typed while this one goes out.
+  // 6.26/6.28: sending is instant: the message shows straight away and the box is cleared at once; a
+  // message typed right after the last one is never refused, it just goes out a moment later.
   const submit = (e) => {
     e.preventDefault();
     const text = draft.replace(/\s+/g, " ").trim();
     if (!text && !pending) return setNote({ text: "Type a message first.", bad: true });
     const bad = blockedReason(text);
     if (bad) return setNote({ text: `${bad} Trade inside the game.`, bad: true });
-    const wait = cooldownLeft();
-    if (wait > 0) return setNote({ text: `Wait ${Math.ceil(wait / 1000)} s before the next message.`, bad: true });
     const image = pending;
     atBottom.current = true;
     setDraft("");
@@ -156,6 +159,7 @@ export default function BuySellChat({ className = "", member = false, autoName =
       </nav>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {me && <DiscordBar me={me} />}
         {/* phones: tabs instead of the list */}
         <div role="tablist" aria-label="Chat" className={cn("flex border-b border-[#241f1f]", !compact && "min-[760px]:hidden")}>
           <Tab on={view === "open"} onClick={() => setView("open")}>Open chat</Tab>
@@ -247,7 +251,7 @@ export default function BuySellChat({ className = "", member = false, autoName =
                       {b.text && <p className="m-0 [overflow-wrap:anywhere]">{b.text}</p>}
                       <Translated m={d} s={s} original={!!showOrig[d.id]} dark={mine} onFlip={() => setShowOrig((o) => ({ ...o, [d.id]: !o[d.id] }))} />
                       <div className={cn("mt-0.5 flex items-center gap-2 text-[11px]", mine ? "text-white/60" : "text-[#7f7975]")}>
-                        <span>{d.pending ? "Sending…" : ago(d.at)}</span>
+                        <span>{d.pending ? "just now" : ago(d.at)}</span>
                         {!mine && !d.pending && !reported[d.id] && <button type="button" onClick={() => doReport(d, "private")} className="underline">Report and block</button>}
                         {me && me.moderator && <button type="button" onClick={() => moderate("remove", { id: d.id, where: "private" })} className="underline">Remove</button>}
                       </div>
@@ -273,7 +277,7 @@ export default function BuySellChat({ className = "", member = false, autoName =
               </div>
             )}
             <div className="flex items-center gap-2">
-              <button type="button" onClick={() => fileRef.current && fileRef.current.click()} disabled={!canSend} aria-label="Send a picture" title="Send a picture (up to 3 MB)"
+              <button type="button" onClick={() => fileRef.current && fileRef.current.click()} disabled={!canSend} aria-label="Send a picture" title="Send a picture (up to 10 MB)"
                 className="grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border border-[#332d2d] text-[#cfc9c4] hover:bg-white/5 disabled:opacity-40">
                 <ImagePlus className="h-5 w-5" />
               </button>
@@ -290,12 +294,12 @@ export default function BuySellChat({ className = "", member = false, autoName =
               </button>
             </div>
             <p role="status" className={cn("m-0 min-h-[18px] text-xs", note.bad ? "text-[#ff6b6b]" : "text-[#7f7975]")}>
-              {note.text || s.error || "Pictures up to 3 MB. Messages are translated for everyone. No links or phone numbers."}
+              {note.text || s.error || "Pictures up to 10 MB. Messages are translated for everyone. No links or phone numbers."}
             </p>
           </form>
         )}
 
-        {nameOpen && !member && me && !me.member && <NamePanel me={me} suggest={autoName} onClose={() => setNameOpen(false)} />}
+        {nameOpen && !member && me && !me.member && me.discord && <NamePanel me={me} onClose={() => setNameOpen(false)} />}
       </div>
 
       {zoom && (
@@ -360,9 +364,9 @@ function MeBox({ me, meLabel, member, onName, nameOpen }) {
       )}
       {me && me.discord && <span className="text-xs text-[#6f6a66]">{me.hidden ? "Hidden: you post as Anonymous. Nobody can tell it's you." : "Turn off to post as Anonymous."}</span>}
       {err && <span className="text-xs text-[#ff6b6b]">{err}</span>}
-      {!member && me && !me.member && (
+      {!member && me && !me.member && me.discord && !me.hidden && (
         <button type="button" onClick={onName} className="self-start py-1.5 text-[13px] text-[#ff6b6b] underline">
-          {nameOpen ? "Close" : me.discord ? "Change your name" : "Use your own name"}
+          {nameOpen ? "Close" : "Change your chat name"}
         </button>
       )}
     </div>
@@ -420,13 +424,13 @@ function OpenMessage({ m, s, me, compact, original, onFlip, reported, onReport, 
   const mine = isMine(s, m.vid);
   const b = bodyOf(m, s, original);
   return (
-    <article className={cn("flex items-start gap-3 border-b border-[#1b1818] px-3.5 py-3", m.pending && "opacity-70")}>
+    <article className={cn("flex items-start gap-3 border-b border-[#1b1818] px-3.5 py-3", m.pending && "opacity-90")}>
       <Avatar x={m} />
       <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="font-semibold text-[#f2eeea]">{displayName(m)}{mine ? " (you)" : ""}</span>
           <Badges x={m} />
-          <span className="text-[13px] text-[#7f7975]">{m.pending ? "Sending…" : ago(m.at)}</span>
+          <span className="text-[13px] text-[#7f7975]">{m.pending ? "just now" : ago(m.at)}</span>
         </div>
         {b.text && <p className="m-0 text-[#e2ddd8] [overflow-wrap:anywhere]">{b.text}</p>}
         {m.image && (
@@ -459,69 +463,87 @@ function OpenMessage({ m, s, me, compact, original, onFlip, reported, onReport, 
   );
 }
 
-function NamePanel({ me, suggest, onClose }) {
-  const [name, setName] = useState(me.name || suggest || "");
+function NamePanel({ me, onClose }) {
+  const [name, setName] = useState(me.name || "");
   const [note, setNote] = useState({ text: "", bad: false });
   const [busy, setBusy] = useState(false);
-  const linked = !!me.discord;
-
-  const link = async () => {
-    setBusy(true);
-    try {
-      const r = await api("linkStart");
-      window.location.assign(r.url);
-    } catch (e) { setNote({ text: errText(e), bad: true }); setBusy(false); }
-  };
   const saveName = async (value) => {
     const n = value.trim();
-    if (n && !NAME_RE.test(n)) return setNote({ text: "Use 3 to 16 letters, numbers or _.", bad: true });
-    if (n && RESERVED.test(n)) return setNote({ text: "That name is reserved. Pick another.", bad: true });
+    if (!NAME_RE.test(n)) return setNote({ text: "Use 3 to 16 letters, numbers or _.", bad: true });
+    if (RESERVED.test(n)) return setNote({ text: "That name is reserved. Pick another.", bad: true });
     setBusy(true);
     try {
       const r = await api("rename", { name: n });
       setMe(r.me);
-      setNote({ text: n ? `You're now ${n}.` : "You're Anonymous again.", bad: false });
-      if (!n) setName("");
+      setNote({ text: `You're now ${n}.`, bad: false });
     } catch (e) { setNote({ text: errText(e), bad: true }); }
     setBusy(false);
   };
-  const unlink = async () => {
-    setBusy(true);
-    try { const r = await api("unlink"); setMe(r.me); setNote({ text: "Discord unlinked. You're Anonymous.", bad: false }); } catch (e) { setNote({ text: errText(e), bad: true }); }
-    setBusy(false);
-  };
-
   return (
     <div className="flex flex-col gap-2.5 border-t border-[#241f1f] bg-[#121010] p-3.5">
       <div className="flex items-start justify-between gap-3">
-        {!linked
-          ? <p className="m-0 text-[15px] text-[#cfc9c4]"><b className="text-white">Want your own name?</b> Link Discord to pick one. It's optional: you can stay Anonymous.</p>
-          : <p className="m-0 text-[15px] text-[#cfc9c4]">Linked with Discord as <b className="text-white">{me.discord}</b>. Pick the name others see.</p>}
+        <p className="m-0 text-[15px] text-[#cfc9c4]">Pick the name others see next to your Discord picture.</p>
         <button type="button" onClick={onClose} aria-label="Close" className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#332d2d]"><X className="h-3.5 w-3.5" /></button>
       </div>
-      {!linked ? (
-        <>
-          <p className="m-0 text-[13px] text-[#8f8984]">Linking only sets your chat name. It doesn't open the members portal, and nobody sees your Discord account.</p>
-          <button type="button" onClick={link} disabled={busy} className="h-[46px] self-start rounded-md bg-[#5865f2] px-[18px] font-heading text-[17px] font-bold tracking-[0.06em] text-white disabled:opacity-60">
-            {busy ? "Opening Discord…" : "LINK DISCORD"}
-          </button>
-        </>
-      ) : (
-        <>
-          <form onSubmit={(e) => { e.preventDefault(); saveName(name); }} className="flex flex-wrap items-end gap-2">
-            <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-[13px] text-[#8f8984]">Chat name (3 to 16 letters, numbers or _)
-              <input value={name} onChange={(e) => setName(e.target.value.slice(0, 16))} maxLength={16} autoComplete="off"
-                className="h-[46px] rounded-md border border-[#332d2d] bg-[#050505] px-3 text-base text-[#e9e4df] focus:border-[#e3171d] focus:outline-none" />
-            </label>
-            <button type="submit" disabled={busy} className="h-[46px] rounded-md bg-[#e3171d] px-5 font-heading text-[17px] font-bold tracking-[0.08em] text-white disabled:opacity-60">SAVE</button>
-          </form>
-          <div className="flex flex-wrap gap-x-5">
-            {me.name && <button type="button" onClick={() => saveName("")} disabled={busy} className="py-1.5 text-sm text-[#ff6b6b] underline">Go back to Anonymous</button>}
-            <button type="button" onClick={unlink} disabled={busy} className="py-1.5 text-sm text-[#8f8984] underline">Unlink Discord</button>
-          </div>
-        </>
-      )}
+      <form onSubmit={(e) => { e.preventDefault(); saveName(name); }} className="flex flex-wrap items-end gap-2">
+        <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-[13px] text-[#8f8984]">Chat name (3 to 16 letters, numbers or _)
+          <input value={name} onChange={(e) => setName(e.target.value.slice(0, 16))} maxLength={16} autoComplete="off"
+            className="h-[46px] rounded-md border border-[#332d2d] bg-[#050505] px-3 text-base text-[#e9e4df] focus:border-[#e3171d] focus:outline-none" />
+        </label>
+        <button type="submit" disabled={busy} className="h-[46px] rounded-md bg-[#e3171d] px-5 font-heading text-[17px] font-bold tracking-[0.08em] text-white disabled:opacity-60">SAVE</button>
+      </form>
       {note.text && <p role="status" className={cn("m-0 text-[13px]", note.bad ? "text-[#ff6b6b]" : "text-[#7fdca0]")}>{note.text}</p>}
+    </div>
+  );
+}
+
+// 6.28: the bar at the top of the chat: who I am with my Discord picture and name, and Link / Unlink Discord
+// right there. Members are linked through their guild sign-in (nothing to unlink).
+function DiscordBar({ me }) {
+  const [busy, setBusy] = useState("");
+  const [err, setErr] = useState("");
+  const linked = !!me.discord;
+  const shown = me.hidden ? { ...me.shownAs, vid: me.vid, avatar: me.discordAvatar } : me;
+  const link = async () => {
+    setBusy("link"); setErr("");
+    try { await linkDiscord(); } catch (e) { setErr(errText(e)); setBusy(""); }
+  };
+  const unlink = async () => {
+    setBusy("unlink"); setErr("");
+    try { await unlinkDiscord(); } catch (e) { setErr(errText(e)); }
+    setBusy("");
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-[#241f1f] bg-[#0b0a12] px-3.5 py-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+        {linked ? <Avatar x={{ ...shown, avatar: me.discordAvatar || shown.avatar }} size={32} /> : <Avatar x={me} size={32} />}
+        <div className="flex min-w-0 flex-col leading-tight">
+          <span className="flex min-w-0 items-center gap-1.5 text-[15px] font-semibold text-[#f2eeea]">
+            <span className="truncate">{displayName(me)}</span>
+            <Badges x={me} />
+            {me.hidden && <span className="inline-flex shrink-0 items-center gap-1 text-xs font-normal text-[#a29c97]"><EyeOff className="h-3.5 w-3.5" /> hidden</span>}
+          </span>
+          <span className="truncate text-xs text-[#8f8984]">
+            {linked
+              ? <>Discord: <b className="font-semibold text-[#c9cbe8]">{me.discord}</b>{me.discordUser ? ` (@${me.discordUser})` : ""}</>
+              : "Anonymous. Link Discord to show your name and picture."}
+          </span>
+        </div>
+      </div>
+      {!linked && (
+        <button type="button" onClick={link} disabled={!!busy}
+          className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md bg-[#5865f2] px-3 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-60">
+          <DiscordGlyph /> {busy === "link" ? "Opening Discord…" : "Link your Discord"}
+        </button>
+      )}
+      {linked && !me.member && (
+        <button type="button" onClick={unlink} disabled={!!busy}
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-[#4a4f8f] px-3 text-sm font-semibold text-[#c9cbe8] hover:bg-[#5865f2]/15 disabled:opacity-60">
+          {busy === "unlink" ? "Unlinking…" : "Unlink Discord"}
+        </button>
+      )}
+      {linked && me.member && <span className="shrink-0 text-xs text-[#8f8984]">Linked through your guild sign-in</span>}
+      {err && <span className="w-full text-xs text-[#ff6b6b]">{err}</span>}
     </div>
   );
 }

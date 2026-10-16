@@ -60,7 +60,7 @@ const p0b = await call(B, { action: 'poll', since: p0.items[p0.items.length - 1]
 ok(p0b.items.length === 1 && p0b.items[0].tr && p0b.items[0].tr.zh, 'others get the translation on their next poll (trSince)');
 
 const fast = await call(A, { action: 'send', text: 'again' });
-ok(fast.status === 429, 'a second message within 3 s is refused');
+ok(fast.status === 429, 'a second message too soon is refused');
 ok((await call(B, { action: 'send', text: 'see www.free-gold.net' })).status === 400, 'links refused by the server');
 ok((await call(B, { action: 'send', text: 'x'.repeat(301) })).status === 400, 'over 300 characters refused');
 ok((await call(B, { action: 'send', text: '   ' })).status === 400, 'empty message refused');
@@ -96,7 +96,7 @@ step();
 const fake = 'data:image/png;base64,' + btoa('<script>alert(1)</script>');
 ok((await call(A, { action: 'send', image: fake })).status === 400, 'a file that is not really a picture is refused');
 const big = 'data:image/jpeg;base64,' + 'A'.repeat(Math.ceil((3 * 1024 * 1024 + 10) / 3) * 4);
-ok((await call(B, { action: 'send', image: big })).status === 400, 'pictures over 3 MB are refused');
+ok((await call(B, { action: 'send', image: big })).status !== 500, 'a large picture never crashes the function');
 
 // ---------- private messages ----------
 step();
@@ -203,7 +203,7 @@ await call(A, { action: 'linkFinish', code: 'xyz', state: st2 });
 ok((await call(A, { action: 'rename', name: 'lucky_OX' })).status === 400, 'names are unique (any upper/lower case)');
 globalThis.fetch = realFetch;
 const back2 = await call(D, { action: 'rename', name: '' });
-ok(back2.ok && back2.me.kind === 'anon' && back2.me.name === '', 'can go back to Anonymous');
+ok(back2.ok && back2.me.kind === 'discord' && back2.me.name === '', 'clearing the name keeps the Discord badge (hiding is the way to be Anonymous)');
 ok(tagOf('ffffffff0000') === tagOf('ffffffff1111'), 'the tag comes from the visitor id');
 
 // ---------- 6.27: hide my name, share my Discord ----------
@@ -278,6 +278,54 @@ ok(tagOf('ffffffff0000') === tagOf('ffffffff1111'), 'the tag comes from the visi
   advance(3000);
   ok((await call(plain, { action: 'poll', lite: true })).dms.some((d) => d.id === toMemberAlias.dm.id), "a member gets messages sent to their hidden id after showing their name again");
   ok((await call(plain, { action: 'shareDiscord', to: toMemberAlias.dm.from })).ok, 'members can share their Discord');
+}
+
+// ---------- 6.28: Discord name + picture on linking, live pulses, 10 MB, 1.5 s ----------
+{
+  advance(10000);
+  const X = anon(), Y = anon();
+  const lsx = await call(X, { action: 'linkStart' });
+  const stx = new URL(lsx.url).searchParams.get('state');
+  ok((await call(Y, { action: 'linkFinish', code: 'c', state: stx })).error.includes('same browser'), 'finishing in another browser says so clearly');
+  const rf = globalThis.fetch;
+  globalThis.fetch = (async (url) => {
+    const u = String(url);
+    if (u.endsWith('/oauth2/token')) return new Response(JSON.stringify({ access_token: 't' }), { status: 200 });
+    if (u.endsWith('/users/@me')) return new Response(JSON.stringify({ id: '222333444555666777', username: 'night.fox', global_name: 'Night Fox 🦊', avatar: 'abc123' }), { status: 200 });
+    return new Response('{}', { status: 404 });
+  }) as any;
+  const lf = await call(X, { action: 'linkFinish', code: 'c', state: stx });
+  globalThis.fetch = rf;
+  ok(lf.ok && lf.me.kind === 'discord' && lf.me.name === 'NightFox' && lf.me.avatar === 'https://cdn.discordapp.com/avatars/222333444555666777/abc123.png?size=128', 'linked: shows the Discord name and picture straight away');
+  advance(2000);
+  const sx = await call(X, { action: 'send', text: 'linked post' });
+  ok(sx.message.kind === 'discord' && sx.message.name === 'NightFox' && sx.message.avatar.includes('cdn.discordapp.com'), 'messages carry the Discord name and picture');
+  const pulseOpen = (await E.BuySellPulse.filter({ key: 'open' }, {})).items[0];
+  ok(pulseOpen && pulseOpen.msg && pulseOpen.msg.id === sx.message.id, 'the open-chat pulse carries the new message (screens add it without asking)');
+  advance(1600);
+  const dmx = await call(X, { action: 'send', to: (await call(Y, { action: 'hello' })).me.vid, text: 'secret price 5m' });
+  const dmPulses = (await E.BuySellPulse.filter({}, {})).items.filter((r) => String(r.key).startsWith('dm:'));
+  ok(dmPulses.length >= 1 && !JSON.stringify(dmPulses).includes('secret price') && !JSON.stringify(dmPulses).includes(dmx.dm.to), 'private-message pulses say neither who nor what');
+  advance(1600);
+  ok((await call(X, { action: 'send', text: 'second' })).ok, 'one message every 1.5 s is allowed (was 3 s)');
+  ok((await call(X, { action: 'send', text: 'third' })).status === 429, 'but not faster');
+  // a fresh read is forced for a screen told about a change
+  const p1 = await call(Y, { action: 'poll' });
+  advance(1600);
+  const s4 = await call(X, { action: 'send', text: 'fourth' });
+  const pulseAt = (await E.BuySellPulse.filter({ key: 'open' }, {})).items[0].at;
+  // another running copy still holding the old read: simulated by asking with `after`
+  const p2 = await call(Y, { action: 'poll', since: p1.items[p1.items.length - 1].at, after: pulseAt });
+  ok(p2.items.some((m) => m.id === s4.message.id), 'a poll after a pulse always sees the new message');
+  const img = 'data:image/jpeg;base64,' + btoa(String.fromCharCode(0xff, 0xd8, 0xff, ...new Array(64).fill(1)));
+  const big9 = 'data:image/jpeg;base64,' + btoa(String.fromCharCode(0xff, 0xd8, 0xff) + 'x'.repeat(9 * 1024 * 1024));
+  advance(1600);
+  ok((await call(X, { action: 'send', image: big9 })).ok, 'a 9 MB picture is accepted (limit 10 MB)');
+  advance(1600);
+  const big11 = 'data:image/jpeg;base64,' + 'A'.repeat(Math.ceil((10 * 1024 * 1024 + 10) / 3) * 4);
+  ok((await call(X, { action: 'send', image: big11 })).status === 400, 'over 10 MB is refused');
+  const ul = await call(X, { action: 'unlink' });
+  ok(ul.ok && ul.me.kind === 'anon' && !ul.me.avatar && !ul.me.discord, 'unlink: back to Anonymous, picture gone');
 }
 
 done();
