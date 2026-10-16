@@ -1,0 +1,58 @@
+{
+  "name": "BuySellDM",
+  "type": "object",
+  "description": "Wuxen2 Buy and Sell: private messages between visitors",
+  "properties": {
+    "from_vid": {
+      "type": "string"
+    },
+    "to_vid": {
+      "type": "string"
+    },
+    "pair": {
+      "type": "string",
+      "description": "The two vids, sorted, joined by |"
+    },
+    "from_name": {
+      "type": "string"
+    },
+    "from_tag": {
+      "type": "string"
+    },
+    "from_kind": {
+      "type": "string"
+    },
+    "to_name": {
+      "type": "string"
+    },
+    "to_tag": {
+      "type": "string"
+    },
+    "to_kind": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    },
+    "lang": {
+      "type": "string"
+    },
+    "tr": {
+      "type": "object",
+      "description": "Translations saved when the message was sent: en, tl, th, es, pt, id"
+    },
+    "image_url": {
+      "type": "string"
+    },
+    "hidden": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

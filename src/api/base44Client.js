@@ -33,13 +33,13 @@ const client = createClient({
 //   - after a "rate limit" answer, refreshes pause for a few seconds.
 // Anything a member does (bet, play a card, send a message) is never held back.
 const READ_FUNCTIONS = { getChatMessages: 3000, getGameFeed: 3000, getLeaderboard: 3000 };
-const READ_ACTIONS = { state: 900, list: 900, race: 900, pulse: 1500 };
+const READ_ACTIONS = { state: 900, list: 900, race: 900, pulse: 1500, poll: 1500 };   // 6.25: poll = Buy and Sell
 // 6.16: each "busy" answer in a row doubles the pause (4 s, 8 s, 16 s, up to 30 s); a good answer resets it.
 const BACKOFF_MS = 4000;
 const BACKOFF_MAX_MS = 30000;
 let busyStreak = 0;
 const slowDown = () => { busyStreak = Math.min(busyStreak + 1, 4); backoffUntil = Date.now() + Math.min(BACKOFF_MAX_MS, BACKOFF_MS * 2 ** (busyStreak - 1)); };
-const LOAD_ACTIONS = new Set(["state", "list", "catalog", "adminOverview", "roster", "totals", "search", "discordStatus", "ping", "mine", "pending", "adminList", "stockSummary"]);
+const LOAD_ACTIONS = new Set(["state", "list", "catalog", "adminOverview", "roster", "totals", "search", "discordStatus", "ping", "mine", "pending", "adminList", "stockSummary", "hello", "inbox"]);
 const LOAD_RETRY_MS = [1200, 2500, 5000];
 // 6.23: a bet, a purchase or a prediction that meets a "busy" answer is tried once more after a short random
 // pause (a burst, e.g. everyone betting in the same 10 seconds, is usually over by then). Safe: a busy answer
@@ -48,7 +48,7 @@ const RETRY_ONCE = new Set(["bet", "grudge_bet", "buy", "predict"]);
 // Games that play an animation before the result should be seen set the balance themselves.
 const HOLD_BALANCE = new Set(["playGame"]);
 // Calls that can't change anyone's points.
-const NO_POINTS = new Set(["getMyAccount", "chatSend", "sessionLogout", "discordAuthStart", "discordLogin", "pushAction", "prizeAction"]);
+const NO_POINTS = new Set(["getMyAccount", "chatSend", "sessionLogout", "discordAuthStart", "discordLogin", "pushAction", "prizeAction", "buysellAction"]);
 const announce = (type, detail) => {
   try { window.dispatchEvent(new CustomEvent(type, { detail })); } catch { /* not in a browser */ }
 };

@@ -96,6 +96,16 @@
       "type": "string",
       "description": "Invite link shown to people who aren't in the server yet"
     },
+    "buysell_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "6.25: Wuxen2 Buy and Sell (the open chat on the home page and the Market tab). false closes it"
+    },
+    "buysell_translate_per_min": {
+      "type": "number",
+      "default": 30,
+      "description": "6.25: most Buy and Sell messages auto-translated per minute (uses Base44 integration credits). 0 turns translating off"
+    },
     "chat_enabled": {
       "type": "boolean",
       "default": true

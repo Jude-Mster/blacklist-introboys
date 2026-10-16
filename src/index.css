@@ -457,3 +457,7 @@
 /* Inside the Android app the system bar is already outside the page, but the web view
    still reports its height, which left an empty band under the tab bar. */
 html.in-webview { --safe-bottom: 0px; }
+/* 6.25: Wuxen2 Buy and Sell bubble on the home page */
+@keyframes wxPulse { 0% { box-shadow: 0 0 0 0 rgba(227, 23, 29, 0.55); } 70% { box-shadow: 0 0 0 16px rgba(227, 23, 29, 0); } 100% { box-shadow: 0 0 0 0 rgba(227, 23, 29, 0); } }
+.wx-bubble { animation: wxPulse 2.4s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) { .wx-bubble { animation: none; } }

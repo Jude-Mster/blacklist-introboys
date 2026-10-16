@@ -30,6 +30,8 @@ const Shop = deferred(PAGE_LOADERS.shop);
 const Guide = deferred(PAGE_LOADERS.guide);
 const Derby = deferred(PAGE_LOADERS.derby);
 const Arena = deferred(PAGE_LOADERS.arena);
+const BuySell = deferred(PAGE_LOADERS.buysell);   // 6.25: Wuxen2 Buy and Sell, open to everyone
+const Market = deferred(PAGE_LOADERS.market);
 // Add page imports here
 
 // Old addresses (signup, password reset, the old Discord link page's callback)
@@ -49,6 +51,7 @@ const AuthenticatedApp = () => {
       <Route path="/" element={<Landing />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
+      <Route path="/buysell" element={<Suspense fallback={<LanternSpinner label="Opening Buy and Sell" className="py-24" />}><BuySell /></Suspense>} />
       <Route element={<ProtectedRoute unauthenticatedElement={<ToLogin />} />}>
         <Route element={<GuildLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
@@ -62,6 +65,7 @@ const AuthenticatedApp = () => {
           <Route path="/arena" element={<Suspense fallback={<LanternSpinner label="Opening the arena" className="py-24" />}><Arena /></Suspense>} />
           <Route path="/raffle" element={<Navigate to="/arena?tab=tournament" replace />} />
           <Route path="/shop" element={<Shop />} />
+          <Route path="/market" element={<Market />} />
           <Route path="/guide" element={<Guide />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/profile" element={<Profile />} />

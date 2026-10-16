@@ -1,0 +1,39 @@
+{
+  "name": "BuySellUser",
+  "type": "object",
+  "description": "Wuxen2 Buy and Sell: a visitor who has posted or linked Discord. Linking Discord here never gives members-portal access.",
+  "properties": {
+    "vid": {
+      "type": "string"
+    },
+    "tag": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "description": "Chosen name (only after linking Discord)"
+    },
+    "name_lower": {
+      "type": "string"
+    },
+    "discord_id": {
+      "type": "string"
+    },
+    "discord_name": {
+      "type": "string"
+    },
+    "banned": {
+      "type": "boolean",
+      "default": false
+    },
+    "banned_by": {
+      "type": "string"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

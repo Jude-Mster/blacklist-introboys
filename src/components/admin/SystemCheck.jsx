@@ -4,7 +4,7 @@ import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import { errorText } from "@/lib/GuildContext";
 
-export const SITE_VERSION = "6.24";
+export const SITE_VERSION = "6.25";
 const CHECKS = [
   { fn: "getMyAccount", label: "Accounts and ranks" },
   { fn: "playGame", label: "Toss, dice, slots and wheel" },
@@ -20,6 +20,7 @@ const CHECKS = [
   { fn: "arenaAction", label: "Live Arena" },
   { fn: "tournamentAction", label: "Arena tournaments" },
   { fn: "chatSend", label: "Chat" },
+  { fn: "buysellAction", label: "Wuxen2 Buy and Sell" },
   { fn: "chatBridge", label: "Discord chat bridge" },
   { fn: "adminAction", label: "Admin tools" }
 ];

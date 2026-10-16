@@ -38,7 +38,9 @@ export const PAGE_LOADERS = {
   guide: once(() => import("@/pages/Guide")),
   leaderboard: once(() => import("@/pages/Leaderboard")),
   profile: once(() => import("@/pages/Profile")),
-  admin: once(() => import("@/pages/Admin"))
+  admin: once(() => import("@/pages/Admin")),
+  buysell: once(() => import("@/pages/BuySell")),   // 6.25
+  market: once(() => import("@/pages/Market"))
 };
 
 // the 3D pages are big (the 3D engine): fetched ahead only on a good connection

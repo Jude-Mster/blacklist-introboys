@@ -1,0 +1,35 @@
+{
+  "name": "BuySellReport",
+  "type": "object",
+  "description": "Wuxen2 Buy and Sell: reports from visitors",
+  "properties": {
+    "message_id": {
+      "type": "string"
+    },
+    "where": {
+      "type": "string",
+      "enum": [
+        "open",
+        "private"
+      ]
+    },
+    "reporter_vid": {
+      "type": "string"
+    },
+    "author_vid": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    },
+    "image_url": {
+      "type": "string"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

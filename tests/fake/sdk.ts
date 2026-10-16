@@ -38,5 +38,10 @@ function entity(name: string) {
   };
 }
 const entities = new Proxy({}, { get: (_, n: string) => entity(n) });
-export function createClientFromRequest(_req) { return { asServiceRole: { entities }, entities }; }
+// Integrations: tests set g.__llm(params) and g.__upload(params) to answer like the platform would.
+const integrations = { Core: {
+  async InvokeLLM(params) { g.__llmCalls = (g.__llmCalls || 0) + 1; if (g.__byOp) g.__byOp['llm'] = (g.__byOp['llm'] || 0) + 1; if (!g.__llm) throw new Error('no llm'); return await g.__llm(params); },
+  async UploadFile(params) { g.__uploads = (g.__uploads || 0) + 1; if (g.__byOp) g.__byOp['upload'] = (g.__byOp['upload'] || 0) + 1; if (g.__upload) return await g.__upload(params); return { file_url: `https://files.example/${params.file.name}` }; }
+} };
+export function createClientFromRequest(_req) { return { asServiceRole: { entities, integrations }, entities, integrations }; }
 export function createClient() { return createClientFromRequest(null); }
