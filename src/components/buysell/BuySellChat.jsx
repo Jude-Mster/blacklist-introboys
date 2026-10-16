@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Flag, ImagePlus, Languages, MessageSquare, X, Ban, Trash2, ShieldAlert, Loader2, EyeOff, ExternalLink } from "lucide-react";
 import {
-  LANGS, LANG_NAME, MAX_LEN, NAME_RE, RESERVED, blockedReason, useBuySell, conversations, unreadTotal, send, report, moderate,
-  readImage, displayName, bodyOf, ago, hueOf, setLang, setAuto, setViewing, dismissBanner, block, api, setMe,
+  LANGS, LANG_NAME, MAX_LEN, blockedReason, useBuySell, conversations, unreadTotal, send, report, moderate,
+  readImage, displayName, bodyOf, ago, hueOf, setLang, setAuto, setViewing, dismissBanner, block,
   isMine, setHidden, shareDiscord, linkDiscord, unlinkDiscord
 } from "@/lib/buysell";
 import { cn } from "@/lib/utils";
@@ -64,7 +64,6 @@ export default function BuySellChat({ className = "", member = false, compact = 
   const [pending, setPending] = useState("");
   const [note, setNote] = useState({ text: "", bad: false });
   const [zoom, setZoom] = useState("");
-  const [nameOpen, setNameOpen] = useState(false);
   const [confirmBan, setConfirmBan] = useState("");
   const listRef = useRef(null);
   const fileRef = useRef(null);
@@ -155,7 +154,7 @@ export default function BuySellChat({ className = "", member = false, compact = 
           {convos.length === 0 && <p className="px-4 py-2 text-[13px] text-[#8f8984]">No private chats yet. Tap <b className="text-[#e9e4df]">Message</b> on anyone in the open chat.</p>}
           {convos.map((c) => <ConvoRow key={c.vid} c={c} s={s} active={view === c.vid} onOpen={() => openThread(c)} />)}
         </div>
-        <MeBox me={me} meLabel={meLabel} member={member} onName={() => setNameOpen((v) => !v)} nameOpen={nameOpen} />
+        <MeBox me={me} meLabel={meLabel} member={member} />
       </nav>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -228,7 +227,7 @@ export default function BuySellChat({ className = "", member = false, compact = 
               <p className="border-b border-[#1b1818] px-3.5 py-3 text-sm text-[#8f8984]">Only you and the other player can see a private chat. Tap <b className="text-[#e9e4df]">Message</b> on anyone in the open chat to start one.</p>
               {convos.length === 0 && <p className="px-3.5 py-6 text-sm text-[#8f8984]">No private chats yet.</p>}
               {convos.map((c) => <ConvoRow key={c.vid} c={c} s={s} active={false} onOpen={() => openThread(c)} />)}
-              <div className={cn("mt-auto", !compact && "min-[760px]:hidden")}><MeBox me={me} meLabel={meLabel} member={member} onName={() => setNameOpen((v) => !v)} nameOpen={nameOpen} /></div>
+              <div className={cn("mt-auto", !compact && "min-[760px]:hidden")}><MeBox me={me} meLabel={meLabel} member={member} /></div>
             </>
           )}
 
@@ -299,7 +298,6 @@ export default function BuySellChat({ className = "", member = false, compact = 
           </form>
         )}
 
-        {nameOpen && !member && me && !me.member && me.discord && <NamePanel me={me} onClose={() => setNameOpen(false)} />}
       </div>
 
       {zoom && (
@@ -338,7 +336,7 @@ function ConvoRow({ c, s, active, onOpen }) {
   );
 }
 
-function MeBox({ me, meLabel, member, onName, nameOpen }) {
+function MeBox({ me, meLabel }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const toggle = async () => {
@@ -359,16 +357,11 @@ function MeBox({ me, meLabel, member, onName, nameOpen }) {
           <span aria-hidden="true" className={cn("relative h-4 w-7 shrink-0 rounded-full transition-colors", me.hidden ? "bg-[#3a3434]" : "bg-[#e3171d]")}>
             <span className={cn("absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all", me.hidden ? "left-0.5" : "left-3.5")} />
           </span>
-          {me.hidden ? `Show my name (${displayName(me.shownAs || {})})` : "Show my name"}
+          {me.member ? "Show my name" : "Show my Discord username"}{me.hidden && me.shownAs && me.shownAs.name ? ` (${me.member ? "" : "@"}${me.shownAs.name})` : ""}
         </button>
       )}
-      {me && me.discord && <span className="text-xs text-[#6f6a66]">{me.hidden ? "Hidden: you post as Anonymous. Nobody can tell it's you." : "Turn off to post as Anonymous."}</span>}
+      {me && me.discord && <span className="text-xs text-[#6f6a66]">{me.hidden ? "Hidden: you post as Anonymous with no picture. Nobody can tell it's you." : "Turn off to post as Anonymous (name and picture hidden)."}</span>}
       {err && <span className="text-xs text-[#ff6b6b]">{err}</span>}
-      {!member && me && !me.member && me.discord && !me.hidden && (
-        <button type="button" onClick={onName} className="self-start py-1.5 text-[13px] text-[#ff6b6b] underline">
-          {nameOpen ? "Close" : "Change your chat name"}
-        </button>
-      )}
     </div>
   );
 }
@@ -463,47 +456,12 @@ function OpenMessage({ m, s, me, compact, original, onFlip, reported, onReport, 
   );
 }
 
-function NamePanel({ me, onClose }) {
-  const [name, setName] = useState(me.name || "");
-  const [note, setNote] = useState({ text: "", bad: false });
-  const [busy, setBusy] = useState(false);
-  const saveName = async (value) => {
-    const n = value.trim();
-    if (!NAME_RE.test(n)) return setNote({ text: "Use 3 to 16 letters, numbers or _.", bad: true });
-    if (RESERVED.test(n)) return setNote({ text: "That name is reserved. Pick another.", bad: true });
-    setBusy(true);
-    try {
-      const r = await api("rename", { name: n });
-      setMe(r.me);
-      setNote({ text: `You're now ${n}.`, bad: false });
-    } catch (e) { setNote({ text: errText(e), bad: true }); }
-    setBusy(false);
-  };
-  return (
-    <div className="flex flex-col gap-2.5 border-t border-[#241f1f] bg-[#121010] p-3.5">
-      <div className="flex items-start justify-between gap-3">
-        <p className="m-0 text-[15px] text-[#cfc9c4]">Pick the name others see next to your Discord picture.</p>
-        <button type="button" onClick={onClose} aria-label="Close" className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#332d2d]"><X className="h-3.5 w-3.5" /></button>
-      </div>
-      <form onSubmit={(e) => { e.preventDefault(); saveName(name); }} className="flex flex-wrap items-end gap-2">
-        <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-[13px] text-[#8f8984]">Chat name (3 to 16 letters, numbers or _)
-          <input value={name} onChange={(e) => setName(e.target.value.slice(0, 16))} maxLength={16} autoComplete="off"
-            className="h-[46px] rounded-md border border-[#332d2d] bg-[#050505] px-3 text-base text-[#e9e4df] focus:border-[#e3171d] focus:outline-none" />
-        </label>
-        <button type="submit" disabled={busy} className="h-[46px] rounded-md bg-[#e3171d] px-5 font-heading text-[17px] font-bold tracking-[0.08em] text-white disabled:opacity-60">SAVE</button>
-      </form>
-      {note.text && <p role="status" className={cn("m-0 text-[13px]", note.bad ? "text-[#ff6b6b]" : "text-[#7fdca0]")}>{note.text}</p>}
-    </div>
-  );
-}
-
 // 6.28: the bar at the top of the chat: who I am with my Discord picture and name, and Link / Unlink Discord
 // right there. Members are linked through their guild sign-in (nothing to unlink).
 function DiscordBar({ me }) {
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const linked = !!me.discord;
-  const shown = me.hidden ? { ...me.shownAs, vid: me.vid, avatar: me.discordAvatar } : me;
   const link = async () => {
     setBusy("link"); setErr("");
     try { await linkDiscord(); } catch (e) { setErr(errText(e)); setBusy(""); }
@@ -516,16 +474,19 @@ function DiscordBar({ me }) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-[#241f1f] bg-[#0b0a12] px-3.5 py-2">
       <div className="flex min-w-0 flex-1 items-center gap-2.5">
-        {linked ? <Avatar x={{ ...shown, avatar: me.discordAvatar || shown.avatar }} size={32} /> : <Avatar x={me} size={32} />}
+        {/* 6.29: hidden = Anonymous with no picture */}
+        <Avatar x={me} size={32} />
         <div className="flex min-w-0 flex-col leading-tight">
           <span className="flex min-w-0 items-center gap-1.5 text-[15px] font-semibold text-[#f2eeea]">
             <span className="truncate">{displayName(me)}</span>
             <Badges x={me} />
-            {me.hidden && <span className="inline-flex shrink-0 items-center gap-1 text-xs font-normal text-[#a29c97]"><EyeOff className="h-3.5 w-3.5" /> hidden</span>}
+            {me.hidden && <span className="inline-flex shrink-0 items-center gap-1 text-xs font-normal text-[#a29c97]"><EyeOff className="h-3.5 w-3.5" /><span className="hidden min-[400px]:inline">hidden</span></span>}
           </span>
           <span className="truncate text-xs text-[#8f8984]">
             {linked
-              ? <>Discord: <b className="font-semibold text-[#c9cbe8]">{me.discord}</b>{me.discordUser ? ` (@${me.discordUser})` : ""}</>
+              ? (me.hidden
+                ? <>Discord linked, hidden: others see Anonymous</>
+                : <>Discord: <b className="font-semibold text-[#c9cbe8]">@{me.discordUser || me.discord}</b></>)
               : "Anonymous. Link Discord to show your name and picture."}
           </span>
         </div>

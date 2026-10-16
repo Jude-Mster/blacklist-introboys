@@ -24,7 +24,7 @@ export default function BuySell() {
     finishing = state;
     navigate("/buysell", { replace: true });
     api("linkFinish", { code, state })
-      .then((r) => { setMe(r.me); setLinkNote(r.me && r.me.name ? `Discord linked. You now show as ${r.me.name} with your Discord picture.` : "Discord linked. Pick a chat name under \"You are\" to show a name."); })
+      .then((r) => { setMe(r.me); setLinkNote(`Discord linked. You now show as ${(r.me && r.me.name) || "your Discord username"} with your Discord picture.`); })
       .catch((e) => setLinkNote((e && e.response && e.response.data && e.response.data.error) || "Linking Discord didn't work. Try again."));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
