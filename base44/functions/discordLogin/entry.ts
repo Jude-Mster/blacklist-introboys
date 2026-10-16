@@ -244,6 +244,7 @@ export default async function(req) {
     }
 
     if (!code || !state || code.length > 200 || state.length > 100) return Response.json({ error: 'state' });
+    if (state.startsWith('bs_')) return Response.json({ error: 'state' });   // 6.25: a Buy and Sell name link is never a sign-in
 
     const settings = await getSettings(b);
     const invite_url = settings.discord_invite_url || '';

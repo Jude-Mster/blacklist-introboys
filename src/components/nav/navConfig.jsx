@@ -1,5 +1,5 @@
 import React from "react";
-import { Home, Trophy, ScrollText, Shield, Swords, MessageSquare, Spade, BookOpen, Store, Download, Flag } from "lucide-react";
+import { Home, Trophy, ScrollText, Shield, Swords, MessageSquare, Spade, BookOpen, Store, Download, Flag, Handshake } from "lucide-react";
 import { GAMES } from "@/lib/games";
 
 // One source of truth for every navigation surface.
@@ -34,6 +34,8 @@ export function GuildMark({ className = "", style }) {
 }
 export const FIGHT = { id: "arena", to: "/arena", label: "Fight", short: "Fight", icon: GuildMark };
 export const SHOP = { id: "shop", to: "/shop", label: "Guild shop", short: "Shop", icon: Store };
+// 6.25: Wuxen2 Buy and Sell inside the portal (the same open chat as the home page)
+export const MARKET = { id: "market", to: "/market", label: "Market", short: "Market", icon: Handshake };
 export const GUIDE = { id: "guide", to: "/guide", label: "Game guide", short: "Guide", icon: BookOpen };
 // External link to the Android APK. Shown in the mobile "More" sheet only, never in app mode.
 export const DOWNLOAD = { id: "download", label: "Download app", short: "App", icon: Download, href: true };

@@ -8,7 +8,8 @@ import RankBadge from "@/components/RankBadge";
 import { Points } from "@/components/SealLogo";
 import { useGuild } from "@/lib/GuildContext";
 import { GAME_ICONS } from "@/lib/gameIcons";
-import { HOME, GAMES_HUB, FIGHT, RANKINGS, CHAT, SHOP, GUIDE, PROFILE, ADMIN, gameLinks, isActive, isAdminRole, tableLinks } from "./navConfig";
+import { HOME, GAMES_HUB, FIGHT, RANKINGS, CHAT, SHOP, MARKET, GUIDE, PROFILE, ADMIN, gameLinks, isActive, isAdminRole, tableLinks } from "./navConfig";
+import { useBuySell, unreadTotal } from "@/lib/buysell";
 import { shouldShowAppDownload, inOldApp } from "@/lib/appMode";
 import AppDownloadGuide from "@/components/AppDownloadGuide";
 import { cn } from "@/lib/utils";
@@ -29,7 +30,8 @@ export default function MobileTabBar({ onChat, chatOpen, unread }) {
   // Close the sheet after moving to another page.
   useEffect(() => setMore(false), [location.pathname, location.search]);
 
-  const secondary = [SHOP, GUIDE, RANKINGS, PROFILE, ...(isAdminRole(member) ? [ADMIN] : [])];
+  const marketUnread = unreadTotal(useBuySell("lite"));   // 6.25
+  const secondary = [MARKET, SHOP, GUIDE, RANKINGS, PROFILE, ...(isAdminRole(member) ? [ADMIN] : [])];
   const inMore = secondary.some((i) => isActive(i, location));
   const quiet = chatOpen || more;
   const tabs = [
@@ -37,7 +39,7 @@ export default function MobileTabBar({ onChat, chatOpen, unread }) {
     { ...GAMES_HUB, active: !quiet && location.pathname === "/games" },
     { ...FIGHT, active: !quiet && isActive(FIGHT, location) },
     ...(member ? [{ ...CHAT, active: chatOpen && !more, onClick: onChat, badge: unread }] : []),
-    { id: "more", short: "More", icon: Menu, active: more || (!chatOpen && inMore), onClick: () => setMore(true) }
+    { id: "more", short: "More", icon: Menu, active: more || (!chatOpen && inMore), onClick: () => setMore(true), badge: marketUnread }
   ];
 
   const logout = async () => {
@@ -114,7 +116,10 @@ export default function MobileTabBar({ onChat, chatOpen, unread }) {
                       on ? "border-crimson bg-crimson/15 font-bold text-white" : "border-bronze bg-black/40 text-[hsl(var(--foreground))]"
                     )}
                   >
-                    <Icon className="h-6 w-6" />
+                    <span className="relative">
+                      <Icon className="h-6 w-6" />
+                      {item.id === "market" && marketUnread > 0 && <span className="absolute -right-3 -top-2 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-crimson px-1 text-[10px] font-bold text-white">{marketUnread > 9 ? "9+" : marketUnread}</span>}
+                    </span>
                     {item.short === "Ranks" ? "Rankings" : item.label.replace(" hall", "")}
                   </Link>
                 );

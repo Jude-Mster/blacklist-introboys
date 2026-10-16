@@ -34,11 +34,15 @@ export default async function(req) {
   const u = new URL(req.url);
 
   // User pressed Cancel on Discord, or Discord sent an error.
-  if (u.searchParams.get('error')) return back('/login?error=cancelled');
+  if (u.searchParams.get('error')) return back(String(u.searchParams.get('state') || '').startsWith('bs_') ? '/buysell?link=cancelled' : '/login?error=cancelled');
 
   const code = u.searchParams.get('code');
   const state = u.searchParams.get('state');
   if (!code || !state) return back('/login?error=state');
+
+  // 6.25: a visitor linking Discord to pick a name in Wuxen2 Buy and Sell (not a sign-in) goes back
+  // to the chat, which finishes the link itself (buysellAction linkFinish).
+  if (state.startsWith('bs_')) return back(`/buysell?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`);
 
   // Forward to the page; discordLogin does the verification and sign-in.
   return back(`/login?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`);

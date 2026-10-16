@@ -1,0 +1,64 @@
+{
+  "name": "BuySellMessage",
+  "type": "object",
+  "description": "Wuxen2 Buy and Sell: open chat messages (public, no sign-in)",
+  "properties": {
+    "author_vid": {
+      "type": "string",
+      "description": "Public visitor id (24 hex) or m_<Member id> for a guild member"
+    },
+    "name": {
+      "type": "string",
+      "description": "Name shown: a linked Discord user's chosen name or the member's name; empty for Anonymous"
+    },
+    "tag": {
+      "type": "string",
+      "description": "Four digits shown as Anonymous #NNNN"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "anon",
+        "discord",
+        "member"
+      ],
+      "default": "anon"
+    },
+    "role": {
+      "type": "string",
+      "description": "Guild rank for members"
+    },
+    "text": {
+      "type": "string"
+    },
+    "lang": {
+      "type": "string",
+      "description": "Language the message was written in"
+    },
+    "tr": {
+      "type": "object",
+      "description": "Translations saved when the message was sent: en, tl, th, es, pt, id"
+    },
+    "image_url": {
+      "type": "string"
+    },
+    "hidden": {
+      "type": "boolean",
+      "default": false,
+      "description": "Removed by an officer or by reports"
+    },
+    "reporters": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "vids that reported it"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

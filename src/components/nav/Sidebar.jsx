@@ -3,7 +3,8 @@ import { Link, useLocation } from "react-router-dom";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useGuild } from "@/lib/GuildContext";
 import { GAME_ICONS } from "@/lib/gameIcons";
-import { HOME, RANKINGS, PROFILE, ADMIN, CHAT, FIGHT, GuildMark, SHOP, GUIDE, gameLinks, isActive, isAdminRole, tableLinks } from "./navConfig";
+import { HOME, RANKINGS, PROFILE, ADMIN, CHAT, FIGHT, GuildMark, SHOP, MARKET, GUIDE, gameLinks, isActive, isAdminRole, tableLinks } from "./navConfig";
+import { useBuySell, unreadTotal } from "@/lib/buysell";
 import { cn } from "@/lib/utils";
 import { base44 } from "@/api/base44Client";
 
@@ -16,6 +17,7 @@ export default function Sidebar({ collapsed, onToggle, onChat, chatOpen, unread 
   const wide = !collapsed; // labels show only on lg+ and only when not collapsed
   const games = gameLinks(settings);
   const [tourOpen, setTourOpen] = useState(false);
+  const marketUnread = unreadTotal(useBuySell("lite"));   // 6.25: private Buy and Sell messages waiting
 
   // A dot on Fight while a tournament is open for sign-up or being fought.
   useEffect(() => {
@@ -49,6 +51,7 @@ export default function Sidebar({ collapsed, onToggle, onChat, chatOpen, unread 
         </Group>
 
         <Group label="Guild" wide={wide}>
+          <Item item={MARKET} active={isActive(MARKET, location)} wide={wide} badge={marketUnread} />
           <Item item={SHOP} active={isActive(SHOP, location)} wide={wide} />
           <Item item={RANKINGS} active={isActive(RANKINGS, location)} wide={wide} />
           <Item item={GUIDE} active={isActive(GUIDE, location)} wide={wide} />

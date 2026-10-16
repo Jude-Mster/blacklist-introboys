@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/AuthContext";
 import SkyScene from "@/components/SkyScene";
 import { FullLogo, Ingot } from "@/components/SealLogo";
 import { Trophy, Swords } from "lucide-react";
+import BuySellBubble from "@/components/buysell/BuySellBubble";
 
 export default function Landing() {
   const { isAuthenticated, authChecked } = useAuth();
@@ -13,7 +14,7 @@ export default function Landing() {
     <div className="relative min-h-[100svh] overflow-hidden">
       <SkyScene />
 
-      <main className="relative z-10 mx-auto flex min-h-[100svh] max-w-3xl flex-col items-center justify-center px-6 pb-16 pt-14 text-center">
+      <main className="relative z-10 mx-auto flex min-h-[100svh] max-w-3xl flex-col items-center justify-center px-6 pb-28 pt-14 text-center">
         <h1>
           <FullLogo className="mx-auto w-full max-w-[22rem] sm:max-w-[30rem]" />
         </h1>
@@ -40,6 +41,7 @@ export default function Landing() {
           <Link to="/privacy" className="underline">Privacy</Link> · <Link to="/terms" className="underline">Terms</Link>
         </p>
       </main>
+      <BuySellBubble />
     </div>);
 }
 
