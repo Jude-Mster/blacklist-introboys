@@ -7,7 +7,7 @@ import { E, member, settings, advance, ok, done } from './h.ts';
 import fn from '../base44/functions/buysellAction/entry.ts';
 
 const g = globalThis as any;
-g.__llm = async (p) => { await new Promise((r) => setTimeout(r, 2)); const t = /"""([\s\S]*)"""/.exec(p.prompt)?.[1] || ''; return { lang: 'en', en: t, tl: t, th: t, es: t, pt: t, id: t }; };
+g.__llm = async (p) => { await new Promise((r) => setTimeout(r, 2)); const t = /"""([\s\S]*)"""/.exec(p.prompt)?.[1] || ''; return { lang: 'en', en: t, tl: t, th: t, es: t, pt: t, id: t, zh: t }; };
 g.__byOp = {};
 
 const hex = () => Array.from(crypto.getRandomValues(new Uint8Array(32))).map((x) => x.toString(16).padStart(2, '0')).join('');
@@ -46,8 +46,9 @@ for (let ms = 0; ms < SECONDS * 1000; ms += 500) {
     p.next = ms + (p.open ? 4000 : 15000);
     polls++;
     jobs.push((async () => {
-      const r = await call(p, { action: 'poll', lite: !p.open, since: p.since, dmSince: p.dmSince });
+      const r = await call(p, { action: 'poll', lite: !p.open, since: p.since, dmSince: p.dmSince, trSince: p.trSince });
       if (!r.ok) { errors++; return; }
+      if (r.now) p.trSince = r.now;
       for (const m of r.items) { p.seen.add(m.id); if (m.at > p.since) p.since = m.at; }
       for (const d of r.dms) { p.dms.add(d.id); if (d.at > p.dmSince) p.dmSince = d.at; if (d.from !== p.vid && d.to !== p.vid) p.leak = true; }
     })());
@@ -65,6 +66,9 @@ for (let ms = 0; ms < SECONDS * 1000; ms += 500) {
       if (r.status === 429) { slow++; return; }      // "one message every 3 s": the visitor's own pace
       if (!r.ok) { errors++; console.error('send failed', r); return; }
       if (r.dm) { dmsSent++; sentDm.push({ id: r.dm.id, from: r.dm.from, to: r.dm.to }); } else { sends++; sentOpen.push(r.message.id); }
+      // 6.26: the sender's screen then asks for the translation
+      const tr = await call(t, { action: 'translate', id: (r.dm || r.message).id, where: r.dm ? 'private' : 'open' });
+      if (!tr.ok) { errors++; console.error('translate failed', tr); }
     })());
   }
   await Promise.all(jobs);

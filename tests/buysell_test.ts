@@ -10,7 +10,7 @@ g.__secrets = { DISCORD_CLIENT_ID: 'cid', DISCORD_CLIENT_SECRET: 'csecret', DISC
 g.__llm = async (p) => {
   const m = /Message: """([\s\S]*)"""/.exec(p.prompt);
   const t = m ? m[1] : '';
-  return { lang: /benta/i.test(t) ? 'tl' : 'en', en: `EN:${t}`, tl: `TL:${t}`, th: `TH:${t}`, es: `ES:${t}`, pt: `PT:${t}`, id: `ID:${t}` };
+  return { lang: /benta/i.test(t) ? 'tl' : 'en', en: `EN:${t}`, tl: `TL:${t}`, th: `TH:${t}`, es: `ES:${t}`, pt: `PT:${t}`, id: `ID:${t}`, zh: `ZH:${t}` };
 };
 
 const hex = () => Array.from(crypto.getRandomValues(new Uint8Array(32))).map((x) => x.toString(16).padStart(2, '0')).join('');
@@ -48,7 +48,17 @@ ok(noTok.status === 401, 'a call without any identity is refused');
 
 const s1 = await call(A, { action: 'send', text: 'WTS +7 glaive, benta ko na' });
 ok(s1.ok && s1.message.kind === 'anon' && s1.message.tag === helloA.me.tag, 'anonymous message posted');
-ok(s1.message.lang === 'tl' && s1.message.tr.en.startsWith('EN:') && s1.message.tr.th.startsWith('TH:'), 'translated once into every language and saved with the message');
+ok(!s1.message.tr && g.__llmCalls === undefined, '6.26: sending does not wait for the translator');
+const p0 = await call(B, { action: 'poll' });
+const t1 = await call(A, { action: 'translate', id: s1.message.id });
+ok(t1.message.lang === 'tl' && t1.message.tr.en.startsWith('EN:') && t1.message.tr.th.startsWith('TH:') && t1.message.tr.zh.startsWith('ZH:'), 'then translated into every language, Taiwan Chinese included, and saved');
+ok((await call(B, { action: 'translate', id: s1.message.id })).status === 404, 'only the author can ask for the translation');
+const calls = g.__llmCalls;
+await call(A, { action: 'translate', id: s1.message.id });
+ok(g.__llmCalls === calls, 'a message is translated only once');
+const p0b = await call(B, { action: 'poll', since: p0.items[p0.items.length - 1].at, trSince: p0.now });
+ok(p0b.items.length === 1 && p0b.items[0].tr && p0b.items[0].tr.zh, 'others get the translation on their next poll (trSince)');
+
 const fast = await call(A, { action: 'send', text: 'again' });
 ok(fast.status === 429, 'a second message within 3 s is refused');
 ok((await call(B, { action: 'send', text: 'see www.free-gold.net' })).status === 400, 'links refused by the server');
@@ -67,11 +77,14 @@ ok(p2.items.length === 1 && p2.items[0].text === 'how much?', 'poll with since r
 // no translation for numbers only, and untranslated when the translator fails
 step();
 const s2 = await call(C, { action: 'send', text: '500k' });
-ok(s2.ok && !s2.message.tr, 'numbers only: not sent to the translator');
+const c2 = g.__llmCalls;
+const t2 = await call(C, { action: 'translate', id: s2.message.id });
+ok(s2.ok && !t2.message.tr && g.__llmCalls === c2, 'numbers only: not sent to the translator');
 const keep = g.__llm; g.__llm = async () => { throw new Error('down'); };
 step();
 const s3 = await call(D, { action: 'send', text: 'still selling the armor' });
-ok(s3.ok && !s3.message.tr, 'translator down: message still goes out (original only)');
+const t3 = await call(D, { action: 'translate', id: s3.message.id });
+ok(s3.ok && t3.ok && !t3.message.tr, 'translator down: message still goes out (original only)');
 g.__llm = keep;
 
 // ---------- images ----------
@@ -91,7 +104,8 @@ const dm1 = await call(A, { action: 'send', to: helloA.me.vid, text: 'me' });
 ok(dm1.status === 400, "can't message yourself");
 const helloB = await call(B, { action: 'hello' });
 const dm = await call(A, { action: 'send', to: helloB.me.vid, text: 'pm: 1.5m for the glaive?' });
-ok(dm.ok && dm.dm.to === helloB.me.vid && dm.dm.tr && dm.dm.tag === helloA.me.tag, 'private message sent, translated');
+const tdm = await call(A, { action: 'translate', id: dm.dm.id, where: 'private' });
+ok(dm.ok && dm.dm.to === helloB.me.vid && tdm.message.tr && dm.dm.tag === helloA.me.tag, 'private message sent, then translated');
 step();
 const pb = await call(B, { action: 'poll', lite: true });
 ok(pb.dms.length === 1 && pb.dms[0].text.includes('1.5m') && pb.items.length === 0, 'the receiver gets it in a light poll (the bubble)');

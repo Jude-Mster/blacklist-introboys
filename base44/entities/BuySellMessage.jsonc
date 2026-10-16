@@ -37,7 +37,7 @@
     },
     "tr": {
       "type": "object",
-      "description": "Translations saved when the message was sent: en, tl, th, es, pt, id"
+      "description": "Translations: en, tl, th, es, pt, id, zh (Traditional Chinese, Taiwan)"
     },
     "image_url": {
       "type": "string"
@@ -53,6 +53,10 @@
         "type": "string"
       },
       "description": "vids that reported it"
+    },
+    "tr_at": {
+      "type": "string",
+      "description": "6.26: when the translation was saved (set once, even if the translator gave nothing)"
     }
   },
   "rls": {
