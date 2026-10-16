@@ -123,6 +123,8 @@ export function dmView(m) {
     to_name: m.to_name || '',
     to_tag: m.to_tag || '',
     to_kind: m.to_kind || 'anon',
+    // 6.27: "my Discord" card, made by the server from the sender's linked account
+    card: m.card_discord_id ? { id: String(m.card_discord_id), name: m.card_discord_name || '', username: m.card_discord_username || '', url: `https://discord.com/users/${m.card_discord_id}` } : null,
     text: m.text || '',
     lang: m.lang || '',
     tr: m.tr || null,

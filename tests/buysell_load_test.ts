@@ -93,7 +93,8 @@ ok(errors === 0, `no visitor saw an error in ${polls} polls and ${sends + dmsSen
 ok(sends > 200 && dmsSent > 100, 'plenty of trading happened');
 // Database work: polls share reads. Without sharing this would be 2 reads per poll.
 const perPoll = reads / polls;
-ok(perPoll < 0.08, `database reads per poll ${perPoll.toFixed(3)} (shared, not per visitor)`);
+ok(perPoll < 0.1,   // 6.27: members also read their own hide-name row (once per 30 s)
+   `database reads per poll ${perPoll.toFixed(3)} (shared, not per visitor)`);
 const pollReadsPerSec = reads / SECONDS;
 ok(pollReadsPerSec < 3 * ((sends + dmsSent) / SECONDS) + 2, `database reads per second ${pollReadsPerSec.toFixed(2)}: follow the messages sent, not the ${people.length} people watching`);
 ok((ops['Member.get'] || 0) < 120, `member rows are reused by polls (${ops['Member.get'] || 0} reads for ${MEMBERS} members)`);

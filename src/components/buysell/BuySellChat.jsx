@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Flag, ImagePlus, Languages, MessageSquare, X, Ban, Trash2, ShieldAlert, Loader2 } from "lucide-react";
+import { ArrowLeft, Flag, ImagePlus, Languages, MessageSquare, X, Ban, Trash2, ShieldAlert, Loader2, EyeOff, ExternalLink } from "lucide-react";
 import {
   LANGS, LANG_NAME, MAX_LEN, NAME_RE, RESERVED, blockedReason, useBuySell, conversations, unreadTotal, send, report, moderate,
-  readImage, displayName, bodyOf, ago, hueOf, setLang, setAuto, setViewing, dismissBanner, block, cooldownLeft, api, setMe
+  readImage, displayName, bodyOf, ago, hueOf, setLang, setAuto, setViewing, dismissBanner, block, cooldownLeft, api, setMe,
+  isMine, setHidden, shareDiscord
 } from "@/lib/buysell";
 import { cn } from "@/lib/utils";
 
@@ -66,7 +67,8 @@ export default function BuySellChat({ className = "", member = false, autoName =
   const unread = unreadTotal(s);
   const inThread = view !== "open" && view !== "dms";
   const peer = inThread ? (convos.find((c) => c.vid === view) || { vid: view, ...(peerInfo[view] || { tag: "0000", kind: "anon" }) }) : null;
-  const thread = inThread ? s.dms.filter((d) => (d.from === view && d.to === me?.vid) || (d.to === view && d.from === me?.vid)) : [];
+  const thread = inThread ? s.dms.filter((d) => (d.from === view && isMine(s, d.to)) || (d.to === view && isMine(s, d.from))) : [];
+  const via = peer && peer.via ? peer.via : "";   // 6.27: reply under the id this conversation already uses
   const openList = s.open.filter((m) => !s.blocked.includes(m.vid));
 
   useEffect(() => { setViewing(inThread ? view : ""); return () => setViewing(""); }, [view, inThread]);
@@ -85,7 +87,7 @@ export default function BuySellChat({ className = "", member = false, autoName =
   useEffect(() => { atBottom.current = true; }, [view]);
 
   const openThread = (x) => {
-    if (!x || !x.vid || (me && x.vid === me.vid)) return;
+    if (!x || !x.vid || isMine(s, x.vid)) return;
     setPeerInfo((p) => ({ ...p, [x.vid]: { name: x.name, tag: x.tag, kind: x.kind } }));
     setView(x.vid);
     dismissBanner();
@@ -114,7 +116,7 @@ export default function BuySellChat({ className = "", member = false, autoName =
     setDraft("");
     setPending("");
     setNote({ text: "", bad: false });
-    send({ text, image, to: inThread ? view : "", peer: inThread ? peer : null }).catch((err) => {
+    send({ text, image, to: inThread ? view : "", peer: inThread ? peer : null, from: inThread ? via : "" }).catch((err) => {
       // Not sent: put the words back (unless something new was typed) and say why.
       setDraft((d) => d || text);
       if (image) setPending((p) => p || image);
@@ -148,7 +150,7 @@ export default function BuySellChat({ className = "", member = false, autoName =
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {convos.length === 0 && <p className="px-4 py-2 text-[13px] text-[#8f8984]">No private chats yet. Tap <b className="text-[#e9e4df]">Message</b> on anyone in the open chat.</p>}
-          {convos.map((c) => <ConvoRow key={c.vid} c={c} me={me} active={view === c.vid} onOpen={() => openThread(c)} />)}
+          {convos.map((c) => <ConvoRow key={c.vid} c={c} s={s} active={view === c.vid} onOpen={() => openThread(c)} />)}
         </div>
         <MeBox me={me} meLabel={meLabel} member={member} onName={() => setNameOpen((v) => !v)} nameOpen={nameOpen} />
       </nav>
@@ -212,7 +214,7 @@ export default function BuySellChat({ className = "", member = false, autoName =
                   reported={!!reported[m.id]} onReport={() => doReport(m, "open")} onDm={() => openThread(m)} onZoom={setZoom}
                   confirmBan={confirmBan === m.id} onBanAsk={() => setConfirmBan(confirmBan === m.id ? "" : m.id)}
                   onRemove={() => moderate("remove", { id: m.id }).catch((e) => setNote({ text: errText(e), bad: true }))}
-                  onBan={() => { setConfirmBan(""); moderate("ban", { vid: m.vid }).catch((e) => setNote({ text: errText(e), bad: true })); }} />
+                  onBan={() => { setConfirmBan(""); moderate("ban", { id: m.id }).catch((e) => setNote({ text: errText(e), bad: true })); }} />
               ))}
             </>
           )}
@@ -221,7 +223,7 @@ export default function BuySellChat({ className = "", member = false, autoName =
             <>
               <p className="border-b border-[#1b1818] px-3.5 py-3 text-sm text-[#8f8984]">Only you and the other player can see a private chat. Tap <b className="text-[#e9e4df]">Message</b> on anyone in the open chat to start one.</p>
               {convos.length === 0 && <p className="px-3.5 py-6 text-sm text-[#8f8984]">No private chats yet.</p>}
-              {convos.map((c) => <ConvoRow key={c.vid} c={c} me={me} active={false} onOpen={() => openThread(c)} />)}
+              {convos.map((c) => <ConvoRow key={c.vid} c={c} s={s} active={false} onOpen={() => openThread(c)} />)}
               <div className={cn("mt-auto", !compact && "min-[760px]:hidden")}><MeBox me={me} meLabel={meLabel} member={member} onName={() => setNameOpen((v) => !v)} nameOpen={nameOpen} /></div>
             </>
           )}
@@ -231,7 +233,7 @@ export default function BuySellChat({ className = "", member = false, autoName =
               <p className="mx-auto rounded-full bg-[#1a1717] px-3 py-1 text-xs text-[#8f8984]">Private: only you and {displayName(peer)} can see this</p>
               {thread.length === 0 && <p className="text-center text-sm text-[#8f8984]">Say hello and what you'd like to trade.</p>}
               {thread.map((d) => {
-                const mine = d.from === me?.vid;
+                const mine = isMine(s, d.from);
                 const b = bodyOf(d, s, !!showOrig[d.id]);
                 return (
                   <div key={d.id} className={cn("flex", mine ? "justify-end" : "justify-start")}>
@@ -241,6 +243,7 @@ export default function BuySellChat({ className = "", member = false, autoName =
                           <img src={d.image} alt="Picture sent in a private chat" loading="lazy" className="block max-h-[200px] w-auto max-w-[240px]" />
                         </button>
                       )}
+                      {d.card && <DiscordCard card={d.card} mine={mine} />}
                       {b.text && <p className="m-0 [overflow-wrap:anywhere]">{b.text}</p>}
                       <Translated m={d} s={s} original={!!showOrig[d.id]} dark={mine} onFlip={() => setShowOrig((o) => ({ ...o, [d.id]: !o[d.id] }))} />
                       <div className={cn("mt-0.5 flex items-center gap-2 text-[11px]", mine ? "text-white/60" : "text-[#7f7975]")}>
@@ -255,6 +258,10 @@ export default function BuySellChat({ className = "", member = false, autoName =
             </div>
           )}
         </div>
+
+        {inThread && me && me.discord && canSend && (
+          <ShareDiscord me={me} peer={peer} onShare={() => shareDiscord(view, via).catch((e) => setNote({ text: errText(e), bad: true }))} />
+        )}
 
         {view !== "dms" && (
           <form onSubmit={submit} className="flex flex-col gap-2 border-t border-[#241f1f] bg-[#0a0909] px-3.5 pb-3 pt-2.5">
@@ -288,7 +295,7 @@ export default function BuySellChat({ className = "", member = false, autoName =
           </form>
         )}
 
-        {nameOpen && !member && me && me.kind !== "member" && <NamePanel me={me} suggest={autoName} onClose={() => setNameOpen(false)} />}
+        {nameOpen && !member && me && !me.member && <NamePanel me={me} suggest={autoName} onClose={() => setNameOpen(false)} />}
       </div>
 
       {zoom && (
@@ -312,9 +319,9 @@ function Tab({ on, onClick, children }) {
   );
 }
 
-function ConvoRow({ c, me, active, onOpen }) {
-  const lastMine = c.last && me && c.last.from === me.vid;
-  const lastText = c.last ? (c.last.text || "Picture") : "";
+function ConvoRow({ c, s, active, onOpen }) {
+  const lastMine = c.last && isMine(s, c.last.from);
+  const lastText = c.last ? (c.last.card ? "Discord shared" : c.last.text || "Picture") : "";
   return (
     <button type="button" onClick={onOpen} className={cn("flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-[#171414]", active && "bg-[#1a1515] shadow-[inset_3px_0_0_#e3171d]")}>
       <Avatar x={c} />
@@ -328,11 +335,32 @@ function ConvoRow({ c, me, active, onOpen }) {
 }
 
 function MeBox({ me, meLabel, member, onName, nameOpen }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const toggle = async () => {
+    setBusy(true); setErr("");
+    try { await setHidden(!me.hidden); } catch (e) { setErr(errText(e)); }
+    setBusy(false);
+  };
   return (
     <div className="flex flex-col gap-0.5 border-t border-[#241f1f] px-4 py-3 text-[13px] text-[#8f8984]">
       <span>You are</span>
-      <span className="flex items-center gap-1.5 text-[15px] font-semibold text-[#f2eeea]">{meLabel}{me && <Badges x={me} />}</span>
-      {!member && me && me.kind !== "member" && (
+      <span className="flex flex-wrap items-center gap-1.5 text-[15px] font-semibold text-[#f2eeea]">{meLabel}{me && <Badges x={me} />}
+        {me && me.hidden && <span className="inline-flex items-center gap-1 text-xs font-normal text-[#a29c97]"><EyeOff className="h-3.5 w-3.5" /> name hidden</span>}
+      </span>
+      {/* 6.27: anyone with Discord linked (members always are) can hide their name and post as Anonymous */}
+      {me && me.discord && (
+        <button type="button" role="switch" aria-checked={!me.hidden} onClick={toggle} disabled={busy}
+          className="mt-1.5 flex items-center gap-2 self-start py-1 text-[13px] text-[#cfc9c4] disabled:opacity-60">
+          <span aria-hidden="true" className={cn("relative h-4 w-7 shrink-0 rounded-full transition-colors", me.hidden ? "bg-[#3a3434]" : "bg-[#e3171d]")}>
+            <span className={cn("absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all", me.hidden ? "left-0.5" : "left-3.5")} />
+          </span>
+          {me.hidden ? `Show my name (${displayName(me.shownAs || {})})` : "Show my name"}
+        </button>
+      )}
+      {me && me.discord && <span className="text-xs text-[#6f6a66]">{me.hidden ? "Hidden: you post as Anonymous. Nobody can tell it's you." : "Turn off to post as Anonymous."}</span>}
+      {err && <span className="text-xs text-[#ff6b6b]">{err}</span>}
+      {!member && me && !me.member && (
         <button type="button" onClick={onName} className="self-start py-1.5 text-[13px] text-[#ff6b6b] underline">
           {nameOpen ? "Close" : me.discord ? "Change your name" : "Use your own name"}
         </button>
@@ -341,8 +369,55 @@ function MeBox({ me, meLabel, member, onName, nameOpen }) {
   );
 }
 
+// 6.27: a private chat can move to Discord: this sends the other person a card with a link to my Discord
+// profile (made by the server from my linked account; typed links stay blocked).
+function ShareDiscord({ me, peer, onShare }) {
+  const [ask, setAsk] = useState(false);
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t border-[#241f1f] bg-[#0d0c14] px-3.5 py-2 text-[13px] text-[#c9cbe8]">
+      {!ask ? (
+        <button type="button" onClick={() => setAsk(true)} className="inline-flex h-9 items-center gap-2 rounded-md bg-[#5865f2] px-3 font-semibold text-white hover:brightness-110">
+          <DiscordGlyph /> Share my Discord
+        </button>
+      ) : (
+        <>
+          <span className="min-w-0 flex-1">Send {displayName(peer)} a link to your Discord <b className="text-white">{me.discord}</b> so you can chat there?{me.hidden ? " They will see who you are." : ""}</span>
+          <button type="button" onClick={() => { setAsk(false); onShare(); }} className="h-9 rounded-md bg-[#5865f2] px-3 font-semibold text-white">Send</button>
+          <button type="button" onClick={() => setAsk(false)} className="h-9 px-2 underline">Cancel</button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function DiscordCard({ card, mine }) {
+  return (
+    <div className={cn("mb-1 flex min-w-[200px] flex-col gap-2 rounded-xl border p-3", mine ? "border-white/25 bg-black/20" : "border-[#3b3f8a] bg-[#14152b]")}>
+      <div className="flex items-center gap-2.5">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#5865f2] text-white"><DiscordGlyph /></span>
+        <span className="flex min-w-0 flex-col leading-tight">
+          <span className="truncate font-semibold text-white">{card.name || card.username}</span>
+          {card.username && <span className="truncate text-xs text-[#b5b9e6]">@{card.username}</span>}
+        </span>
+      </div>
+      <span className="text-xs text-[#c9cbe8]">{mine ? "You shared your Discord." : "Wants to keep chatting on Discord."}</span>
+      <a href={card.url} target="_blank" rel="noopener noreferrer nofollow" className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-[#5865f2] px-3 text-sm font-semibold text-white hover:brightness-110">
+        Open in Discord <ExternalLink className="h-3.5 w-3.5" />
+      </a>
+    </div>
+  );
+}
+
+function DiscordGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+      <path d="M19.5 5.6A16.4 16.4 0 0 0 15.4 4.3l-.5 1a15.2 15.2 0 0 0-5.8 0l-.5-1a16.4 16.4 0 0 0-4.1 1.3C1.9 9.4 1.2 13.2 1.5 16.9a16.5 16.5 0 0 0 5 2.5l1.1-1.7a10.7 10.7 0 0 1-1.7-.8l.4-.3a11.8 11.8 0 0 0 11.4 0l.4.3c-.5.3-1.1.6-1.7.8l1.1 1.7a16.5 16.5 0 0 0 5-2.5c.4-4.3-.6-8-3-11.3ZM8.7 14.6c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2Zm6.6 0c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2Z" />
+    </svg>
+  );
+}
+
 function OpenMessage({ m, s, me, compact, original, onFlip, reported, onReport, onDm, onZoom, onRemove, onBan, onBanAsk, confirmBan }) {
-  const mine = me && m.vid === me.vid;
+  const mine = isMine(s, m.vid);
   const b = bodyOf(m, s, original);
   return (
     <article className={cn("flex items-start gap-3 border-b border-[#1b1818] px-3.5 py-3", m.pending && "opacity-70")}>

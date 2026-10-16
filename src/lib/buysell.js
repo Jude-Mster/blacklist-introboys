@@ -115,7 +115,7 @@ function mergeDms(items, history = false) {
   const map = new Map(state.dms.map((m) => [m.id, m]));
   let newest = null;
   for (const d of items) {
-    if (!map.has(d.id) && !history && dmPrimed && state.me && d.from !== state.me.vid && !state.blocked.includes(d.from)) newest = d;
+    if (!map.has(d.id) && !history && dmPrimed && state.me && !isMine(state, d.from) && !state.blocked.includes(d.from)) newest = d;
     map.set(d.id, d);
   }
   const patch = { dms: [...map.values()].sort(byTime).slice(-600) };
@@ -143,19 +143,22 @@ export function block(vid) {
   set({ blocked, banner: state.banner && state.banner.from === vid ? null : state.banner });
 }
 export const setMe = (me) => set({ me });
+// 6.27: someone can own two ids (their own and the one they use while their name is hidden).
+export const myVids = (s) => (s.me ? s.me.vids || [s.me.vid] : []);
+export const isMine = (s, vid) => !!vid && myVids(s).includes(vid);
 
 // Conversations, newest first, from my private messages.
 export function conversations(s) {
-  const me = s.me && s.me.vid;
   const map = new Map();
   for (const d of s.dms) {
-    const mine = d.from === me;
+    const mine = isMine(s, d.from);
     const peer = mine ? d.to : d.from;
     if (s.blocked.includes(peer)) continue;
     const who = mine ? { name: d.to_name, tag: d.to_tag, kind: d.to_kind } : { name: d.name, tag: d.tag, kind: d.kind };
     const c = map.get(peer) || { vid: peer, ...who, last: null, unread: 0 };
     if (!mine && (who.name || who.kind)) Object.assign(c, who);   // their latest name
     c.last = d;
+    c.via = mine ? d.from : d.to;   // which of my ids this conversation uses
     if (!mine && d.at > (s.read[peer] || "")) c.unread++;
     map.set(peer, c);
   }
@@ -254,21 +257,21 @@ export const cooldownLeft = () => Math.max(0, SEND_GAP_MS - (Date.now() - lastSe
 let tmpN = 0;
 const nowIso = () => new Date().toISOString();
 const dropTmp = (id) => set({ open: state.open.filter((m) => m.id !== id), dms: state.dms.filter((m) => m.id !== id) });
-export async function send({ text, image, to, peer }) {
+export async function send({ text, image, to, peer, from }) {
   lastSent = Date.now();
   const me = state.me || {};
   const id = `tmp-${++tmpN}`;
   const at = nowIso();
   if (to) {
     const p = peer || {};
-    set({ dms: [...state.dms, { id, pending: true, from: me.vid, to, name: me.name, tag: me.tag, kind: me.kind, to_name: p.name || "", to_tag: p.tag || "", to_kind: p.kind || "anon", text, image: image || "", lang: "", tr: null, at }] });
+    set({ dms: [...state.dms, { id, pending: true, from: from || me.vid, to, name: me.name, tag: me.tag, kind: me.kind, to_name: p.name || "", to_tag: p.tag || "", to_kind: p.kind || "anon", text, image: image || "", lang: "", tr: null, at }] });
   } else {
     set({ open: [...state.open, { id, pending: true, vid: me.vid, name: me.name, tag: me.tag, kind: me.kind, role: me.role, text, image: image || "", lang: "", tr: null, at }] });
   }
   lastNews = Date.now();
   let r;
   try {
-    r = await api("send", { text, image: image || undefined, to: to || undefined });
+    r = await api("send", { text, image: image || undefined, to: to || undefined, from: from || undefined });
   } catch (e) {
     dropTmp(id);
     throw e;
@@ -286,12 +289,27 @@ export async function send({ text, image, to, peer }) {
   return r;
 }
 
+// 6.27: show or hide my name; send my Discord card in a private chat.
+export async function setHidden(hide) {
+  const r = await api("setHidden", { hide });
+  set({ me: r.me });
+  return r;
+}
+export async function shareDiscord(to, from) {
+  lastSent = Date.now();
+  const r = await api("shareDiscord", { to, from: from || undefined });
+  if (r.dm) { mergeDms([r.dm], true); markRead(to, r.dm.at); }
+  lastNews = Date.now();
+  schedule(1500);
+  return r;
+}
+
 export async function report(id, where = "open") { return api("report", { id, where }); }
 export async function moderate(action, data) {
   const r = await api(action, data);
   if (action === "remove" && data.where !== "private") set({ open: state.open.filter((m) => m.id !== data.id) });
   if (action === "remove" && data.where === "private") set({ dms: state.dms.filter((m) => m.id !== data.id) });
-  if (action === "ban") set({ open: state.open.filter((m) => m.vid !== data.vid) });
+  if (action === "ban") { const gone = new Set(r.vids || []); set({ open: state.open.filter((m) => m.id !== data.id && !gone.has(m.vid)) }); }
   return r;
 }
 
