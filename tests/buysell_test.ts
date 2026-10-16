@@ -186,10 +186,10 @@ ok(sessions === 2, 'linking created no members-portal session (only the two test
 ok((await call(D, { action: 'rename', name: 'Juts_Seller' })).status === 400, 'reserved words are refused');
 ok((await call(D, { action: 'rename', name: 'zKushina' })).status === 400, "a guild member's name is refused");
 const rn = await call(D, { action: 'rename', name: 'Lucky_Ox' });
-ok(rn.ok && rn.me.name === 'Lucky_Ox' && rn.me.kind === 'discord', 'name picked: shows with the Discord badge');
+ok(rn.ok && rn.me.name === 'lucky_ox' && rn.me.kind === 'discord', '6.29: linked visitors show as their Discord username');
 step();
 const named = await call(D, { action: 'send', text: 'WTB wings' });
-ok(named.message.name === 'Lucky_Ox' && named.message.kind === 'discord', 'messages show the chosen name');
+ok(named.message.name === 'lucky_ox' && named.message.kind === 'discord', 'messages show the Discord username');
 // someone else can't take it
 const ls2 = await call(A, { action: 'linkStart' });
 const st2 = new URL(ls2.url).searchParams.get('state');
@@ -203,7 +203,7 @@ await call(A, { action: 'linkFinish', code: 'xyz', state: st2 });
 ok((await call(A, { action: 'rename', name: 'lucky_OX' })).status === 400, 'names are unique (any upper/lower case)');
 globalThis.fetch = realFetch;
 const back2 = await call(D, { action: 'rename', name: '' });
-ok(back2.ok && back2.me.kind === 'discord' && back2.me.name === '', 'clearing the name keeps the Discord badge (hiding is the way to be Anonymous)');
+ok(back2.ok && back2.me.kind === 'discord' && back2.me.name === 'lucky_ox', 'the Discord username always shows while linked (hiding is the way to be Anonymous)');
 ok(tagOf('ffffffff0000') === tagOf('ffffffff1111'), 'the tag comes from the visitor id');
 
 // ---------- 6.27: hide my name, share my Discord ----------
@@ -226,12 +226,12 @@ ok(tagOf('ffffffff0000') === tagOf('ffffffff1111'), 'the tag comes from the visi
   await call(V, { action: 'rename', name: 'SellerV' });
   advance(3500);
   const named = await call(V, { action: 'send', text: 'named post' });
-  ok(named.message.name === 'SellerV' && named.message.vid === hv.me.vid, 'shown: posts with the name');
+  ok(named.message.name === 'seller_v' && named.message.vid === hv.me.vid && named.message.avatar, 'shown: posts with the Discord username and picture');
   const hid = await call(V, { action: 'setHidden', hide: true });
-  ok(hid.ok && hid.me.hidden && hid.me.kind === 'anon' && hid.me.vid !== hv.me.vid && hid.me.shownAs.name === 'SellerV', 'hidden: shows as Anonymous under a different id');
+  ok(hid.ok && hid.me.hidden && hid.me.kind === 'anon' && !hid.me.avatar && hid.me.vid !== hv.me.vid && hid.me.shownAs.name === 'seller_v', 'hidden: Anonymous, no picture, a different id');
   advance(3500);
   const anonPost = await call(V, { action: 'send', text: 'hidden post' });
-  ok(anonPost.message.kind === 'anon' && anonPost.message.name === '' && anonPost.message.vid === hid.me.vid && anonPost.message.tag !== named.message.tag, "hidden posts can't be matched to the named ones (other id, other tag)");
+  ok(anonPost.message.kind === 'anon' && !anonPost.message.avatar && anonPost.message.name === '' && anonPost.message.vid === hid.me.vid && anonPost.message.tag !== named.message.tag, "hidden posts can't be matched to the named ones (other id, other tag)");
   ok(!JSON.stringify(anonPost).includes(hv.me.vid), 'the real id is nowhere in what others receive');
   advance(3500);
   const toHidden = await call(W, { action: 'send', to: hid.me.vid, text: 'is it still for sale?' });
@@ -296,10 +296,10 @@ ok(tagOf('ffffffff0000') === tagOf('ffffffff1111'), 'the tag comes from the visi
   }) as any;
   const lf = await call(X, { action: 'linkFinish', code: 'c', state: stx });
   globalThis.fetch = rf;
-  ok(lf.ok && lf.me.kind === 'discord' && lf.me.name === 'NightFox' && lf.me.avatar === 'https://cdn.discordapp.com/avatars/222333444555666777/abc123.png?size=128', 'linked: shows the Discord name and picture straight away');
+  ok(lf.ok && lf.me.kind === 'discord' && lf.me.name === 'night.fox' && lf.me.avatar === 'https://cdn.discordapp.com/avatars/222333444555666777/abc123.png?size=128', 'linked: shows the Discord name and picture straight away');
   advance(2000);
   const sx = await call(X, { action: 'send', text: 'linked post' });
-  ok(sx.message.kind === 'discord' && sx.message.name === 'NightFox' && sx.message.avatar.includes('cdn.discordapp.com'), 'messages carry the Discord name and picture');
+  ok(sx.message.kind === 'discord' && sx.message.name === 'night.fox' && sx.message.avatar.includes('cdn.discordapp.com'), 'messages carry the Discord name and picture');
   const pulseOpen = (await E.BuySellPulse.filter({ key: 'open' }, {})).items[0];
   ok(pulseOpen && pulseOpen.msg && pulseOpen.msg.id === sx.message.id, 'the open-chat pulse carries the new message (screens add it without asking)');
   advance(1600);
@@ -328,4 +328,19 @@ ok(tagOf('ffffffff0000') === tagOf('ffffffff1111'), 'the tag comes from the visi
   ok(ul.ok && ul.me.kind === 'anon' && !ul.me.avatar && !ul.me.discord, 'unlink: back to Anonymous, picture gone');
 }
 
+{
+  advance(10000);
+  const J = anon();
+  const st = new URL((await call(J, { action: 'linkStart' })).url).searchParams.get('state');
+  const rf = globalThis.fetch;
+  globalThis.fetch = (async (url) => {
+    const u = String(url);
+    if (u.endsWith('/oauth2/token')) return new Response(JSON.stringify({ access_token: 't' }), { status: 200 });
+    if (u.endsWith('/users/@me')) return new Response(JSON.stringify({ id: '999888777666555444', username: 'jutsgaming', global_name: 'Juts', avatar: 'ff00' }), { status: 200 });
+    return new Response('{}', { status: 404 });
+  }) as any;
+  const lf = await call(J, { action: 'linkFinish', code: 'c', state: st });
+  globalThis.fetch = rf;
+  ok(lf.me.name === 'jutsgaming' && lf.me.kind === 'discord' && lf.me.avatar, 'a Discord username with a reserved word in it (jutsgaming) still shows: it is really theirs');
+}
 done();

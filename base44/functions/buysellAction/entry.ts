@@ -66,14 +66,17 @@ function linkedOf(who: Who, row) {
 const isHidden = (who: Who, row) => !!(row && row.hide_name && linkedOf(who, row) && who.alias);
 
 // How someone appears on a message. asAlias: posting under the hidden id.
+const discordShown = (row) => String(row.discord_username || row.discord_name || '').slice(0, 40);
+
 function face(who: Who, row, asAlias = isHidden(who, row)) {
   if (asAlias && who.alias) return { vid: who.alias, name: '', tag: tagOf(who.alias), kind: 'anon', role: '', avatar: '' };
   if (who.kind === 'member') {
     const m = who.member;
     return { vid: who.vid, name: m.discord_name || 'Member', tag: '', kind: 'member', role: m.role || 'member', avatar: safeAvatar(m.avatar_url) };
   }
-  // 6.28: linked = shown with the Discord badge and picture straight away (name: the one picked at linking)
-  if (row && row.discord_id) return { vid: who.vid, name: row.name || '', tag: tagOf(who.vid), kind: 'discord', role: '', avatar: safeAvatar(row.discord_avatar) };
+  // 6.29: linked = shown by their Discord username (unique on Discord and really theirs), with the Discord
+  // badge and picture. Hidden (above) = Anonymous with no picture.
+  if (row && row.discord_id) return { vid: who.vid, name: discordShown(row), tag: tagOf(who.vid), kind: 'discord', role: '', avatar: safeAvatar(row.discord_avatar) };
   return { vid: who.vid, name: '', tag: tagOf(who.vid), kind: 'anon', role: '', avatar: '' };
 }
 
@@ -120,7 +123,7 @@ async function recipient(b, vid: string) {
   }
   if (!VID_RE.test(vid)) throw new UserError('Pick who to message.');
   const row = await userRow(b, vid);
-  if (row && row.discord_id && !row.hide_name) return { name: row.name || '', tag: tagOf(vid), kind: 'discord', avatar: safeAvatar(row.discord_avatar) };
+  if (row && row.discord_id && !row.hide_name) return { name: discordShown(row), tag: tagOf(vid), kind: 'discord', avatar: safeAvatar(row.discord_avatar) };
   return { name: '', tag: tagOf(vid), kind: 'anon', avatar: '' };
 }
 
