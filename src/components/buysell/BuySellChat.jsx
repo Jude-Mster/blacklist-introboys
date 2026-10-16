@@ -45,7 +45,8 @@ function Translated({ m, s, original, onFlip, dark }) {
   );
 }
 
-export default function BuySellChat({ className = "", member = false, autoName = null }) {
+// compact: the narrow layout (tabs, no side list) at every screen width, for the members' chat drawer.
+export default function BuySellChat({ className = "", member = false, autoName = null, compact = false }) {
   const s = useBuySell("full");
   const me = s.me;
   const [view, setView] = useState("open");        // open | dms | <peer vid>
@@ -54,7 +55,6 @@ export default function BuySellChat({ className = "", member = false, autoName =
   const [reported, setReported] = useState({});
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState("");
-  const [sending, setSending] = useState(false);
   const [note, setNote] = useState({ text: "", bad: false });
   const [zoom, setZoom] = useState("");
   const [nameOpen, setNameOpen] = useState(false);
@@ -99,28 +99,27 @@ export default function BuySellChat({ className = "", member = false, autoName =
     catch (err) { setNote({ text: errText(err), bad: true }); }
   };
 
-  const submit = async (e) => {
+  // 6.26: sending is instant: the message shows straight away (marked "Sending…" until the server has it)
+  // and the box is cleared at once, so the next message can be typed while this one goes out.
+  const submit = (e) => {
     e.preventDefault();
-    if (sending) return;
     const text = draft.replace(/\s+/g, " ").trim();
     if (!text && !pending) return setNote({ text: "Type a message first.", bad: true });
     const bad = blockedReason(text);
     if (bad) return setNote({ text: `${bad} Trade inside the game.`, bad: true });
     const wait = cooldownLeft();
     if (wait > 0) return setNote({ text: `Wait ${Math.ceil(wait / 1000)} s before the next message.`, bad: true });
-    setSending(true);
-    setNote({ text: pending ? "Sending the picture…" : "Sending…", bad: false });
-    try {
-      atBottom.current = true;
-      await send({ text, image: pending, to: inThread ? view : "" });
-      setDraft("");
-      setPending("");
-      setNote({ text: "", bad: false });
-    } catch (err) {
-      setNote({ text: errText(err), bad: true });
-    } finally {
-      setSending(false);
-    }
+    const image = pending;
+    atBottom.current = true;
+    setDraft("");
+    setPending("");
+    setNote({ text: "", bad: false });
+    send({ text, image, to: inThread ? view : "", peer: inThread ? peer : null }).catch((err) => {
+      // Not sent: put the words back (unless something new was typed) and say why.
+      setDraft((d) => d || text);
+      if (image) setPending((p) => p || image);
+      setNote({ text: `Not sent: ${errText(err)}`, bad: true });
+    });
   };
 
   const doReport = async (m, where) => {
@@ -137,7 +136,7 @@ export default function BuySellChat({ className = "", member = false, autoName =
   return (
     <div className={cn("relative flex h-full min-h-0 overflow-hidden rounded-[10px] border border-[#2a2626] bg-[#0e0d0d] text-[15px] leading-[1.45] text-[#e9e4df] sm:text-base", className)}>
       {/* conversations: beside the chat on wide screens */}
-      <nav aria-label="Conversations" className="hidden w-[280px] shrink-0 flex-col border-r border-[#241f1f] bg-[#0a0909] min-[760px]:flex">
+      <nav aria-label="Conversations" className={cn("hidden w-[280px] shrink-0 flex-col border-r border-[#241f1f] bg-[#0a0909]", !compact && "min-[760px]:flex")}>
         <div className="px-4 pb-2.5 pt-4 font-heading text-[22px] font-bold tracking-[0.08em]">WUXEN2 <span className="text-[#e3171d]">BUY AND SELL</span></div>
         <button type="button" onClick={() => setView("open")} className={cn("flex items-center gap-3 px-4 py-2.5 text-left hover:bg-[#171414]", view === "open" && "bg-[#1a1515] shadow-[inset_3px_0_0_#e3171d]")}>
           <span aria-hidden="true" className="grid h-9 w-9 place-items-center rounded-lg bg-[#2a0c0d] font-heading text-xl font-bold text-[#ff6b6b]">#</span>
@@ -156,7 +155,7 @@ export default function BuySellChat({ className = "", member = false, autoName =
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {/* phones: tabs instead of the list */}
-        <div role="tablist" aria-label="Chat" className="flex border-b border-[#241f1f] min-[760px]:hidden">
+        <div role="tablist" aria-label="Chat" className={cn("flex border-b border-[#241f1f]", !compact && "min-[760px]:hidden")}>
           <Tab on={view === "open"} onClick={() => setView("open")}>Open chat</Tab>
           <Tab on={view !== "open"} onClick={() => setView("dms")}>
             Private
@@ -168,11 +167,11 @@ export default function BuySellChat({ className = "", member = false, autoName =
           {inThread && (
             <button type="button" onClick={() => setView("dms")} aria-label="Back to private messages" className="grid h-10 w-10 place-items-center rounded-md hover:bg-white/5"><ArrowLeft className="h-[18px] w-[18px]" /></button>
           )}
-          <div className={cn("min-w-0 flex-1 flex-col", inThread ? "flex" : "hidden min-[760px]:flex")}>
+          <div className={cn("min-w-0 flex-1 flex-col", inThread ? "flex" : compact ? "hidden" : "hidden min-[760px]:flex")}>
             <span className="flex items-center gap-2 font-heading text-xl font-bold tracking-[0.04em]">{roomTitle}{inThread && <Badges x={peer} />}</span>
             <span className="text-xs text-[#7f7975]">{roomSub}</span>
           </div>
-          <label className={cn("flex items-center gap-1.5 text-sm text-[#a29c97]", !inThread && "flex-1 min-[760px]:flex-none")}>
+          <label className={cn("flex items-center gap-1.5 text-sm text-[#a29c97]", !inThread && (compact ? "flex-1" : "flex-1 min-[760px]:flex-none"))}>
             <Languages className="h-[18px] w-[18px]" aria-hidden="true" />
             <span className="sr-only">Show messages in</span>
             <select value={s.lang} onChange={(e) => setLang(e.target.value)} className="h-10 min-w-0 flex-1 rounded border border-[#332d2d] bg-[#050505] px-2 text-sm text-[#e9e4df]">
@@ -184,7 +183,7 @@ export default function BuySellChat({ className = "", member = false, autoName =
             <span aria-hidden="true" className={cn("relative h-4 w-7 rounded-full transition-colors", s.auto ? "bg-[#e3171d]" : "bg-[#3a3434]")}>
               <span className={cn("absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all", s.auto ? "left-3.5" : "left-0.5")} />
             </span>
-            <span className="hidden min-[400px]:inline">Auto-translate</span><span className="min-[400px]:hidden">Translate</span>
+            {compact ? <span>Translate</span> : <><span className="hidden min-[400px]:inline">Auto-translate</span><span className="min-[400px]:hidden">Translate</span></>}
           </button>
         </div>
 
@@ -208,7 +207,7 @@ export default function BuySellChat({ className = "", member = false, autoName =
               {s.ready && openList.length === 0 && !s.off && <p className="px-3.5 py-6 text-sm text-[#8f8984]">No messages yet. Say what you're buying or selling.</p>}
               {s.off && <p className="px-3.5 py-6 text-sm text-[#8f8984]">Buy and Sell is closed right now. Check back later.</p>}
               {openList.map((m) => (
-                <OpenMessage key={m.id} m={m} s={s} me={me}
+                <OpenMessage key={m.id} m={m} s={s} me={me} compact={compact}
                   original={!!showOrig[m.id]} onFlip={() => setShowOrig((o) => ({ ...o, [m.id]: !o[m.id] }))}
                   reported={!!reported[m.id]} onReport={() => doReport(m, "open")} onDm={() => openThread(m)} onZoom={setZoom}
                   confirmBan={confirmBan === m.id} onBanAsk={() => setConfirmBan(confirmBan === m.id ? "" : m.id)}
@@ -223,7 +222,7 @@ export default function BuySellChat({ className = "", member = false, autoName =
               <p className="border-b border-[#1b1818] px-3.5 py-3 text-sm text-[#8f8984]">Only you and the other player can see a private chat. Tap <b className="text-[#e9e4df]">Message</b> on anyone in the open chat to start one.</p>
               {convos.length === 0 && <p className="px-3.5 py-6 text-sm text-[#8f8984]">No private chats yet.</p>}
               {convos.map((c) => <ConvoRow key={c.vid} c={c} me={me} active={false} onOpen={() => openThread(c)} />)}
-              <div className="mt-auto min-[760px]:hidden"><MeBox me={me} meLabel={meLabel} member={member} onName={() => setNameOpen((v) => !v)} nameOpen={nameOpen} /></div>
+              <div className={cn("mt-auto", !compact && "min-[760px]:hidden")}><MeBox me={me} meLabel={meLabel} member={member} onName={() => setNameOpen((v) => !v)} nameOpen={nameOpen} /></div>
             </>
           )}
 
@@ -245,8 +244,8 @@ export default function BuySellChat({ className = "", member = false, autoName =
                       {b.text && <p className="m-0 [overflow-wrap:anywhere]">{b.text}</p>}
                       <Translated m={d} s={s} original={!!showOrig[d.id]} dark={mine} onFlip={() => setShowOrig((o) => ({ ...o, [d.id]: !o[d.id] }))} />
                       <div className={cn("mt-0.5 flex items-center gap-2 text-[11px]", mine ? "text-white/60" : "text-[#7f7975]")}>
-                        <span>{ago(d.at)}</span>
-                        {!mine && !reported[d.id] && <button type="button" onClick={() => doReport(d, "private")} className="underline">Report and block</button>}
+                        <span>{d.pending ? "Sending…" : ago(d.at)}</span>
+                        {!mine && !d.pending && !reported[d.id] && <button type="button" onClick={() => doReport(d, "private")} className="underline">Report and block</button>}
                         {me && me.moderator && <button type="button" onClick={() => moderate("remove", { id: d.id, where: "private" })} className="underline">Remove</button>}
                       </div>
                     </div>
@@ -278,9 +277,9 @@ export default function BuySellChat({ className = "", member = false, autoName =
                   placeholder={!canSend ? (me && me.banned ? "You have been removed from Buy and Sell" : "Closed right now") : inThread ? `Message ${displayName(peer)}` : `Message as ${meLabel}`}
                   className="h-[46px] min-w-0 flex-1 rounded-md border border-[#332d2d] bg-[#050505] px-3.5 text-base text-[#e9e4df] placeholder:text-[#6f6a66] focus:border-[#e3171d] focus:outline-none" />
               </label>
-              <button type="submit" disabled={sending || !canSend}
+              <button type="submit" disabled={!canSend}
                 className="h-[46px] shrink-0 rounded-md bg-[#e3171d] px-5 font-heading text-[17px] font-bold tracking-[0.08em] text-white hover:brightness-110 disabled:opacity-50">
-                {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : "SEND"}
+                SEND
               </button>
             </div>
             <p role="status" className={cn("m-0 min-h-[18px] text-xs", note.bad ? "text-[#ff6b6b]" : "text-[#7f7975]")}>
@@ -342,17 +341,17 @@ function MeBox({ me, meLabel, member, onName, nameOpen }) {
   );
 }
 
-function OpenMessage({ m, s, me, original, onFlip, reported, onReport, onDm, onZoom, onRemove, onBan, onBanAsk, confirmBan }) {
+function OpenMessage({ m, s, me, compact, original, onFlip, reported, onReport, onDm, onZoom, onRemove, onBan, onBanAsk, confirmBan }) {
   const mine = me && m.vid === me.vid;
   const b = bodyOf(m, s, original);
   return (
-    <article className="flex items-start gap-3 border-b border-[#1b1818] px-3.5 py-3">
+    <article className={cn("flex items-start gap-3 border-b border-[#1b1818] px-3.5 py-3", m.pending && "opacity-70")}>
       <Avatar x={m} />
       <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="font-semibold text-[#f2eeea]">{displayName(m)}{mine ? " (you)" : ""}</span>
           <Badges x={m} />
-          <span className="text-[13px] text-[#7f7975]">{ago(m.at)}</span>
+          <span className="text-[13px] text-[#7f7975]">{m.pending ? "Sending…" : ago(m.at)}</span>
         </div>
         {b.text && <p className="m-0 text-[#e2ddd8] [overflow-wrap:anywhere]">{b.text}</p>}
         {m.image && (
@@ -374,7 +373,7 @@ function OpenMessage({ m, s, me, original, onFlip, reported, onReport, onDm, onZ
         <div className="flex shrink-0 items-center">
           <button type="button" onClick={onDm} aria-label={`Message ${displayName(m)} privately`}
             className="inline-flex h-9 items-center gap-1.5 rounded-full border border-[#332d2d] px-2.5 text-[13px] text-[#cfc9c4] hover:border-[#e3171d] hover:text-white">
-            <MessageSquare className="h-[15px] w-[15px]" /> <span className="hidden min-[400px]:inline">Message</span>
+            <MessageSquare className="h-[15px] w-[15px]" /> <span className={compact ? "sr-only" : "hidden min-[400px]:inline"}>Message</span>
           </button>
           {reported
             ? <span className="px-1.5 text-xs text-[#7f7975]">Reported</span>

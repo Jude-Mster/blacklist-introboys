@@ -70,13 +70,16 @@ function meView(who: Who, row) {
 }
 
 // The newest open messages and private messages, shared by everyone asking within READ_MS.
+// Each carries the time the read STARTED: a translation saved after that is sure to be in the next read.
 const openWindow = (b) => memo('bs:pub', READ_MS, async () => {
+  const at = new Date().toISOString();
   const { items } = await b.asServiceRole.entities.BuySellMessage.filter({ hidden: false }, { sort: '-created_date', limit: PUBLIC_WINDOW });
-  return items.map(publicView).reverse();
+  return { at, items: items.map(publicView).reverse() };
 });
 const dmWindow = (b) => memo('bs:dm', READ_MS, async () => {
+  const at = new Date().toISOString();
   const { items } = await b.asServiceRole.entities.BuySellDM.filter({ hidden: false }, { sort: '-created_date', limit: DM_WINDOW });
-  return items.map(dmView).reverse();
+  return { at, items: items.map(dmView).reverse() };
 });
 
 async function recipient(b, vid: string) {
@@ -121,7 +124,8 @@ export default async function(req) {
     const settings = await getSettings(b);
     const off = settings.buysell_enabled === false;
     const poll = action === 'poll';
-    const who = await identify(b, req, p, poll);
+    // Reading and translating never touch points, so they may reuse a member row read a moment ago.
+    const who = await identify(b, req, p, poll || action === 'translate');
     if (!who) throw new UserError('Reload the page to join the chat.', 401);
 
     // ----- Reading -----
@@ -129,10 +133,15 @@ export default async function(req) {
       if (off) return Response.json({ ok: true, off: true, items: [], dms: [] });
       const since = typeof p.since === 'string' ? p.since : '';
       const dmSince = typeof p.dmSince === 'string' ? p.dmSince : '';
-      const [open, dms] = await Promise.all([p.lite ? Promise.resolve([]) : openWindow(b), dmWindow(b)]);
-      const mine = dms.filter((d) => (d.from === who.vid || d.to === who.vid) && (!dmSince || d.at > dmSince));
-      const items = since ? open.filter((m) => m.at > since) : open;
-      return Response.json({ ok: true, items, dms: mine, vid: who.vid });
+      // 6.26: trSince = the `now` of the caller's last poll: messages translated since then come again
+      // (with their translations) even though they aren't new.
+      const trSince = typeof p.trSince === 'string' ? p.trSince : '';
+      const [open, dms] = await Promise.all([p.lite ? Promise.resolve(null) : openWindow(b), dmWindow(b)]);
+      const fresh = (x, cursor) => !cursor || x.at > cursor || (!!trSince && !!x.tr_at && x.tr_at > trSince);
+      const mine = dms.items.filter((d) => (d.from === who.vid || d.to === who.vid) && fresh(d, dmSince));
+      const items = open ? open.items.filter((m) => fresh(m, since)) : [];
+      const now = open && open.at < dms.at ? open.at : dms.at;
+      return Response.json({ ok: true, items, dms: mine, vid: who.vid, now });
     }
 
     if (action === 'hello') {
@@ -185,10 +194,10 @@ export default async function(req) {
         bust(`bsu:${who.vid}`);
       }
       const f = face(who, row);
-      const [imageUrl, t] = await Promise.all([
-        image ? uploadImage(b, image) : Promise.resolve(''),
-        text ? translateAll(b, text, perMinute(settings)) : Promise.resolve({ lang: '', tr: null })
-      ]);
+      // 6.26: posted straight away, untranslated; the sender's screen asks for the translation next
+      // (action 'translate'), so nobody waits for the translator.
+      const imageUrl = image ? await uploadImage(b, image) : '';
+      const t = { lang: '', tr: null };
 
       if (target) {
         const dm = await b.asServiceRole.entities.BuySellDM.create({
@@ -206,6 +215,23 @@ export default async function(req) {
       });
       bust('bs:pub');
       return Response.json({ ok: true, message: publicView(msg) });
+    }
+
+    // 6.26: translate a message just sent. Only its author may ask, and only once.
+    if (action === 'translate') {
+      const where = p.where === 'private' ? 'private' : 'open';
+      const E = where === 'private' ? b.asServiceRole.entities.BuySellDM : b.asServiceRole.entities.BuySellMessage;
+      const m = await E.get(String(p.id || '')).catch(() => null);
+      if (!m) throw new UserError('Message not found.', 404);
+      const author = where === 'private' ? m.from_vid : m.author_vid;
+      if (author !== who.vid) throw new UserError('Message not found.', 404);
+      const view = where === 'private' ? dmView : publicView;
+      if (m.tr || m.tr_at || !m.text) return Response.json({ ok: true, message: view(m) });
+      const t = await translateAll(b, m.text, perMinute(settings));
+      // tr_at is set even when nothing came back, so the message is never sent to the translator twice.
+      const saved = await E.update(m.id, { lang: t.lang, tr: t.tr, tr_at: new Date().toISOString() });
+      bust(where === 'private' ? 'bs:dm' : 'bs:pub');
+      return Response.json({ ok: true, message: view({ ...m, ...saved }) });
     }
 
     // ----- Safety -----

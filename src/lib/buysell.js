@@ -13,7 +13,8 @@ export const LANGS = [
   { code: "th", name: "Thai", label: "ไทย (Thai)" },
   { code: "es", name: "Spanish", label: "Español" },
   { code: "pt", name: "Portuguese", label: "Português" },
-  { code: "id", name: "Indonesian", label: "Bahasa Indonesia" }
+  { code: "id", name: "Indonesian", label: "Bahasa Indonesia" },
+  { code: "zh", name: "Chinese (Taiwan)", label: "繁體中文 (台灣)" }   // 6.26
 ];
 export const LANG_NAME = Object.fromEntries(LANGS.map((l) => [l.code, l.name]));
 export const MAX_LEN = 300;
@@ -71,6 +72,7 @@ function guessLang() {
   try {
     const l = String(navigator.language || "en").toLowerCase();
     if (l.startsWith("fil") || l.startsWith("tl")) return "tl";
+    if (l.startsWith("zh")) return "zh";
     for (const c of ["th", "es", "pt", "id"]) if (l.startsWith(c)) return c;
     if (l.startsWith("in") || l.startsWith("ms")) return "id";
   } catch { /* no navigator */ }
@@ -169,6 +171,7 @@ let lastNews = 0;
 let since = "";
 let dmSince = "";
 let inboxDone = false;
+let trSince = "";   // 6.26: the server time of the last poll, so translations made since then come through
 let helloDone = false;
 
 async function hello() {
@@ -193,8 +196,9 @@ async function tick() {
       mergeDms(ib.dms, true);
       for (const d of ib.dms) if (d.at > dmSince) dmSince = d.at;
     }
-    const r = await api("poll", { lite: !full, since: full ? since : "", dmSince });
+    const r = await api("poll", { lite: !full, since: full ? since : "", dmSince, trSince });
     if (r.off) set({ off: true });
+    if (r.now) trSince = r.now;
     let news = false;
     if (full) {
       news = mergeOpen(r.items) || news;
@@ -244,13 +248,41 @@ export function useBuySell(mode = "full") {
 let lastSent = 0;
 export const cooldownLeft = () => Math.max(0, SEND_GAP_MS - (Date.now() - lastSent));
 
-export async function send({ text, image, to }) {
+// 6.26: instant. The message is shown at once (marked pending) and swapped for the real one when the
+// server has it; then its translation is asked for in the background. On failure it is taken back out and
+// the error is passed on, so the screen can put the words back in the box.
+let tmpN = 0;
+const nowIso = () => new Date().toISOString();
+const dropTmp = (id) => set({ open: state.open.filter((m) => m.id !== id), dms: state.dms.filter((m) => m.id !== id) });
+export async function send({ text, image, to, peer }) {
   lastSent = Date.now();
-  const r = await api("send", { text, image: image || undefined, to: to || undefined });
+  const me = state.me || {};
+  const id = `tmp-${++tmpN}`;
+  const at = nowIso();
+  if (to) {
+    const p = peer || {};
+    set({ dms: [...state.dms, { id, pending: true, from: me.vid, to, name: me.name, tag: me.tag, kind: me.kind, to_name: p.name || "", to_tag: p.tag || "", to_kind: p.kind || "anon", text, image: image || "", lang: "", tr: null, at }] });
+  } else {
+    set({ open: [...state.open, { id, pending: true, vid: me.vid, name: me.name, tag: me.tag, kind: me.kind, role: me.role, text, image: image || "", lang: "", tr: null, at }] });
+  }
+  lastNews = Date.now();
+  let r;
+  try {
+    r = await api("send", { text, image: image || undefined, to: to || undefined });
+  } catch (e) {
+    dropTmp(id);
+    throw e;
+  }
+  dropTmp(id);
   if (r.message) mergeOpen([r.message]);
   if (r.dm) { mergeDms([r.dm], true); markRead(to, r.dm.at); }
-  lastNews = Date.now();
   schedule(1500);
+  const real = r.message || r.dm;
+  if (real && real.text) {
+    api("translate", { id: real.id, where: r.dm ? "private" : "open" })
+      .then((t) => { if (t && t.message) { if (r.dm) mergeDms([t.message], true); else mergeOpen([t.message]); } })
+      .catch(() => { /* stays in its original language */ });
+  }
   return r;
 }
 
