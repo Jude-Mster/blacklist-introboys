@@ -10,7 +10,8 @@ import { WAR, warStatus, localTime } from "@/lib/war";
 import { cn } from "@/lib/utils";
 
 const WIKI = "https://wiki.wuxen2.com/";
-// Sections of the official Wuxen2 wiki, in the wiki's own menu order (checked 12 Oct 2026).
+// Sections of the official Wuxen2 wiki, in the wiki's own menu order (checked 16 Oct 2026: Event Mall and
+// Life or Death added; the Holy Stone Battle page was taken off the wiki, its old link opens Regular Battle).
 const PAGES = [
   { id: "outpost-war", label: "Regular Battle" },
   { id: "boxes", label: "Boxes" },
@@ -19,6 +20,7 @@ const PAGES = [
   { id: "wing-enhance", label: "Wing Enhance" },
   { id: "upgrade", label: "Upgrade / Downgrade" },
   { id: "combine", label: "Combine" },
+  { id: "event-mall", label: "Event Mall", isNew: true },
   { id: "premium", label: "Premium" },
   { id: "battle-pass", label: "Battle Pass" },
   { id: "daily-quest", label: "Daily Quest" },
@@ -26,8 +28,8 @@ const PAGES = [
   { id: "mount", label: "Mount" },
   { id: "pet", label: "Pets" },
   { id: "labyrinth", label: "Labyrinth" },
+  { id: "life-or-death", label: "Life or Death", isNew: true },
   { id: "golden-charm", label: "Gold Plate Scroll" },
-  { id: "holy-stone", label: "Holy Stone Battle" },
   { id: "rank-buff", label: "Rank Buff" },
   { id: "tribe-leader", label: "Clan Leader" },
   { id: "fury", label: "Rage Burst" },
@@ -39,6 +41,8 @@ const PAGES = [
   { id: "halo", label: "Halo" },
   { id: "costume", label: "Costume" }
 ];
+// Old links to sections the wiki no longer has go to the closest page that still explains it.
+const MOVED = { "holy-stone": "rank-buff" };
 
 // The official Wuxen2 wiki, shown inside the guild site, with the live war clock on top.
 export default function Guide() {
@@ -47,7 +51,8 @@ export default function Guide() {
   if (loading) return <LanternSpinner label="Opening the guide" className="py-24" />;
   if (!account || !account.linked) return <Navigate to="/link-discord" replace />;
 
-  const current = PAGES.find((p) => p.id === params.get("page")) || PAGES[0];
+  const asked = params.get("page");
+  const current = PAGES.find((p) => p.id === (MOVED[asked] || asked)) || PAGES[0];
   const url = `${WIKI}#${current.id}`;
   const s = warStatus();
   const gate = s.nextGate;
@@ -86,7 +91,8 @@ export default function Guide() {
             <Time label="Battle" value={`${localDayTime(h.startsAt)} to ${localTime(h.endsAt)}`} />
           </dl>
         </div>
-        <p className="mt-2 text-xs text-mist/80">Holy Stone Battle (HSB): every Wednesday 16:00 and Saturday 10:00 UTC, for 3 hours, with a 10-minute countdown first. Shown in your own time zone.</p>
+        <p className="mt-2 text-xs text-mist/80">Holy Stone Battle (HSB): every Wednesday 16:00 and Saturday 10:00 UTC, for 3 hours, with a 10-minute countdown first. Shown in your own time zone.{" "}
+          <button type="button" onClick={() => setParams({ page: "rank-buff" }, { replace: true })} className="underline hover:text-gold">Rank Buff</button> explains the HSB rank points and buffs.</p>
       </section>
 
       <div role="tablist" aria-label="Guide sections" className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
@@ -100,6 +106,7 @@ export default function Guide() {
             className={cn("btn-bronze h-9 shrink-0 px-3 text-sm")}
           >
             {p.label}
+            {p.isNew && <span className="ml-1.5 rounded-[3px] bg-crimson px-1 text-[10px] font-bold leading-4 text-white">NEW</span>}
           </button>
         ))}
       </div>
