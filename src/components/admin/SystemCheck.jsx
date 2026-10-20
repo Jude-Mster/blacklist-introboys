@@ -4,7 +4,7 @@ import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import { errorText } from "@/lib/GuildContext";
 
-export const SITE_VERSION = "6.30";
+export const SITE_VERSION = "6.31";
 const CHECKS = [
   { fn: "getMyAccount", label: "Accounts and ranks" },
   { fn: "playGame", label: "Toss, dice, slots and wheel" },
@@ -17,6 +17,7 @@ const CHECKS = [
   { fn: "derbyAction", label: "Blacklist Derby" },
   { fn: "duelAction", label: "Coin duels" },
   { fn: "shopAction", label: "Guild shop" },
+  { fn: "botAuth", label: "IntroBoys Assistant licenses" },
   { fn: "arenaAction", label: "Live Arena" },
   { fn: "tournamentAction", label: "Arena tournaments" },
   { fn: "chatSend", label: "Chat" },
@@ -41,7 +42,9 @@ export default function SystemCheck() {
         try {
           const res = await base44.functions.invoke(c.fn, { action: "ping" });
           const v = res.data && res.data.version;
-          row = v === SITE_VERSION
+          row = v === SITE_VERSION && c.fn === "botAuth" && res.data.signing === false
+            ? { ...c, ok: false, note: "Up to date, but the secret BOT_LICENSE_PRIVATE_KEY is missing or unreadable: no app can run until it is set" }
+            : v === SITE_VERSION
             ? { ...c, ok: true, note: `Up to date (${v})` }
             : { ...c, ok: false, note: v ? `Running version ${v}, the site needs ${SITE_VERSION}` : "Running an older version" };
         } catch (e) {

@@ -48,7 +48,7 @@ const RETRY_ONCE = new Set(["bet", "grudge_bet", "buy", "predict"]);
 // Games that play an animation before the result should be seen set the balance themselves.
 const HOLD_BALANCE = new Set(["playGame"]);
 // Calls that can't change anyone's points.
-const NO_POINTS = new Set(["getMyAccount", "chatSend", "sessionLogout", "discordAuthStart", "discordLogin", "pushAction", "prizeAction", "buysellAction"]);
+const NO_POINTS = new Set(["getMyAccount", "chatSend", "sessionLogout", "discordAuthStart", "discordLogin", "pushAction", "prizeAction", "buysellAction", "botAuth"]);
 const announce = (type, detail) => {
   try { window.dispatchEvent(new CustomEvent(type, { detail })); } catch { /* not in a browser */ }
 };

@@ -1,0 +1,364 @@
+// IntroBoys Assistant licenses: buying days in the shop, signing the app in with a code, the one-computer
+// lock, the signed tickets, and everything that must NOT work (stolen tokens, other computers, expired,
+// banned or role-less members, replays, guessing codes, forged calls).
+import { member, settings, call, E, ok, done, pts, advance } from './h.ts';
+const g = globalThis as any;
+
+// A real key pair, like the one the leader puts in the site's secrets.
+const kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+const pkcs8 = btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.exportKey('pkcs8', kp.privateKey))));
+g.__secrets = { BOT_LICENSE_PRIVATE_KEY: pkcs8, SITE_URL: 'https://site.test' };
+const F = async (n) => (await import(`../base44/functions/${n}/entry.ts`)).default;
+const shop = await F('shopAction'), bot = await F('botAuth');
+
+const hex = (n) => Array.from(crypto.getRandomValues(new Uint8Array(n))).map((x) => x.toString(16).padStart(2, '0')).join('');
+const PC1 = hex(32), PC2 = hex(32);
+// What the app does: asks with its token in X-Bot-Token.
+async function app(body, token = '') {
+  const req = new Request('http://x/', { method: 'POST', headers: { 'content-type': 'application/json', ...(token ? { 'x-bot-token': token } : {}) }, body: JSON.stringify(body) });
+  const res = await bot(req);
+  return { status: res.status, ...(await res.json()) };
+}
+// What the app does with a ticket.
+async function verifyTicket(t, hwid, nonce) {
+  if (!t) return null;
+  const sig = Uint8Array.from(atob(t.sig), (c) => c.charCodeAt(0));
+  const good = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, kp.publicKey, sig, new TextEncoder().encode(t.payload));
+  if (!good) return null;
+  const d = JSON.parse(t.payload);
+  return d.hw === hwid && d.n === nonce ? d : null;
+}
+async function signIn(who, hwid) {            // the whole device flow
+  const s = await app({ action: 'start', hwid, app_version: '4.0.0' });
+  if (s.status !== 200) return { fail: s };
+  const pending = await app({ action: 'poll', device_secret: s.device_secret });
+  ok(pending.state === 'pending', 'poll before approval is just waiting');
+  const ap = await call(bot, who, { action: 'approve', code: s.user_code, deviceTag: s.device_tag });
+  if (ap.status !== 200) return { fail: ap, start: s };
+  const t = await app({ action: 'poll', device_secret: s.device_secret });
+  return { start: s, token: t.token, poll: t };
+}
+const check = (token, hwid, nonce = hex(16)) => app({ action: 'check', hwid, nonce }, token).then((r) => ({ ...r, nonce }));
+
+await settings({ games_enabled: ['shop'], shop_seeded: true });
+const START = 100000;
+const L = await member('Leader', START, 'leader');
+const A = await member('Alice', START), B = await member('Bob', START), C = await member('Cara', START);
+const people = [L, A, B, C];
+async function ledger(tag) {
+  const bad = [];
+  for (const m of people) {
+    const p = await pts(m), s = (await E.PointLog.filter({ member_id: m.id }, {})).items.reduce((a, l) => a + l.amount, 0);
+    if (p !== START + s || p < 0) bad.push(`${m.discord_name} ${p} vs ${START + s}`);
+  }
+  ok(!bad.length, `[${tag}] every member's points = start + their PointLog ${bad.join('; ')}`);
+}
+
+// ---------- the shop item ----------
+const bad1 = await call(shop, L, { action: 'saveItem', item: { name: 'x', gp_code: true, gp_worth: 5, bot_days: 30, value_cp: 10 } });
+ok(bad1.status === 400, `an item can't be both a GP code and an Assistant license (${bad1.status})`);
+const bad2 = await call(shop, A, { action: 'saveItem', item: { name: 'Assistant', bot_days: 30, value_cp: 100, stock: 0 } });
+ok(bad2.status === 403, `a member can't create shop items (${bad2.status})`);
+const si = await call(shop, L, { action: 'saveItem', item: { name: 'IntroBoys Assistant, 30 days', category: 'Assistant', bot_days: 30, value_cp: 500, stock: 0, active: true, sort: 1 } });
+ok(si.status === 200, `leader saves the license item (${si.status} ${si.error || ''})`);
+let cat = await call(shop, A, { action: 'catalog' });
+let item = cat.items.find((x) => x.bot_days === 30);
+ok(item && item.total === 1100 && item.stock > 0, `members see it: 30 days, 500 CP x2 = 1,000 + 10% tax = 1,100 (${item && item.total})`);
+
+// ---------- buying ----------
+const a0 = await pts(A);
+const stale = await call(shop, A, { action: 'buy', itemId: item.id, qty: 1, expectTotal: 5 });
+ok(stale.status === 409 && (await pts(A)) === a0, `a stale price is refused and nothing is charged (${stale.status})`);
+const nochar = await call(shop, A, { action: 'buy', itemId: item.id, qty: 2, expectTotal: item.total * 2 });
+ok(nochar.status === 200 && nochar.order.status === 'completed', `buying needs no character name and completes at once (${nochar.status} ${nochar.error || ''})`);
+ok(a0 - (await pts(A)) === 2200, `charged exactly 2 x 1,100 (${a0 - (await pts(A))})`);
+ok(nochar.license && nochar.license.days_left === 60 && nochar.license.active, `60 days switched on (${JSON.stringify(nochar.license)})`);
+const more = await call(shop, A, { action: 'buy', itemId: item.id, qty: 1, expectTotal: item.total });
+ok(more.license.days_left === 90, `another 30 days adds on top of the time left (${more.license.days_left})`);
+const huge = await call(shop, A, { action: 'buy', itemId: item.id, qty: 12, expectTotal: item.total * 12 });
+const huge2 = await call(shop, A, { action: 'buy', itemId: item.id, qty: 8, expectTotal: item.total * 8 });
+const before = await pts(A);
+const huge3 = await call(shop, A, { action: 'buy', itemId: item.id, qty: 12, expectTotal: item.total * 12 });
+ok(huge.status === 200 && huge2.status === 200 && huge3.status >= 400 && (await pts(A)) === before, `over 730 days at once is refused and not charged (${huge3.status} ${huge3.error || ''})`);
+const q13 = await call(shop, B, { action: 'buy', itemId: item.id, qty: 13, expectTotal: item.total * 13 });
+ok(q13.status >= 400, `more than 12 at a time is refused (${q13.status})`);
+const q0 = await call(shop, B, { action: 'buy', itemId: item.id, qty: 0, expectTotal: 0 });
+const qf = await call(shop, B, { action: 'buy', itemId: item.id, qty: 1.5, expectTotal: 1650 });
+const qn = await call(shop, B, { action: 'buy', itemId: item.id, qty: -3, expectTotal: -3300 });
+ok(q0.status >= 400 && qf.status >= 400 && qn.status >= 400 && (await pts(B)) === START, `0, 1.5 and negative quantities refused, nothing charged`);
+// two clicks at once charge once each and add each: 2 x 30 days for 2 x 1,100
+const b0 = await pts(B);
+const two = await Promise.all([1, 2].map(() => call(shop, B, { action: 'buy', itemId: item.id, qty: 1, expectTotal: item.total })));
+const st = await call(bot, B, { action: 'status' });
+ok(two.every((x) => x.status === 200) && b0 - (await pts(B)) === 2200 && st.license.days_left === 60, `two buys at once: charged 2,200, 60 days (${st.license.days_left})`);
+// poor members
+const poor = await member('Poor', 10);
+const p0 = await call(shop, poor, { action: 'buy', itemId: item.id, qty: 1, expectTotal: item.total });
+const ps = await call(bot, poor, { action: 'status' });
+ok(p0.status >= 400 && !ps.license.active && ps.license.total_days === 0, `not enough points: no license, nothing taken (${p0.error})`);
+await ledger('after buying');
+
+// ---------- the app: signing in ----------
+const nokey = await app({ action: 'start', hwid: 'nope' });
+ok(nokey.status === 400, 'a malformed device ID is refused');
+const s1 = await app({ action: 'start', hwid: PC1, app_version: '4.0.0' });
+ok(s1.status === 200 && /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(s1.user_code) && s1.verify_url === `https://site.test/link-app?link=${s1.user_code}`, `start gives a code and a link (${s1.user_code} ${s1.verify_url})`);
+const p1 = await app({ action: 'poll', device_secret: s1.device_secret });
+ok(p1.state === 'pending' && p1.token === undefined, 'no token before it is approved');
+const wrongSecret = await app({ action: 'poll', device_secret: hex(32) });
+ok(wrongSecret.state === 'expired' && wrongSecret.token === undefined, 'a guessed device secret gets nothing');
+const noSite = await app({ action: 'approve', code: s1.user_code });
+ok(noSite.status === 401, `approving without a site sign-in is refused (${noSite.status})`);
+const d1 = await call(bot, A, { action: 'describe', code: s1.user_code.toLowerCase().replace('-', ' ') });
+ok(d1.status === 200 && d1.device_tag === s1.device_tag, `the site shows the device ID the app shows (${d1.device_tag})`);
+const wrongTag = await call(bot, A, { action: 'approve', code: s1.user_code, deviceTag: 'ZZZZZZ' });
+ok(wrongTag.status === 409, `a device ID that doesn't match is refused (${wrongTag.status})`);
+const ok1 = await call(bot, A, { action: 'approve', code: s1.user_code, deviceTag: s1.device_tag });
+ok(ok1.status === 200, `Alice approves (${ok1.status} ${ok1.error || ''})`);
+const again = await call(bot, B, { action: 'approve', code: s1.user_code });
+ok(again.status === 404, `the code can't be approved a second time by someone else (${again.status})`);
+const got = await app({ action: 'poll', device_secret: s1.device_secret });
+ok(got.state === 'ok' && /^[a-f0-9]{64}$/.test(got.token), 'the app collects its sign-in');
+const got2 = await app({ action: 'poll', device_secret: s1.device_secret });
+ok(got2.token === undefined && got2.state === 'expired', 'the sign-in can be collected only once');
+const TOK1 = got.token;
+ok(JSON.stringify((await E.BotSession.filter({}, {})).items).indexOf(TOK1) < 0, 'the token itself is never stored, only its hash');
+
+// ---------- the app: tickets ----------
+const c1 = await check(TOK1, PC1);
+const tk = await verifyTicket(c1.ticket, PC1, c1.nonce);
+ok(c1.licensed && tk && tk.did === A.discord_id && tk.ttl <= 600 && tk.ttl >= 30, `a signed ticket for Alice, this PC and this nonce (${c1.status} ${c1.error || ''})`);
+ok(tk && tk.exp === Math.floor(Date.parse(c1.expires_at) / 1000), 'the ticket carries the real expiry');
+ok((await verifyTicket(c1.ticket, PC2, c1.nonce)) === null, 'the same ticket is useless on another PC');
+ok((await verifyTicket(c1.ticket, PC1, hex(16))) === null, 'and useless as an answer to a different question (replay)');
+const forged = { payload: c1.ticket.payload.replace(/"ttl":\d+/, '"ttl":99999999'), sig: c1.ticket.sig };
+ok((await verifyTicket(forged, PC1, c1.nonce)) === null, 'a ticket with a changed field fails the signature');
+const lic1 = (await E.BotLicense.filter({ member_id: A.id }, {})).items[0];
+ok(lic1 && lic1.hwid_hash && lic1.hwid_hash.length === 64 && lic1.hwid_hash !== PC1, 'first use locks the license to this PC (stored as a hash)');
+
+// a proxy that drops custom headers: the token in the body works the same
+const viaBody = await app({ action: 'check', hwid: PC1, nonce: hex(16), _bt: TOK1 });
+ok(viaBody.status === 200 && viaBody.licensed, `the token also works from the body (${viaBody.status})`);
+const noTok = await app({ action: 'check', hwid: PC1, nonce: hex(16) });
+ok(noTok.status === 401, 'no token, no ticket');
+const badTok = await app({ action: 'check', hwid: PC1, nonce: hex(16) }, hex(32));
+ok(badTok.status === 401, 'a made-up token, no ticket');
+const noNonce = await app({ action: 'check', hwid: PC1 }, TOK1);
+ok(noNonce.status === 400, 'a question without a nonce is refused');
+
+// the token stolen to another PC: refused and cancelled for good
+const stolen = await check(TOK1, PC2);
+ok(stolen.status === 403 && stolen.code === 'device_mismatch' && !stolen.ticket, `the same token on another PC is refused (${stolen.code})`);
+const afterSteal = await check(TOK1, PC1);
+ok(afterSteal.status === 401, 'and it is cancelled: even the real PC must sign in again');
+
+// a second sign-in replaces the first
+const r2 = await signIn(A, PC1);
+const r3 = await signIn(A, PC1);
+const old = await check(r2.token, PC1);
+const cur = await check(r3.token, PC1);
+ok(old.status === 401 && cur.licensed, 'only the newest sign-in works (one app running per license)');
+
+// another computer signs in as Alice: no ticket, because the license is locked to PC1
+const r4 = await signIn(A, PC2);
+const oth = await check(r4.token, PC2);
+ok(oth.status === 200 && oth.licensed === false && oth.reason === 'other_device' && !oth.ticket, `Alice's license on another PC: no ticket (${oth.reason})`);
+// moving the license
+const reset = await call(bot, A, { action: 'resetDevice' });
+ok(reset.status === 200, `Alice moves her license (${reset.status} ${reset.error || ''})`);
+const dead = await check(r4.token, PC2);
+ok(dead.status === 401, 'moving it signs the app out');
+const r5 = await signIn(A, PC2);
+const now2 = await check(r5.token, PC2);
+ok(now2.licensed, 'the other PC works after signing in again');
+const reset2 = await call(bot, A, { action: 'resetDevice' });
+ok(reset2.status === 429, `a second move within a week is refused (${reset2.status})`);
+const r6 = await signIn(A, PC1);
+const back = await check(r6.token, PC1);
+ok(back.licensed === false && back.reason === 'other_device', 'so the old PC stays locked out');
+advance(8 * 86400000);
+const reset3 = await call(bot, A, { action: 'resetDevice' });
+ok(reset3.status === 200, 'after a week she can move it again');
+
+// ---------- Bob, no license at first ----------
+const cLic = await member('NoLicense', START);
+const rn = await signIn(cLic, PC1);
+const cn = await check(rn.token, PC1);
+ok(cn.status === 200 && cn.licensed === false && cn.reason === 'no_license' && !cn.ticket, 'signed in but nothing bought: no ticket');
+
+// ---------- losing access ----------
+const rb = await signIn(B, hex(32).slice(0, 64));
+const hwB = (await E.BotSession.filter({ member_id: B.id }, {})).items.length;
+ok(hwB === 1, 'Bob has one sign-in');
+// find Bob's PC: he used the random one passed above; sign in again with a known one
+const PCB = hex(32);
+const rb2 = await signIn(B, PCB);
+ok((await check(rb2.token, PCB)).licensed, 'Bob runs');
+await E.Member.update(B.id, { no_access: true });
+const lost = await check(rb2.token, PCB);
+ok(lost.status === 403 && lost.code === 'not_member' && !lost.ticket, `losing the Discord role stops the next check (${lost.code})`);
+ok((await check(rb2.token, PCB)).status === 401, 'and signs the app out');
+const lostLogin = await signIn(B, PCB);
+ok(lostLogin.fail && lostLogin.fail.status === 401, `a member without the role can't approve a code (${lostLogin.fail && lostLogin.fail.status})`);
+await E.Member.update(B.id, { no_access: false, banned: true });
+const rb3 = await app({ action: 'start', hwid: PCB });
+const ban = await call(bot, B, { action: 'approve', code: rb3.user_code });
+ok(ban.status === 403, `a banned member can't sign the app in (${ban.status})`);
+await E.Member.update(B.id, { banned: false });
+// role lost between approve and collect
+const r7s = await app({ action: 'start', hwid: PCB });
+await call(bot, B, { action: 'approve', code: r7s.user_code });
+await E.Member.update(B.id, { no_access: true });
+const r7 = await app({ action: 'poll', device_secret: r7s.device_secret });
+ok(r7.state === 'denied' && r7.token === undefined, 'role lost between approving and collecting: no sign-in handed over');
+await E.Member.update(B.id, { no_access: false });
+
+// ---------- guessing codes ----------
+let blocked = false;
+const tries = [];
+for (let i = 0; i < 12; i++) {
+  const r = await call(bot, C, { action: 'approve', code: `AAAA-${String(2222 + i)}` });
+  tries.push(r.status);
+  if (r.status === 429) blocked = true;
+}
+ok(blocked, 'guessing codes gets a member locked out for a while');
+const s9 = await app({ action: 'start', hwid: PC1 });
+const lockedGood = await call(bot, C, { action: 'approve', code: s9.user_code });
+ok(lockedGood.status === 429, 'even a right code is refused during the lock');
+advance(11 * 60000);
+const s10 = await app({ action: 'start', hwid: PC1 });
+const unlocked = await call(bot, C, { action: 'approve', code: s10.user_code });
+ok(unlocked.status === 200, 'and works again after ten minutes');
+// expired codes
+const s11 = await app({ action: 'start', hwid: PC2 });
+advance(11 * 60000);
+const exp = await call(bot, A, { action: 'approve', code: s11.user_code });
+const expPoll = await app({ action: 'poll', device_secret: s11.device_secret });
+ok(exp.status === 404 && expPoll.state === 'expired' && expPoll.token === undefined, 'a code older than ten minutes is dead');
+
+// ---------- time runs out ----------
+const PCD = hex(32);
+const rd = await signIn(L, PCD);
+await call(bot, L, { action: 'adminGrant', discordId: L.discord_id, days: 3 });
+const okL = await check(rd.token, PCD);
+ok(okL.licensed && okL.days_left === 3, 'the leader gave themselves 3 days');
+advance(2 * 86400000);
+ok((await check(rd.token, PCD)).licensed, 'still good on day 2');
+advance(1.5 * 86400000);
+const gone = await check(rd.token, PCD);
+ok(gone.status === 200 && gone.licensed === false && gone.reason === 'expired' && !gone.ticket, 'time is up: no more tickets');
+const lastTk = await verifyTicket(okL.ticket, PCD, okL.nonce);
+ok(lastTk && lastTk.iat + lastTk.ttl <= lastTk.exp + 1, 'a ticket never outlives the license');
+// buying more after it ran out starts from now
+const rebuy = await call(shop, L, { action: 'buy', itemId: item.id, qty: 1, expectTotal: item.total });
+ok(rebuy.status === 200 && rebuy.license.days_left === 30, `buying after it ran out starts from today (${rebuy.license && rebuy.license.days_left})`);
+ok((await check(rd.token, PCD)).licensed, 'and the app is back on without signing in again');
+
+// ---------- the leader's tools ----------
+const no = await call(bot, A, { action: 'adminGrant', discordId: C.discord_id, days: 100 });
+const no2 = await call(bot, A, { action: 'adminList' });
+ok(no.status === 403 && no2.status === 403, 'members can not grant days or list licenses');
+const gr = await call(bot, L, { action: 'adminGrant', discordId: C.discord_id, days: 7, note: 'prize' });
+ok(gr.status === 200 && gr.license.days_left === 7, `leader grants Cara 7 days (${gr.status})`);
+const badDays = [0, 1.5, -99999, 99999, 'x'];
+const results = [];
+for (const d of badDays) results.push((await call(bot, L, { action: 'adminGrant', discordId: C.discord_id, days: d })).status);
+ok(results.every((x) => x >= 400), `bad day counts refused (${results})`);
+const PCC = hex(32);
+const rc = await signIn(C, PCC);
+ok((await check(rc.token, PCC)).licensed, 'Cara runs');
+const rev = await call(bot, L, { action: 'adminRevoke', discordId: C.discord_id, reason: 'sharing the account' });
+ok(rev.status === 200, 'leader revokes it');
+ok((await check(rc.token, PCC)).status === 401, 'the app is signed out at once');
+const rc2 = await signIn(C, PCC);
+const revoked = await check(rc2.token, PCC);
+ok(revoked.licensed === false && revoked.reason === 'revoked' && !revoked.ticket, 'a revoked license gets no ticket');
+const cBefore = await pts(C);
+const buyRev = await call(shop, C, { action: 'buy', itemId: item.id, qty: 1, expectTotal: item.total });
+ok(buyRev.status === 403 && (await pts(C)) === cBefore, `a revoked member can't buy more days, and isn't charged (${buyRev.status})`);
+await call(bot, L, { action: 'adminRestore', discordId: C.discord_id });
+ok((await check(rc2.token, PCC)).licensed, 'restoring brings it back');
+const rs = await call(bot, L, { action: 'adminReset', discordId: C.discord_id });
+const ls = await call(bot, L, { action: 'adminList' });
+ok(rs.status === 200 && ls.licenses.length >= 3 && ls.events.length > 0 && JSON.stringify(ls).indexOf('hwid_hash') < 0, 'leader can reset a device and sees the list and the log, without any hashes');
+const dec = await call(bot, L, { action: 'adminGrant', discordId: C.discord_id, days: -3 });
+ok(dec.status === 200 && dec.license.days_left === 4, `leader can take days away (${dec.license && dec.license.days_left})`);
+
+// ---------- no signing key ----------
+g.__secrets = { ...g.__secrets, BOT_LICENSE_PRIVATE_KEY: '' };
+const pingNoKey = await app({ action: 'ping' });
+const nk = await check(rd.token, PCD);
+ok(pingNoKey.signing === false && nk.status === 503 && !nk.ticket, `without the signing key no ticket is ever made (${nk.status})`);
+g.__secrets.BOT_LICENSE_PRIVATE_KEY = 'AAAA';
+ok((await check(rd.token, PCD)).status >= 400, 'a broken signing key makes no ticket either');
+
+// ---------- logout ----------
+g.__secrets.BOT_LICENSE_PRIVATE_KEY = pkcs8;
+const lo = await app({ action: 'logout' }, rd.token);
+ok(lo.status === 200 && (await check(rd.token, PCD)).status === 401, 'signing out in the app ends the sign-in');
+// the members' data stays private
+const st2 = JSON.stringify(await call(bot, A, { action: 'status' }));
+ok(st2.indexOf(lic1.hwid_hash) < 0, 'the site never sends the stored device hash back');
+await ledger('end');
+// ---------- 6.31: spam guard on the app's sign-in ----------
+{
+  async function appFrom(ip, body) {
+    const req = new Request('http://x/', { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': ip }, body: JSON.stringify(body) });
+    const res = await bot(req);
+    return { status: res.status, ...(await res.json()) };
+  }
+  advance(20 * 60 * 1000);
+  const codes = [];
+  for (let i = 0; i < 5; i++) codes.push(await appFrom('203.0.113.9', { action: 'start', hwid: hex(32), app_version: '4.0.0' }));
+  ok(codes.every((r) => r.status === 200), 'one connection gets 5 sign-in codes');
+  const sixth = await appFrom('203.0.113.9', { action: 'start', hwid: hex(32), app_version: '4.0.0' });
+  ok(sixth.status === 429 && sixth.code === 'busy', `the 6th from the same connection within 10 minutes is refused (${sixth.status})`);
+  const other = await appFrom('198.51.100.4', { action: 'start', hwid: hex(32), app_version: '4.0.0' });
+  ok(other.status === 200, 'someone else can still sign in while that connection is stopped');
+  // the same computer asking again and again: its old codes stop working but still count
+  const pc = hex(32);
+  const r1 = await appFrom('192.0.2.77', { action: 'start', hwid: pc, app_version: '4.0.0' });
+  const r2 = await appFrom('192.0.2.77', { action: 'start', hwid: pc, app_version: '4.0.0' });
+  ok((await appFrom('192.0.2.77', { action: 'poll', device_secret: r1.device_secret })).state === 'expired', "a computer's earlier code stops working when it asks for a new one");
+  ok((await call(bot, A, { action: 'approve', code: r1.user_code, deviceTag: r1.device_tag })).status === 404, 'a replaced code can not be approved');
+  ok((await appFrom('192.0.2.77', { action: 'poll', device_secret: r2.device_secret })).state === 'pending', 'the newest code is the one that works');
+  for (let i = 0; i < 3; i++) await appFrom('192.0.2.77', { action: 'start', hwid: pc, app_version: '4.0.0' });
+  ok((await appFrom('192.0.2.77', { action: 'start', hwid: pc, app_version: '4.0.0' })).status === 429, 'asking again from the same computer still counts toward the limit');
+  advance(11 * 60 * 1000);
+  ok((await appFrom('203.0.113.9', { action: 'start', hwid: hex(32), app_version: '4.0.0' })).status === 200, 'after 10 minutes that connection can sign in again');
+  // polling flood
+  let polls = 0, refused = 0;
+  for (let i = 0; i < 70; i++) { const r = await appFrom('203.0.113.50', { action: 'poll', device_secret: hex(32) }); if (r.status === 429) refused++; else polls++; }
+  ok(polls === 60 && refused === 10, `polling is limited to 60 a minute per connection (${polls} answered, ${refused} refused)`);
+  // no address at all: never one shared bucket
+  let noIp = 0;
+  for (let i = 0; i < 7; i++) if ((await app({ action: 'start', hwid: hex(32), app_version: '4.0.0' })).status === 200) noIp++;
+  ok(noIp === 7, 'requests without an address are not lumped into one shared limit');
+}
+
+// ---------- 6.31: the leader gives days to several members, or to everyone ----------
+{
+  const D = await member('Dora', START), Ev = await member('Evan', START);
+  people.push(D, Ev);
+  const many = await call(bot, L, { action: 'adminGrantMany', discordIds: [D.discord_id, Ev.discord_id], days: 5, note: 'event prize' });
+  ok(many.ok && many.given === 2 && many.skipped.length === 0, `leader gives 5 days to two members at once (${many.given})`);
+  const sd = await call(bot, D, { action: 'status' });
+  ok(sd.license.active && sd.license.days_left === 5, 'Dora has 5 days');
+  ok((await call(bot, A, { action: 'adminGrantMany', discordIds: [A.discord_id], days: 30 })).status === 403, 'a member can not give days');
+  ok((await call(bot, L, { action: 'adminGrantMany', discordIds: [], days: 5 })).status === 400, 'nobody picked: refused');
+  ok((await call(bot, L, { action: 'adminGrantMany', discordIds: [D.discord_id], days: 1.5 })).status === 400, 'half days refused');
+  const cnt = await call(bot, L, { action: 'adminCountAll' });
+  const before = (await call(bot, Ev, { action: 'status' })).license.days_left;
+  const all = await call(bot, L, { action: 'adminGrantMany', everyone: true, days: 2, note: 'guild giveaway' });
+  ok(all.ok && all.given + all.skipped.length === cnt.count && all.given >= 4, `Everyone: ${all.given} members got 2 days (${all.skipped.length} skipped)`);
+  ok((await call(bot, Ev, { action: 'status' })).license.days_left === before + 2, 'their days add on to what they had');
+  const pointsAfter = await pts(Ev);
+  ok(pointsAfter === START, 'giving days never touches points');
+  // someone switched off is skipped and reported, the rest still get theirs
+  await call(bot, L, { action: 'adminRevoke', discordId: D.discord_id, reason: 'test' });
+  const mixed = await call(bot, L, { action: 'adminGrantMany', discordIds: [D.discord_id, Ev.discord_id], days: 1 });
+  ok(mixed.given === 1 && mixed.skipped.length === 1 && /switched off/i.test(mixed.skipped[0].why), 'a switched-off member is skipped with the reason; the others still get days');
+  await ledger('after giving days');
+}
+
+done();

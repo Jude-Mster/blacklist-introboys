@@ -1,0 +1,12 @@
+{
+  "name": "BotEvent",
+  "type": "object",
+  "properties": {
+    "member_id": { "type": "string" },
+    "discord_id": { "type": "string" },
+    "kind": { "type": "string", "description": "grant, shop, revoke, restore, bind, reset, login, bad_code, denied ..." },
+    "detail": { "type": "string" },
+    "at": { "type": "string", "format": "date-time", "description": "When it happened" }
+  },
+  "rls": { "read": false, "create": false, "update": false, "delete": false }
+}

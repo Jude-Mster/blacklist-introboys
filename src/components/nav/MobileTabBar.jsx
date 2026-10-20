@@ -8,7 +8,7 @@ import RankBadge from "@/components/RankBadge";
 import { Points } from "@/components/SealLogo";
 import { useGuild } from "@/lib/GuildContext";
 import { GAME_ICONS } from "@/lib/gameIcons";
-import { HOME, GAMES_HUB, FIGHT, RANKINGS, CHAT, SHOP, MARKET, GUIDE, PROFILE, ADMIN, gameLinks, isActive, isAdminRole, tableLinks } from "./navConfig";
+import { HOME, GAMES_HUB, FIGHT, RANKINGS, CHAT, SHOP, ASSISTANT, MARKET, GUIDE, PROFILE, ADMIN, gameLinks, isActive, isAdminRole, tableLinks } from "./navConfig";
 import { useBuySell, unreadTotal } from "@/lib/buysell";
 import { shouldShowAppDownload, inOldApp } from "@/lib/appMode";
 import AppDownloadGuide from "@/components/AppDownloadGuide";
@@ -31,7 +31,7 @@ export default function MobileTabBar({ onChat, chatOpen, unread }) {
   useEffect(() => setMore(false), [location.pathname, location.search]);
 
   const marketUnread = unreadTotal(useBuySell("lite"));   // 6.25
-  const secondary = [MARKET, SHOP, GUIDE, RANKINGS, PROFILE, ...(isAdminRole(member) ? [ADMIN] : [])];
+  const secondary = [MARKET, SHOP, ASSISTANT, GUIDE, RANKINGS, PROFILE, ...(isAdminRole(member) ? [ADMIN] : [])];
   const inMore = secondary.some((i) => isActive(i, location));
   const quiet = chatOpen || more;
   const tabs = [

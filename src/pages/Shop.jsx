@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Navigate } from "react-router-dom";
-import { Check, Copy, ExternalLink, Loader2, PackageOpen, Ticket } from "lucide-react";
+import { Link, Navigate } from "react-router-dom";
+import { Bot, Check, Copy, ExternalLink, Loader2, PackageOpen, Ticket } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import LanternSpinner from "@/components/LanternSpinner";
@@ -175,13 +175,19 @@ export default function Shop() {
                           {fmt(it.gp_worth)} GP code · {it.code_source === "manual" ? "the Guild Leader sends it" : "shown the moment you buy"}
                         </p>
                       )}
+                      {it.bot_days > 0 && (
+                        <p className="mt-0.5 flex items-center gap-1 text-xs text-white/90">
+                          <Bot className="h-3.5 w-3.5 text-gold" aria-hidden="true" />
+                          {fmt(it.bot_days)} day{it.bot_days === 1 ? "" : "s"} of the Assistant · switched on the moment you buy
+                        </p>
+                      )}
                       {it.description && <p className="mt-0.5 text-xs text-mist">{it.description}</p>}
                       <p className="mt-1 text-sm">
                         <Points value={it.total} className="font-bold text-gold" />
                         <span className="ml-1.5 text-xs text-mist">({fmt(it.price)} + {fmt(it.tax)} tax)</span>
                       </p>
                       <div className="mt-2 flex items-center justify-between gap-2">
-                        <span className={cn("text-xs", it.stock > 0 ? "text-mist" : "text-ember")}>{it.stock > 0 ? `${fmt(it.stock)} in stock` : "Sold out"}</span>
+                        <span className={cn("text-xs", it.stock > 0 ? "text-mist" : "text-ember")}>{it.bot_days > 0 ? "Always available" : it.stock > 0 ? `${fmt(it.stock)} in stock` : "Sold out"}</span>
                         <button
                           onClick={() => setBuying(it)}
                           disabled={it.stock < 1 || (rates && !rates.enabled)}
@@ -211,8 +217,10 @@ export default function Shop() {
           onClose={() => setBuying(null)}
           onBought={(balance, order) => {
             setBalance(balance); load();
-            // A code from stock is shown in the dialog right away; anything else goes to My orders.
-            if (!(order && order.codes && order.codes.length)) { setBuying(null); setTab("orders"); }
+            // A code from stock is shown in the dialog right away; Assistant days say so in the dialog; anything else goes to My orders.
+            if (order && order.codes && order.codes.length) return;
+            if (buying && buying.bot_days > 0) return;
+            setBuying(null); setTab("orders");
           }}
         />
       )}
@@ -240,6 +248,8 @@ function BuyDialog({ item, rates, balance, onClose, onBought }) {
   const [bought, setBought] = useState(null); // the finished order when codes were handed over
 
   const isCode = !!item.gp_code;
+  const isBot = item.bot_days > 0;
+  const [gotDays, setGotDays] = useState(null);   // the license after buying Assistant days
   const instant = isCode && item.code_source !== "manual";
   const n = Math.max(0, Math.floor(Number(qty) || 0));
   const subtotal = item.price * n;
@@ -256,6 +266,7 @@ function BuyDialog({ item, rates, balance, onClose, onBought }) {
         action: "buy", itemId: item.id, qty: n, character, note, expectTotal: total
       });
       const order = res.data.order;
+      if (res.data.license) { setGotDays(res.data.license); setBusy(false); }
       if (order && order.codes && order.codes.length) { setBought(order); setBusy(false); }
       onBought(res.data.balance, order);
     } catch (err) {
@@ -267,7 +278,18 @@ function BuyDialog({ item, rates, balance, onClose, onBought }) {
   return (
     <Dialog open onOpenChange={(o) => { if (!o && !busy) onClose(); }}>
       <DialogContent className="max-w-sm border-bronze bg-panel">
-        {bought ? (
+        {gotDays ? (
+          <>
+            <DialogHeader>
+              <DialogTitle className="font-heading text-gold">Assistant days added</DialogTitle>
+              <DialogDescription className="text-mist">
+                You now have <b className="text-white">{fmt(gotDays.days_left)} day{gotDays.days_left === 1 ? "" : "s"}</b> of the IntroBoys Assistant, until {new Date(gotDays.expires_at).toLocaleString()}. Open the app and sign in with Discord to use it.
+              </DialogDescription>
+            </DialogHeader>
+            <Link to="/assistant" className="btn-seal block h-11 w-full text-center text-base leading-[2.75rem]" onClick={onClose}>Open the Assistant page</Link>
+            <button type="button" onClick={onClose} className="btn-bronze h-10 w-full text-sm">Done</button>
+          </>
+        ) : bought ? (
           <>
             <DialogHeader>
               <DialogTitle className="font-heading text-gold">{bought.codes.length > 1 ? "Your codes" : "Your code"}</DialogTitle>
@@ -285,7 +307,9 @@ function BuyDialog({ item, rates, balance, onClose, onBought }) {
         <DialogHeader>
           <DialogTitle className="font-heading text-gold">Buy {item.name}</DialogTitle>
           <DialogDescription className="text-mist">
-            {instant
+            {isBot
+              ? `Points are taken now and ${fmt(item.bot_days)} day${item.bot_days === 1 ? "" : "s"} of the IntroBoys Assistant are added to your license straight away (on top of any time you have left). Nothing is delivered by hand.`
+              : instant
               ? "Points are taken now and your code is shown straight away. It is also sent to you by Discord DM and kept under My prizes."
               : isCode
                 ? "Points are taken now. The Guild Leader adds your code, and you'll see it under My orders (and get it by Discord DM). If the order is rejected you get everything back, tax included."
@@ -296,23 +320,23 @@ function BuyDialog({ item, rates, balance, onClose, onBought }) {
           <div className="flex items-center gap-3">
             <ItemPicture src={item.image_url} name={item.name} className="h-14 w-14" />
             <div className="text-sm text-mist">
-              <Points value={item.price} className="text-gold" /> each · {fmt(item.stock)} in stock
+              <Points value={item.price} className="text-gold" /> each · {isBot ? `${fmt(item.bot_days)} day${item.bot_days === 1 ? "" : "s"} each` : `${fmt(item.stock)} in stock`}
             </div>
           </div>
           <div>
             <label htmlFor="shop-qty" className="label">How many</label>
-            <input id="shop-qty" type="number" inputMode="numeric" min={1} max={isCode ? Math.min(20, item.stock) : item.stock} value={qty} onChange={(e) => setQty(e.target.value)} className="field" required />
+            <input id="shop-qty" type="number" inputMode="numeric" min={1} max={isBot ? 12 : isCode ? Math.min(20, item.stock) : item.stock} value={qty} onChange={(e) => setQty(e.target.value)} className="field" required />
           </div>
-          {!isCode && (
+          {!isCode && !isBot && (
             <div>
               <label htmlFor="shop-char" className="label">In-game character name</label>
               <input id="shop-char" value={character} onChange={(e) => setCharacter(e.target.value)} maxLength={40} className="field" required />
             </div>
           )}
-          <div>
+          {!isBot && <div>
             <label htmlFor="shop-note" className="label">{item.require_note ? "Which one do you want? (required)" : "Note for the Guild Leader (optional)"}</label>
             <input id="shop-note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} className="field" required={item.require_note} />
-          </div>
+          </div>}
           <dl className="rounded-md border border-bronze/50 bg-black/30 p-3 text-sm">
             <div className="flex justify-between text-mist"><dt>Price</dt><dd>{fmt(subtotal)}</dd></div>
             <div className="flex justify-between text-mist"><dt>Tax ({trim((rates && rates.tax_pct) || 0)}%)</dt><dd>{fmt(tax)}</dd></div>
@@ -320,8 +344,8 @@ function BuyDialog({ item, rates, balance, onClose, onBought }) {
           </dl>
           {short && <p className="text-sm text-ember">You need {fmt(total - balance)} more points.</p>}
           {error && <p role="alert" className="text-sm text-ember">{error}</p>}
-          <button type="submit" disabled={busy || n < 1 || n > item.stock || (isCode && n > 20) || short} className="btn-seal h-11 w-full text-base">
-            {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Placing order</> : instant ? "Buy and show my code" : "Confirm purchase"}
+          <button type="submit" disabled={busy || n < 1 || (!isBot && n > item.stock) || (isBot && n > 12) || (isCode && n > 20) || short} className="btn-seal h-11 w-full text-base">
+            {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Placing order</> : isBot ? "Buy and switch on" : instant ? "Buy and show my code" : "Confirm purchase"}
           </button>
         </form>
         </>

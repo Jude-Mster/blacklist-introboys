@@ -8,6 +8,7 @@ import {
   checkCode, codeHash, codeFields, cleanLabel, ownerView, runStockLocked, stockSummary, deliver, last4
 } from '../../shared/prizeCodes.ts';
 import { resilient } from '../../shared/points.ts';
+import { assertCanHold, grantDays, undoGrant, licenseSummary } from '../../shared/botLicense.ts';
 
 // The guild shop.
 //   1 point = 1 CP = 0.5 GP = 1M silver (in-game value)
@@ -47,6 +48,11 @@ function rates(settings) {
   };
 }
 
+// An IntroBoys Assistant license: paying for it adds days to the buyer's license at once (shared/botLicense.ts).
+// Nothing to deliver and nothing to run out of, so it never waits for the leader and has no stock.
+const isBot = (it) => !!(it && (it.bot_days || 0) > 0);
+const BOT_STOCK = 100000;          // shown instead of a count; the shelf never empties
+const MAX_BOT_QTY = 12;
 const isCode = (it) => !!(it && it.gp_code);
 const codeSource = (it) => (it && it.code_source === 'manual' ? 'manual' : 'stock');
 const codeLabelOf = (it) => cleanLabel(it && it.code_label) || `${fmtN(it && it.gp_worth)} GP Code`;
@@ -55,7 +61,7 @@ function fmtN(v) { return Number(v || 0).toLocaleString('en-US'); }
 const valueOf = (it) => (isCode(it) ? num(it.gp_worth, 0) * CP_PER_GP : num(it.value_cp, 0));
 const unitPrice = (item, r) => Math.max(1, ceil(valueOf(item) * r.price_multiplier));
 // What a member can buy right now: codes waiting in stock for a stock code item, else the item's own stock.
-const stockOf = (it, codes) => (isCode(it) && codeSource(it) === 'stock' ? (codes.get(codeLabelOf(it).toLowerCase()) || 0) : Math.max(0, it.stock || 0));
+const stockOf = (it, codes) => isBot(it) ? BOT_STOCK : (isCode(it) && codeSource(it) === 'stock' ? (codes.get(codeLabelOf(it).toLowerCase()) || 0) : Math.max(0, it.stock || 0));
 async function codeCounts(b) {
   const m = new Map();
   for (const x of await stockSummary(b)) m.set(x.label.toLowerCase(), x.count);
@@ -75,7 +81,8 @@ const publicItem = (it, r, codes) => {
     id: it.id, name: it.name, category: it.category || '', description: it.description || '', image_url: it.image_url || '',
     stock: stockOf(it, codes), require_note: !!it.require_note, sort: it.sort || 0,
     price: q.unit, tax: q.tax, total: q.total,
-    gp_code: isCode(it), gp_worth: isCode(it) ? num(it.gp_worth, 0) : 0, code_source: isCode(it) ? codeSource(it) : ''
+    gp_code: isCode(it), gp_worth: isCode(it) ? num(it.gp_worth, 0) : 0, code_source: isCode(it) ? codeSource(it) : '',
+    bot_days: isBot(it) ? it.bot_days : 0
   };
 };
 const adminItem = (it, r, codes) => ({
@@ -258,6 +265,32 @@ export default async function(req) {
       const result = await withMemberLock(b, me.id, () => withRecordLock(b, 'ShopItem', itemId, async () => {
         const item = await Items.get(itemId).catch(() => null);
         if (!item || item.active === false) throw new UserError('That item is no longer for sale.');
+        if (isBot(item)) {
+          // Assistant days: paid for and switched on in one go, under the member's lock (taken above).
+          if (qty > MAX_BOT_QTY) throw new UserError(`Buy up to ${MAX_BOT_QTY} at a time.`);
+          const days = item.bot_days * qty;
+          await assertCanHold(b, me, days);                       // refused here, before any points are taken
+          const q = quote(item, qty, r);
+          if (p.expectTotal !== undefined && Number(p.expectTotal) !== q.total) {
+            throw new UserError('The price changed. Check the new price and try again.', 409);
+          }
+          const { balance } = await changePoints(b, me.id, -q.total, 'shop', `Shop: ${qty} x ${item.name}`, null);
+          let undo = null;
+          try {
+            const g = await grantDays(b, me, days, 'shop', null, `${qty} x ${item.name}`);
+            undo = g.undo;
+            const order = await Orders.create({
+              ...orderBase(item, q), status: 'completed', resolved_at: new Date().toISOString(),
+              delivery_code: `IntroBoys Assistant: ${days} day${days === 1 ? '' : 's'} added`
+            });
+            return { balance, order: myOrder(order), license: licenseSummary(g.license) };
+          } catch (e) {
+            // Something failed after the points were taken: points back, days back.
+            await changePoints(b, me.id, q.total, 'shop', `Shop refund: ${qty} x ${item.name}`, null).catch(() => {});
+            await undoGrant(b, undo);
+            throw e;
+          }
+        }
         // A GP code is shown on the site, so it needs no character name.
         if (!character && !isCode(item)) throw new UserError('Enter your in-game character name so the leader knows who to deliver to.');
         if (item.require_note && !note) throw new UserError('Add a note saying exactly which one you want.');
@@ -397,13 +430,16 @@ export default async function(req) {
       const name = text(d.name, 60);
       if (!name) throw new UserError('Give the item a name.');
       const gp = d.gp_code === true;
+      const botDays = Number(d.bot_days) || 0;
+      if (!Number.isInteger(botDays) || botDays < 0 || botDays > 3650) throw new UserError('Assistant days must be a whole number from 0 to 3650.');
+      if (botDays > 0 && gp) throw new UserError('An Assistant license can not also be a GP code.');
       const worth = Number(d.gp_worth);
       if (gp && (!Number.isInteger(worth) || worth < 1 || worth > 1000000)) throw new UserError('Enter what one code is worth, in GP (a whole number).');
       const source = gp && d.code_source === 'manual' ? 'manual' : 'stock';
       const codeLabel = gp ? (cleanLabel(d.code_label) || `${fmtN(worth)} GP Code`) : '';
       const value = gp ? worth * CP_PER_GP : Number(d.value_cp);
       if (!Number.isFinite(value) || value <= 0 || value > 100000000) throw new UserError('In-game value must be a number above 0 (in CP).');
-      const stock = gp && source === 'stock' ? 0 : Number(d.stock);
+      const stock = botDays > 0 || (gp && source === 'stock') ? 0 : Number(d.stock);
       if (!Number.isInteger(stock) || stock < 0 || stock > 100000000) throw new UserError('Stock must be a whole number, 0 or more.');
       const image = text(d.image_url, 500);
       if (image && !/^(\/[A-Za-z0-9_\-./]+|https:\/\/[^\s]+)$/.test(image)) throw new UserError('Picture must be a site path like /shop/item.png or an https link.');
@@ -411,7 +447,7 @@ export default async function(req) {
         name, category: text(d.category, 40), description: text(d.description, 200), image_url: image,
         value_cp: value, stock, active: d.active !== false, require_note: d.require_note === true,
         sort: Number.isFinite(Number(d.sort)) ? Math.floor(Number(d.sort)) : 0,
-        gp_code: gp, gp_worth: gp ? worth : 0, code_source: gp ? source : '', code_label: codeLabel
+        gp_code: gp, gp_worth: gp ? worth : 0, code_source: gp ? source : '', code_label: codeLabel, bot_days: botDays
       };
       // Codes pasted into the item editor go into the prize-code stock under the item's code name.
       const paste = gp && source === 'stock' ? splitCodes(d.add_codes) : [];
