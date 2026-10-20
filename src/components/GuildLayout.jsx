@@ -4,7 +4,8 @@ import EventAlerts from "@/components/EventAlerts";
 import AppPrompt from "@/components/AppPrompt";
 import PrizeNotice from "@/components/prizes/PrizeNotice";
 import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { hasPendingLink } from "@/lib/assistantLink";
 import LanternSpinner from "@/components/LanternSpinner";
 import { prefetchPath, warmUp } from "@/lib/routes";
 import { GuildProvider, useGuild } from "@/lib/GuildContext";
@@ -44,6 +45,9 @@ export default function GuildLayout() {
 function Shell() {
   const { account } = useGuild();
   const location = useLocation();
+  const navigate = useNavigate();
+  // The IntroBoys Assistant app sent this member to sign in first: once they are in, go on to approving its code.
+  useEffect(() => { if (hasPendingLink() && location.pathname !== "/assistant") navigate("/assistant", { replace: true }); }, [location.pathname, navigate]);
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [chatOpen, setChatOpen] = useState(false);
   const [unread, setUnread] = useState(0);

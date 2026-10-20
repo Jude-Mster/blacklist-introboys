@@ -10,7 +10,7 @@ import { ItemPicture, payText, STATUS } from "@/pages/Shop";
 import { cn } from "@/lib/utils";
 
 const fmt = (n) => Number(n || 0).toLocaleString();
-const BLANK = { name: "", category: "", description: "", image_url: "", value_cp: "", stock: 0, active: true, require_note: false, sort: 0, gp_code: false, gp_worth: "", code_source: "stock", code_label: "", add_codes: "" };
+const BLANK = { name: "", category: "", description: "", image_url: "", value_cp: "", stock: 0, active: true, require_note: false, sort: 0, gp_code: false, gp_worth: "", code_source: "stock", code_label: "", add_codes: "", bot: false, bot_days: "", bot_price: "" };
 
 // Guild Leader only: settle orders, change the rates, and edit the catalog.
 export default function ShopAdmin({ onChange }) {
@@ -210,7 +210,10 @@ function Catalog({ data, onChange }) {
     try {
       const res = await base44.functions.invoke("shopAction", { action: "saveItem", item: {
         ...editing, value_cp: Number(editing.value_cp), stock: Number(editing.stock), sort: Number(editing.sort) || 0,
-        gp_worth: editing.gp_code ? Number(editing.gp_worth) : 0
+        gp_worth: editing.gp_code && !editing.bot ? Number(editing.gp_worth) : 0,
+        gp_code: editing.gp_code && !editing.bot,
+        bot_days: editing.bot ? Number(editing.bot_days) || 0 : 0,
+        ...(editing.bot ? { stock: 0 } : {})
       } });
       const d = res.data || {};
       setNotice(d.added || (d.skipped && d.skipped.length)
@@ -239,7 +242,8 @@ function Catalog({ data, onChange }) {
     }
   };
 
-  const gp = !!(editing && editing.gp_code);
+  const bot = !!(editing && editing.bot);
+  const gp = !!(editing && editing.gp_code) && !bot;
   const fromStock = gp && editing.code_source !== "manual";
   const value = gp ? (Number(editing.gp_worth) || 0) * 2 : editing ? Number(editing.value_cp) || 0 : 0;
   const price = editing ? Math.max(1, Math.ceil(value * mult - 1e-9)) : 0;
@@ -266,11 +270,31 @@ function Catalog({ data, onChange }) {
             <label htmlFor="it-cat" className="label">Category heading</label>
             <input id="it-cat" value={editing.category} onChange={(e) => set("category", e.target.value)} maxLength={40} className="field" placeholder="Materials, Gear, Currency" />
           </div>
-          <label className="flex items-center gap-2 rounded-md border border-bronze/50 bg-black/30 px-3 py-2 text-sm text-white sm:col-span-2">
-            <input type="checkbox" checked={gp} onChange={(e) => set("gp_code", e.target.checked)} className="h-4 w-4 accent-[hsl(var(--crimson))]" />
-            This is a GP code (the buyer sees the code on the site)
-          </label>
-          {gp ? (
+          {!bot && (
+            <label className="flex items-center gap-2 rounded-md border border-bronze/50 bg-black/30 px-3 py-2 text-sm text-white sm:col-span-2">
+              <input type="checkbox" checked={gp} onChange={(e) => set("gp_code", e.target.checked)} className="h-4 w-4 accent-[hsl(var(--crimson))]" />
+              This is a GP code (the buyer sees the code on the site)
+            </label>
+          )}
+          {!gp && (
+            <label className="flex items-center gap-2 rounded-md border border-bronze/50 bg-black/30 px-3 py-2 text-sm text-white sm:col-span-2">
+              <input type="checkbox" checked={bot} onChange={(e) => set("bot", e.target.checked)} className="h-4 w-4 accent-[hsl(var(--crimson))]" />
+              This is IntroBoys Assistant time (days are added to the buyer's license the moment they pay)
+            </label>
+          )}
+          {bot ? (
+            <>
+              <div>
+                <label htmlFor="it-botdays" className="label">Days each purchase adds</label>
+                <input id="it-botdays" type="number" inputMode="numeric" min="1" max="3650" step="1" value={editing.bot_days} onChange={(e) => set("bot_days", e.target.value)} className="field" required />
+              </div>
+              <div>
+                <label htmlFor="it-botprice" className="label">Price in points (before tax)</label>
+                <input id="it-botprice" type="number" inputMode="numeric" min="1" step="1" value={editing.bot_price} onChange={(e) => { set("bot_price", e.target.value); set("value_cp", Number(e.target.value) / mult); }} className="field" required />
+                <p className="mt-1 text-xs text-mist">With {fmt(tax)}% tax the buyer pays {fmt((Number(editing.bot_price) || 0) + Math.ceil(((Number(editing.bot_price) || 0) * tax) / 100 - 1e-9))} points. There is no stock: it never sells out.</p>
+              </div>
+            </>
+          ) : gp ? (
             <>
               <div>
                 <label htmlFor="it-worth" className="label">What one code is worth (GP)</label>
@@ -367,10 +391,10 @@ function Catalog({ data, onChange }) {
               <div className="min-w-0 flex-1">
                 <p className={cn("truncate font-bold", it.active ? "text-gold" : "text-mist")}>{it.name}{!it.active && " (hidden)"}</p>
                 <p className="text-xs text-mist">
-                  {it.gp_code ? `${fmt(it.gp_worth)} GP code · ${it.code_source === "manual" ? "you type it" : `from stock "${it.code_label}"`}` : `${fmt(it.value_cp)} CP value`} · {fmt(it.total)} points with tax · {fmt(it.stock)} {it.gp_code && it.code_source !== "manual" ? "codes waiting" : "in stock"}
+                  {it.bot_days > 0 ? `Assistant time · ${fmt(it.bot_days)} days each · ${fmt(it.total)} points with tax` : <>{it.gp_code ? `${fmt(it.gp_worth)} GP code · ${it.code_source === "manual" ? "you type it" : `from stock "${it.code_label}"`}` : `${fmt(it.value_cp)} CP value`} · {fmt(it.total)} points with tax · {fmt(it.stock)} {it.gp_code && it.code_source !== "manual" ? "codes waiting" : "in stock"}</>}
                 </p>
               </div>
-              <button onClick={() => { setError(""); setNotice(""); setEditing({ ...BLANK, ...it, gp_worth: it.gp_code ? it.gp_worth : "", code_source: it.code_source || "stock", stock: it.own_stock ?? it.stock, codes_waiting: it.gp_code && it.code_source !== "manual" ? it.stock : null, add_codes: "" }); }} className="btn-bronze h-8 px-2.5 text-xs" aria-label={`Edit ${it.name}`}>
+              <button onClick={() => { setError(""); setNotice(""); setEditing({ ...BLANK, ...it, bot: it.bot_days > 0, bot_days: it.bot_days > 0 ? it.bot_days : "", bot_price: it.bot_days > 0 ? Math.round(it.price) : "", gp_worth: it.gp_code ? it.gp_worth : "", code_source: it.code_source || "stock", stock: it.own_stock ?? it.stock, codes_waiting: it.gp_code && it.code_source !== "manual" ? it.stock : null, add_codes: "" }); }} className="btn-bronze h-8 px-2.5 text-xs" aria-label={`Edit ${it.name}`}>
                 <Pencil className="h-3.5 w-3.5" /> Edit
               </button>
             </li>

@@ -55,6 +55,11 @@
       "type": "string",
       "description": "The prize-code name the codes are kept under, e.g. 500 GP Code"
     },
+    "bot_days": {
+      "type": "integer",
+      "default": 0,
+      "description": "More than 0 = an IntroBoys Assistant license: each one bought adds this many days, activated the moment it is paid for"
+    },
     "lock_token": {
       "type": "string"
     },

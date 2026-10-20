@@ -35,6 +35,7 @@ export const PAGE_LOADERS = {
   derby: once(() => import("@/pages/Derby")),
   arena: once(() => import("@/pages/Arena")),
   shop: once(() => import("@/pages/Shop")),
+  assistant: once(() => import("@/pages/Assistant")),
   guide: once(() => import("@/pages/Guide")),
   leaderboard: once(() => import("@/pages/Leaderboard")),
   profile: once(() => import("@/pages/Profile")),

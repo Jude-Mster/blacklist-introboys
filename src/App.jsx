@@ -18,6 +18,8 @@ import { Privacy, Terms } from '@/pages/Legal';
 import { Suspense } from 'react';
 import LanternSpinner from '@/components/LanternSpinner';
 import { PAGE_LOADERS, deferred } from '@/lib/routes';
+import { getSessionToken } from '@/lib/session';
+import { holdLink } from '@/lib/assistantLink';
 // 6.24: every page but the sign-in, the landing page and the guild hall is downloaded when it is first
 // needed (see lib/routes.js, which also fetches the likely next ones ahead). The Derby and the Arena carry
 // their 3D scenes.
@@ -27,6 +29,7 @@ const Admin = deferred(PAGE_LOADERS.admin);
 const Poker = deferred(PAGE_LOADERS.poker);
 const Pusoy = deferred(PAGE_LOADERS.pusoy);
 const Shop = deferred(PAGE_LOADERS.shop);
+const Assistant = deferred(PAGE_LOADERS.assistant);
 const Guide = deferred(PAGE_LOADERS.guide);
 const Derby = deferred(PAGE_LOADERS.derby);
 const Arena = deferred(PAGE_LOADERS.arena);
@@ -41,10 +44,21 @@ const ToLogin = () => {
   return <Navigate to={"/login" + loc.search} replace />;
 };
 
+// The IntroBoys Assistant app opens /link-app?link=XXXX-XXXX in the browser. Signed in: straight to the page
+// where the code is approved. Not signed in: Discord login first, and the code waits (see lib/assistantLink.js).
+const LinkApp = () => {
+  const loc = useLocation();
+  const code = new URLSearchParams(loc.search).get("link") || "";
+  if (getSessionToken()) return <Navigate to={"/assistant" + (code ? "?link=" + encodeURIComponent(code) : "")} replace />;
+  holdLink(code);
+  return <Navigate to="/login" replace />;
+};
+
 const AuthenticatedApp = () => {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/link-app" element={<LinkApp />} />
       <Route path="/register" element={<ToLogin />} />
       <Route path="/forgot-password" element={<ToLogin />} />
       <Route path="/reset-password" element={<ToLogin />} />
@@ -65,6 +79,7 @@ const AuthenticatedApp = () => {
           <Route path="/arena" element={<Suspense fallback={<LanternSpinner label="Opening the arena" className="py-24" />}><Arena /></Suspense>} />
           <Route path="/raffle" element={<Navigate to="/arena?tab=tournament" replace />} />
           <Route path="/shop" element={<Shop />} />
+          <Route path="/assistant" element={<Suspense fallback={<LanternSpinner label="Opening the Assistant" className="py-24" />}><Assistant /></Suspense>} />
           <Route path="/market" element={<Market />} />
           <Route path="/guide" element={<Guide />} />
           <Route path="/leaderboard" element={<Leaderboard />} />

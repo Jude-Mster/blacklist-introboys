@@ -1,0 +1,12 @@
+{
+  "name": "BotSession",
+  "type": "object",
+  "properties": {
+    "token_hash": { "type": "string", "description": "SHA-256 of the app's sign-in token. The token itself is never stored." },
+    "member_id": { "type": "string" },
+    "hwid_hash": { "type": "string", "description": "The computer this sign-in belongs to" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "last_seen_at": { "type": "string", "format": "date-time" }
+  },
+  "rls": { "read": false, "create": false, "update": false, "delete": false }
+}

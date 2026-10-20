@@ -1,0 +1,48 @@
+{
+  "name": "BotDevice",
+  "type": "object",
+  "properties": {
+    "device_hash": {
+      "type": "string",
+      "description": "SHA-256 of the secret only the app holds (used to collect the sign-in)"
+    },
+    "user_code": {
+      "type": "string",
+      "description": "The short code shown to the member, e.g. K7QM-4TXD"
+    },
+    "hwid_hash": {
+      "type": "string",
+      "description": "SHA-256 of the computer that asked to sign in"
+    },
+    "app_version": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "replaced"
+      ],
+      "default": "pending"
+    },
+    "member_id": {
+      "type": "string",
+      "description": "Who approved it"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ip_hash": {
+      "type": "string",
+      "description": "6.31: hash of the connection that asked for the code (spam guard: at most 5 codes per connection per 10 minutes)"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}
