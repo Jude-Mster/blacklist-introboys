@@ -33,6 +33,14 @@
     "last_seen_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "guild": {
+      "type": "string",
+      "description": "6.34: the guild these people are from (shown with their names)"
+    },
+    "color": {
+      "type": "string",
+      "description": "6.34: the guild's colour on names, e.g. #6cc6ff"
     }
   },
   "rls": {

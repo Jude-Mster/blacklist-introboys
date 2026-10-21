@@ -1,0 +1,54 @@
+{
+  "name": "WarChat",
+  "type": "object",
+  "description": "6.34 War Room chat: messages between the commanders and the council",
+  "properties": {
+    "who": {
+      "type": "string",
+      "description": "m_<member id> or g_<guest id>"
+    },
+    "name": {
+      "type": "string"
+    },
+    "guild": {
+      "type": "string",
+      "description": "The sender's guild when it was sent"
+    },
+    "color": {
+      "type": "string",
+      "description": "The guild's colour when it was sent"
+    },
+    "level": {
+      "type": "string",
+      "description": "command or council"
+    },
+    "text": {
+      "type": "string"
+    },
+    "lang": {
+      "type": "string",
+      "description": "Language the message was written in"
+    },
+    "tr": {
+      "type": "object",
+      "description": "Translations: en, tl, tr, th, id, zh"
+    },
+    "tr_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "image_url": {
+      "type": "string"
+    },
+    "removed": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

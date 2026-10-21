@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Pencil, MoveUpRight, Type, Stamp, Hand, Eraser, Undo2, Trash2, MapPin, Loader2 } from "lucide-react";
+import { Pencil, MoveUpRight, Type, Stamp, Hand, Eraser, Undo2, Trash2, MapPin, Loader2, ZoomIn, ZoomOut, Maximize } from "lucide-react";
 import { CHALK, STAMPS, TRIBES, mapUrl, pinsFor, stoneName } from "@/lib/warMaps";
 import { newId, simplify } from "@/lib/warRoom";
 import { cn } from "@/lib/utils";
@@ -17,6 +17,10 @@ const TOOLS = [
   { id: "erase", label: "Eraser", icon: Eraser, key: "e" }
 ];
 const stampOf = (k) => STAMPS.find((s) => s.id === k) || STAMPS[0];
+// 6.34: zoom. Two fingers pinch and pan on phones; Ctrl + wheel (or a trackpad pinch) and the +/- buttons
+// on computers; the Move tool pans on empty board while zoomed in.
+const MAX_ZOOM = 5;
+const NO_VIEW = { z: 1, x: 0, y: 0 };
 
 export default function Chalkboard({ map, shapes, onOps, me, canClear, saving, showPins, onTogglePins, mapStrength = 0.72 }) {
   const H = Math.round(W * map.h / map.w);
@@ -31,6 +35,72 @@ export default function Chalkboard({ map, shapes, onOps, me, canClear, saving, s
   const [confirmClear, setConfirmClear] = useState(false);
   const mine = useRef([]);                        // ids I added, newest last (for Undo)
   const erasing = useRef(false);
+  const slateRef = useRef(null);
+  const [view, setView] = useState(NO_VIEW);      // zoom and pan of the board
+  const viewRef = useRef(NO_VIEW); viewRef.current = view;
+  const touches = useRef(new Map());              // fingers on the board
+  const pinch = useRef(null);                     // { d, mx, my, view } while two fingers are down
+  const gestured = useRef(false);                 // a pinch happened: the last finger lifting does nothing
+  const pan = useRef(null);                       // Move tool dragging empty board while zoomed
+  const tap = useRef(null);                       // where a marker / words tap started
+
+  useEffect(() => { setView(NO_VIEW); }, [map.id]);
+  const clampView = useCallback((v) => {
+    const r = slateRef.current ? slateRef.current.getBoundingClientRect() : { width: 0, height: 0 };
+    const z = Math.min(MAX_ZOOM, Math.max(1, v.z));
+    return { z, x: Math.min(0, Math.max(r.width - r.width * z, v.x)), y: Math.min(0, Math.max(r.height - r.height * z, v.y)) };
+  }, []);
+  // zoom by `k` keeping the point (cx, cy) of the slate (in px) where it is
+  const zoomAt = useCallback((k, cx, cy) => {
+    const v = viewRef.current;
+    const z = Math.min(MAX_ZOOM, Math.max(1, v.z * k));
+    const px = (cx - v.x) / v.z, py = (cy - v.y) / v.z;
+    setView(clampView({ z, x: cx - px * z, y: cy - py * z }));
+  }, [clampView]);
+  const zoomCenter = (k) => { const r = slateRef.current.getBoundingClientRect(); zoomAt(k, r.width / 2, r.height / 2); };
+  useEffect(() => {
+    const el = slateRef.current;
+    if (!el) return undefined;
+    const onWheel = (e) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      zoomAt(Math.exp(-e.deltaY * 0.0025), e.clientX - r.left, e.clientY - r.top);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [zoomAt]);
+
+  const local = (e) => { const r = slateRef.current.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  const pinchState = () => {
+    const [a, c] = [...touches.current.values()];
+    return { d: Math.hypot(a.x - c.x, a.y - c.y) || 1, mx: (a.x + c.x) / 2, my: (a.y + c.y) / 2 };
+  };
+  const gDown = (e) => {
+    touches.current.set(e.pointerId, local(e));
+    if (touches.current.size === 2) {
+      // a second finger: this is a pinch, not a drawing
+      gestured.current = true; setDraft(null); setDrag(null); erasing.current = false; pan.current = null; tap.current = null;
+      pinch.current = { ...pinchState(), view: viewRef.current };
+      e.stopPropagation();
+    } else if (touches.current.size > 2) e.stopPropagation();
+  };
+  const gMove = (e) => {
+    if (!touches.current.has(e.pointerId)) return;
+    touches.current.set(e.pointerId, local(e));
+    if (pinch.current && touches.current.size >= 2) {
+      e.stopPropagation();
+      const p0 = pinch.current, p1 = pinchState(), v = p0.view;
+      const z = Math.min(MAX_ZOOM, Math.max(1, v.z * (p1.d / p0.d)));
+      const px = (p0.mx - v.x) / v.z, py = (p0.my - v.y) / v.z;   // the board point under the fingers at the start
+      setView(clampView({ z, x: p1.mx - px * z, y: p1.my - py * z }));
+    }
+  };
+  const gUp = (e) => {
+    touches.current.delete(e.pointerId);
+    if (touches.current.size < 2) pinch.current = null;
+    if (gestured.current) { e.stopPropagation(); if (!touches.current.size) gestured.current = false; }
+  };
 
   // keyboard shortcuts (not while typing words)
   useEffect(() => {
@@ -61,9 +131,13 @@ export default function Chalkboard({ map, shapes, onOps, me, canClear, saving, s
     const p = at(e);
     const hit = e.target.closest && e.target.closest("[data-shape]");
     if (tool === "erase") { erasing.current = true; if (hit) onOps([{ op: "remove", ids: [hit.dataset.shape] }]); svgRef.current.setPointerCapture?.(e.pointerId); return; }
-    if (tool === "move") { if (hit) { setDrag({ id: hit.dataset.shape, x0: p.x, y0: p.y, dx: 0, dy: 0 }); svgRef.current.setPointerCapture?.(e.pointerId); } return; }
-    if (tool === "text") { setTyping({ x: p.x, y: p.y, text: "" }); return; }
-    if (tool === "stamp") { add({ id: newId(), t: "stamp", k: stamp, c: color, x: p.x, y: p.y }); return; }
+    if (tool === "move") {
+      if (hit) { setDrag({ id: hit.dataset.shape, x0: p.x, y0: p.y, dx: 0, dy: 0 }); svgRef.current.setPointerCapture?.(e.pointerId); }
+      else if (viewRef.current.z > 1) { const l = local(e); pan.current = { x: l.x, y: l.y, view: viewRef.current }; svgRef.current.setPointerCapture?.(e.pointerId); }
+      return;
+    }
+    // Markers and words go down when the finger lifts, so the first finger of a pinch doesn't drop one.
+    if (tool === "text" || tool === "stamp") { tap.current = { ...p, cx: e.clientX, cy: e.clientY }; return; }
     svgRef.current.setPointerCapture?.(e.pointerId);
     if (tool === "draw") setDraft({ t: "path", pts: [p.x, p.y] });
     if (tool === "arrow") setDraft({ t: "arrow", x1: p.x, y1: p.y, x2: p.x, y2: p.y });
@@ -75,6 +149,7 @@ export default function Chalkboard({ map, shapes, onOps, me, canClear, saving, s
       if (hit) onOps([{ op: "remove", ids: [hit.dataset.shape] }]);
       return;
     }
+    if (pan.current) { const l = local(e), q = pan.current; setView(clampView({ ...q.view, x: q.view.x + l.x - q.x, y: q.view.y + l.y - q.y })); return; }
     if (drag) { const p = at(e); setDrag((d) => ({ ...d, dx: p.x - d.x0, dy: p.y - d.y0 })); return; }
     if (!draft) return;
     const p = at(e);
@@ -83,8 +158,17 @@ export default function Chalkboard({ map, shapes, onOps, me, canClear, saving, s
       if (Math.hypot(p.x - draft.pts[n - 2], p.y - draft.pts[n - 1]) > 0.002 && n < 1600) setDraft({ ...draft, pts: [...draft.pts, p.x, p.y] });
     } else setDraft({ ...draft, x2: p.x, y2: p.y });
   };
-  const up = () => {
+  const up = (e) => {
     erasing.current = false;
+    pan.current = null;
+    if (tap.current) {
+      const t = tap.current; tap.current = null;
+      if (e && e.type === "pointerup" && Math.hypot(e.clientX - t.cx, e.clientY - t.cy) < 12) {
+        if (tool === "text") setTyping({ x: t.x, y: t.y, text: "" });
+        else if (tool === "stamp") add({ id: newId(), t: "stamp", k: stamp, c: color, x: t.x, y: t.y });
+      }
+      return;
+    }
     if (drag) {
       if (Math.abs(drag.dx) + Math.abs(drag.dy) > 0.002) onOps([{ op: "move", id: drag.id, dx: Math.round(drag.dx * 10000) / 10000, dy: Math.round(drag.dy * 10000) / 10000 }]);
       setDrag(null);
@@ -108,6 +192,7 @@ export default function Chalkboard({ map, shapes, onOps, me, canClear, saving, s
   const pins = showPins ? pinsFor(map.id) : [];
   const shown = shapes.map((s) => (drag && s.id === drag.id ? shift(s, drag.dx, drag.dy) : s));
   const cursor = tool === "move" ? "grab" : tool === "erase" ? "cell" : tool === "text" ? "text" : "crosshair";
+  const zoomed = view.z > 1.001;
 
   return (
     <div className="flex flex-col gap-3">
@@ -158,7 +243,9 @@ export default function Chalkboard({ map, shapes, onOps, me, canClear, saving, s
 
       {/* the board */}
       <div className="war-frame mx-auto w-full" style={{ maxWidth: `min(100%, calc(78vh * ${map.w / map.h}))` }}>
-        <div className="war-slate relative w-full overflow-hidden" style={{ aspectRatio: `${map.w} / ${map.h}` }}>
+        <div ref={slateRef} className="war-slate relative w-full touch-none overflow-hidden" style={{ aspectRatio: `${map.w} / ${map.h}` }}
+          onPointerDownCapture={gDown} onPointerMoveCapture={gMove} onPointerUpCapture={gUp} onPointerCancelCapture={gUp}>
+          <div className="absolute inset-0 origin-top-left" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})` }}>
           <img src={mapUrl(map.id)} alt={`${map.name} map`} draggable={false} referrerPolicy="no-referrer"
             className="pointer-events-none absolute inset-0 h-full w-full select-none object-fill war-map" style={{ opacity: mapStrength }} />
           <div className="war-dust pointer-events-none absolute inset-0" aria-hidden="true" />
@@ -186,11 +273,18 @@ export default function Chalkboard({ map, shapes, onOps, me, canClear, saving, s
               onBlur={finishText}
               className="war-type absolute" style={{ left: `${typing.x * 100}%`, top: `${typing.y * 100}%`, color }} />
           )}
+          </div>
+          <div className="absolute bottom-2 right-2 flex flex-col gap-1" onPointerDown={(e) => e.stopPropagation()}>
+            <button type="button" onClick={() => zoomCenter(1.5)} disabled={view.z >= MAX_ZOOM} className="war-zoom" aria-label="Zoom in" title="Zoom in (Ctrl + wheel, or pinch)"><ZoomIn className="h-4 w-4" /></button>
+            <button type="button" onClick={() => zoomCenter(1 / 1.5)} disabled={!zoomed} className="war-zoom" aria-label="Zoom out" title="Zoom out"><ZoomOut className="h-4 w-4" /></button>
+            {zoomed && <button type="button" onClick={() => setView(NO_VIEW)} className="war-zoom" aria-label="Show the whole map" title="Show the whole map"><Maximize className="h-4 w-4" /></button>}
+          </div>
+          {zoomed && <span className="pointer-events-none absolute left-2 top-2 rounded bg-black/55 px-2 py-0.5 text-xs text-white/85">{Math.round(view.z * 100)}%</span>}
           {saving && <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded bg-black/50 px-2 py-0.5 text-xs text-white/80"><Loader2 className="h-3 w-3 animate-spin" /> saving</span>}
         </div>
       </div>
       <p className="text-center text-xs text-mist/80">
-        {TRIBES[map.tribe].name} · {map.step} · {me.name ? `you draw as ${me.name}` : ""} · Map pictures © Wuxen2 (wiki.wuxen2.com)
+        <span className="sm:hidden">Pinch with two fingers to zoom. </span>{TRIBES[map.tribe].name} · {map.step} · {me.name ? `you draw as ${me.name}` : ""} · Map pictures © Wuxen2 (wiki.wuxen2.com)
       </p>
     </div>
   );
@@ -239,7 +333,7 @@ function Shape({ s, W, H, tool }) {
   }
   if (s.t === "stamp") {
     const k = stampOf(s.k);
-    const r = 26;
+    const r = s.k === "stone" ? 34 : 26;
     return (
       <g {...common} transform={`translate(${s.x * W} ${s.y * H})`}>
         {title}
@@ -251,17 +345,27 @@ function Shape({ s, W, H, tool }) {
   return null;
 }
 
+// 6.34: big and easy to spot: a glowing disc with the stone's sign, in the colour of the tribe holding it.
+const STONE_SIGN = { solar: "☀", lunar: "☾", astral: "★", legacy: "♛" };
 function WikiPin({ p, W, H }) {
   const x = (p.x / 100) * W, y = (p.y / 100) * H;
-  const label = p.outpost ? p.label : `${stoneName(p.stone).replace(" Holy Stone", " stone")}${p.holder !== "none" ? ` · if ${TRIBES[p.holder].name} holds it` : " · no owner"}`;
+  const name = p.outpost ? p.label : stoneName(p.stone).replace(" Holy Stone", " Stone");
+  const sub = p.outpost ? "Outpost capture" : p.holder !== "none" ? `if ${TRIBES[p.holder].name} holds it` : "no owner";
   const tint = p.outpost ? "#ff5a52" : TRIBES[p.holder].color;
+  const sign = p.outpost ? "⚑" : STONE_SIGN[p.stone] || "◆";
+  const wide = Math.max(name.length * 14.5, sub.length * 10.2) + 26;
+  const S = 1.5;                           // drawn half as big again as the shapes around it
+  const left = x + (50 + wide) * S > W;    // keep the label on the board
   return (
-    <g transform={`translate(${x} ${y})`} style={{ pointerEvents: "none" }}>
-      <circle r="20" fill="none" stroke={tint} strokeWidth="2.5" opacity="0.8"><animate attributeName="r" values="14;26;14" dur="2.6s" repeatCount="indefinite" /><animate attributeName="opacity" values="0.9;0.15;0.9" dur="2.6s" repeatCount="indefinite" /></circle>
-      <path d="M0 -13 L11 0 L0 13 L-11 0 Z" fill={tint} stroke="#0d1510" strokeWidth="2.5" />
-      <g transform="translate(18 -16)">
-        <rect x="-4" y="-17" width={label.length * 10.6 + 10} height="26" rx="5" fill="rgba(8,14,10,0.78)" />
-        <text x="2" y="0" fill="#f4f1ea" fontSize="17" fontFamily="system-ui, sans-serif">{label}</text>
+    <g transform={`translate(${x} ${y}) scale(${S})`} style={{ pointerEvents: "none" }} className="war-pin">
+      <circle r="44" fill={tint} opacity="0.16"><animate attributeName="r" values="40;64;40" dur="2.4s" repeatCount="indefinite" /><animate attributeName="opacity" values="0.35;0;0.35" dur="2.4s" repeatCount="indefinite" /></circle>
+      <circle r="37" fill="none" stroke={tint} strokeWidth="3" strokeDasharray="7 6" opacity="0.9" />
+      <circle r="29" fill="rgba(8,14,10,0.88)" stroke={tint} strokeWidth="5" />
+      <text textAnchor="middle" dominantBaseline="central" fontSize="34" fill={tint} y="1">{sign}</text>
+      <g transform={`translate(${left ? -46 - wide : 46} -26)`}>
+        <rect width={wide} height="52" rx="8" fill="rgba(8,14,10,0.86)" stroke={tint} strokeWidth="2" />
+        <text x="13" y="22" fill="#fff" fontSize="22" fontWeight="700" fontFamily="system-ui, sans-serif">{name}</text>
+        <text x="13" y="42" fill={tint} fontSize="16" fontFamily="system-ui, sans-serif">{sub}</text>
       </g>
     </g>
   );

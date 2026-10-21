@@ -130,7 +130,7 @@ async function recipient(b, vid: string) {
 async function uploadImage(b, dataUrl: string) {
   let img;
   try { img = decodeImage(dataUrl); } catch (e) {
-    throw new UserError(String(e && (e as any).message) === 'too-big' ? 'Pictures can be up to 3 MB.' : 'That file is not a picture (JPG, PNG, WebP or GIF).');
+    throw new UserError(String(e && (e as any).message) === 'too-big' ? 'Pictures can be up to 10 MB.' : 'That file is not a picture (JPG, PNG, WebP or GIF).');
   }
   const file = new File([img.bytes], `wuxen2-${Date.now()}.${img.ext}`, { type: img.type });
   const res: any = await b.asServiceRole.integrations.Core.UploadFile({ file });

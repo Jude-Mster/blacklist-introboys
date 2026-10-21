@@ -1,0 +1,33 @@
+{
+  "name": "WarPush",
+  "type": "object",
+  "description": "6.34 War Room: phones and browsers that get a notification when a battle plan changes",
+  "properties": {
+    "who": {
+      "type": "string",
+      "description": "m_<member id> or g_<guest id>"
+    },
+    "endpoint": {
+      "type": "string"
+    },
+    "p256dh": {
+      "type": "string"
+    },
+    "auth": {
+      "type": "string"
+    },
+    "fails": {
+      "type": "number",
+      "default": 0
+    },
+    "device": {
+      "type": "string"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

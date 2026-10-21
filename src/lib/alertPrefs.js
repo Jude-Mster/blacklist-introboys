@@ -60,7 +60,7 @@ export function speak(kind) {
 export const devicePermission = () => (typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported");
 
 let swReady = null;
-function worker() {
+export function worker() {
   if (!("serviceWorker" in navigator)) return Promise.resolve(null);
   if (!swReady) {
     swReady = navigator.serviceWorker.register("/sw.js")

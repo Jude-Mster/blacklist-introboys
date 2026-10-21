@@ -123,8 +123,8 @@ function Shell() {
           collapsed ? "lg:pl-[88px]" : "lg:pl-[260px]"
         )}
       >
-        {/* the Blacklist Arena gets a wider page so the fight stage is bigger */}
-        <div className={cn("mx-auto w-full", location.pathname.startsWith("/arena") ? "max-w-[76rem]" : "max-w-5xl")}>
+        {/* the Blacklist Arena gets a wider page so the fight stage is bigger; 6.34: the War Room the widest (board + chat) */}
+        <div className={cn("mx-auto w-full", location.pathname.startsWith("/warroom") ? "max-w-[112rem]" : location.pathname.startsWith("/arena") ? "max-w-[76rem]" : "max-w-5xl")}>
           <WarTimer variant="strip" className="mb-2 md:hidden" />
           <HsbTimer variant="strip" className="mb-3 md:hidden" />
           {account && account.linked && <PrizeNotice />}

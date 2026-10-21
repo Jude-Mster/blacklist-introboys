@@ -9,12 +9,13 @@ import { base44 } from "@/api/base44Client";
 
 export const LANGS = [
   { code: "en", name: "English", label: "English" },
-  { code: "tl", name: "Tagalog", label: "Tagalog" },
+  { code: "tl", name: "Filipino", label: "Filipino (Tagalog)" },
   { code: "th", name: "Thai", label: "ไทย (Thai)" },
   { code: "es", name: "Spanish", label: "Español" },
   { code: "pt", name: "Portuguese", label: "Português" },
   { code: "id", name: "Indonesian", label: "Bahasa Indonesia" },
-  { code: "zh", name: "Chinese (Taiwan)", label: "繁體中文 (台灣)" }   // 6.26
+  { code: "zh", name: "Chinese (Taiwan)", label: "繁體中文 (台灣)" },  // 6.26
+  { code: "tr", name: "Turkish", label: "Türkçe" }                  // 6.34
 ];
 export const LANG_NAME = Object.fromEntries(LANGS.map((l) => [l.code, l.name]));
 export const MAX_LEN = 300;
@@ -73,6 +74,7 @@ function guessLang() {
     const l = String(navigator.language || "en").toLowerCase();
     if (l.startsWith("fil") || l.startsWith("tl")) return "tl";
     if (l.startsWith("zh")) return "zh";
+    if (l.startsWith("tr")) return "tr";
     for (const c of ["th", "es", "pt", "id"]) if (l.startsWith(c)) return c;
     if (l.startsWith("in") || l.startsWith("ms")) return "id";
   } catch { /* no navigator */ }

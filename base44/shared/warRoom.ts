@@ -104,3 +104,22 @@ export function memLimit(key: string, max: number, windowMs: number): boolean {
   return true;
 }
 export const clientIp = (req) => String(req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || req.headers.get('x-real-ip') || '').split(',')[0].trim().slice(0, 64);
+
+// ---------- 6.34: guilds, chat, notifications ----------
+// Every name in the War Room carries its guild. Guild members are BLACKLIST INTROBOYS in the guild's red;
+// people who join with a code get the guild and colour the Guild Leader set on that code.
+export const HOME_GUILD = { guild: 'BLACKLIST INTROBOYS', color: '#ff4d4f' };
+// Keep in step with GUILD_COLORS in src/lib/warRoom.js.
+export const GUILD_COLORS = ['#6cc6ff', '#7be08b', '#f2c14e', '#b48cff', '#ff8ad1', '#ff9f43', '#4dd6c1', '#c9d1d9'];
+export const cleanGuild = (v) => cleanText(v, 32);
+export const cleanColor = (v) => (GUILD_COLORS.includes(String(v)) ? String(v) : GUILD_COLORS[0]);
+
+// The War Room chat is translated into these six (Filipino is 'tl').
+export const WAR_LANGS = ['en', 'tl', 'tr', 'th', 'id', 'zh'] as const;
+export const CHAT_MAX_LEN = 500;
+export const CHAT_WINDOW = 120;            // newest messages every screen shares
+export const CHAT_GAP_MS = 900;            // one message a second per person
+export const ONLINE_MS = 2 * 60 * 1000;    // "online" = had the War Room open in the last two minutes
+export const SEEN_EVERY_MS = 45 * 1000;    // how often an open War Room writes "still here"
+export const NOTIFY_EDIT_GAP_MS = 10 * 60 * 1000;   // drawings: at most one notification per plan every 10 minutes
+export const NOTIFY_NOTES_GAP_MS = 2 * 60 * 1000;   // orders: at most one every 2 minutes

@@ -21,6 +21,15 @@
     "updated_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "notified_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "6.34: last time the council was sent a notification about this plan"
+    },
+    "updated_by": {
+      "type": "string",
+      "description": "6.34: who changed it last"
     }
   },
   "rls": {

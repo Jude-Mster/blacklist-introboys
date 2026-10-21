@@ -24,7 +24,7 @@ export default function WarGuest() {
         <span className="flex-1" />
         {me && me.access !== "none" && (
           <>
-            <span className="truncate text-sm text-mist">{me.name} · <span className="text-gold">council guest</span></span>
+            <span className="min-w-0 truncate text-sm text-mist"><b style={{ color: me.color }}>{me.name}</b> · <span style={{ color: me.color }}>{me.guild}</span></span>
             <button type="button" onClick={() => { setPass(""); setMe({ access: "none" }); }} className="btn-bronze h-9 px-3 text-sm"><LogOut className="h-4 w-4" /> Leave</button>
           </>
         )}
