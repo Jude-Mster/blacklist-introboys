@@ -331,6 +331,22 @@ await app({ action: 'remotePush', state: { running: false }, picture: '/9j/' + '
 ok((await call(bot, C, { action: 'remoteView' })).picture === '/9j/' + 'B'.repeat(100), 'while watching, the picture is shown');
 ok((await app({ action: 'remotePush', picture: '<script>' }, rc3.token)).status === 200 && (await call(bot, C, { action: 'remoteView' })).picture === '/9j/' + 'B'.repeat(100), 'a picture that is not a JPEG is ignored');
 ok((await call(bot, C, { action: 'remoteCommand', cmd: 'format_c' })).status === 400, 'an unknown command is refused');
+// 6.37: pictures in other shapes, and the reason when there is none
+const png = 'iVBORw0KGgo' + 'A'.repeat(60);
+await app({ action: 'remotePush', state: {}, picture: 'data:image/png;base64,' + png.slice(0, 30) + '\r\n' + png.slice(30) }, rc3.token);
+const vp = await call(bot, C, { action: 'remoteView' });
+ok(vp.picture === png && vp.picture_type === 'png', 'a PNG sent as a data: address with a line break is shown');
+ok((await call(bot, C, { action: 'remoteCommand', cmd: 'enhance' })).status === 400 && (await call(bot, C, { action: 'remoteCommand', cmd: 'upgrade' })).status === 400, 'upgrade and enhance are no longer sent from the site');
+advance(16_000);
+await app({ action: 'remotePush', state: {}, picture: '/9j/' + 'A'.repeat(500_000) }, rc3.token);
+advance(46_000);
+await app({ action: 'remotePush', state: {} }, rc3.token);
+await call(bot, C, { action: 'remoteView' });
+await app({ action: 'remotePush', state: {}, picture: '/9j/' + 'A'.repeat(500_000) }, rc3.token);
+const vbig = await call(bot, C, { action: 'remoteView' });
+ok(!vbig.picture && /too big/.test(vbig.picture_note), `the page says why no picture shows (${vbig.picture_note})`);
+await app({ action: 'remotePush', state: {} }, rc3.token);
+ok(/no picture in the report/.test((await call(bot, C, { action: 'remoteView' })).picture_note), 'and says so when the app sends none');
 const st1 = await call(bot, C, { action: 'remoteCommand', cmd: 'start', args: { dungeon: 'den', runs: 5000, start_boss: 9, evil: 1 } });
 ok(st1.status === 200, 'the owner queues start');
 await call(bot, C, { action: 'remoteCommand', cmd: 'return_town' });

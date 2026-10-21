@@ -3,7 +3,7 @@
   "type": "object",
   "properties": {
     "member_id": { "type": "string" },
-    "cmd": { "type": "string", "description": "start, stop, return_town, upgrade, enhance" },
+    "cmd": { "type": "string", "description": "start, stop, return_town" },
     "args": { "type": "string", "description": "JSON arguments (checked against the allowed list)" },
     "status": { "type": "string", "description": "pending, taken, done, failed, expired" },
     "result": { "type": "string" },

@@ -2,13 +2,48 @@
   "name": "BotRemote",
   "type": "object",
   "properties": {
-    "member_id": { "type": "string" },
-    "state": { "type": "string", "description": "JSON: what the app reports (running, boss, hp, dungeon, runs, game found, version)" },
-    "log": { "type": "string", "description": "The app's latest log lines, newline separated" },
-    "picture": { "type": "string", "description": "Small JPEG of the game (base64), only sent while the owner watches" },
-    "picture_at": { "type": "string", "format": "date-time" },
-    "updated_at": { "type": "string", "format": "date-time", "description": "Last report from the app" },
-    "watch_until": { "type": "string", "format": "date-time", "description": "The owner has the remote page open until then: the app reports fast" }
+    "member_id": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string",
+      "description": "JSON: what the app reports (running, boss, hp, dungeon, runs, game found, version)"
+    },
+    "log": {
+      "type": "string",
+      "description": "The app's latest log lines, newline separated"
+    },
+    "picture": {
+      "type": "string",
+      "description": "Small picture of the game (base64 JPEG, PNG or WebP), only kept while the owner watches"
+    },
+    "picture_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last report from the app"
+    },
+    "watch_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "The owner has the remote page open until then: the app reports fast"
+    },
+    "picture_type": {
+      "type": "string",
+      "description": "6.37: jpeg, png or webp"
+    },
+    "picture_note": {
+      "type": "string",
+      "description": "6.37: why the last report had no usable picture (shown on the remote page)"
+    }
   },
-  "rls": { "read": false, "create": false, "update": false, "delete": false }
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

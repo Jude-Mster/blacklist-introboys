@@ -230,8 +230,24 @@ async function update(b, p) {
 // remote page shows it and queues commands from a fixed list. The app only ever acts on commands from that list, for its own
 // member, on the PC the license is locked to, and only within a minute of the click. The site can never move the mouse or type.
 
-const REMOTE_CMDS = ['start', 'stop', 'return_town', 'upgrade', 'enhance'];
-const CMD_TTL_MS = 60_000, WATCH_MS = 20_000, ONLINE_MS = 25_000, PIC_MAX = 120_000;
+// 6.37: upgrade and enhance taken off the site (the app may still know them; the site never sends them).
+const REMOTE_CMDS = ['start', 'stop', 'return_town'];
+const CMD_TTL_MS = 60_000, WATCH_MS = 20_000, ONLINE_MS = 25_000, PIC_MAX = 400_000;
+// 6.37: the picture is taken as JPEG, PNG or WebP, plain base64 or a data: address, line breaks allowed, up to
+// ~300 KB. What happened to the last one is kept in picture_note, so the page can say why none shows.
+function readPicture(v): { b64?: string; type?: string; note: string } {
+  if (v === undefined || v === null || v === '') return { note: 'no picture in the report' };
+  if (typeof v !== 'string') return { note: `picture was a ${Array.isArray(v) ? 'list' : typeof v}, not text` };
+  let t = v.trim();
+  const m = /^data:image\/[a-z]+;base64,/i.exec(t);
+  if (m) t = t.slice(m[0].length);
+  t = t.replace(/\s+/g, '');
+  if (t.length > PIC_MAX) return { note: `picture too big (${Math.round(t.length * 3 / 4 / 1024)} KB, the limit is ${Math.round(PIC_MAX * 3 / 4 / 1024)} KB)` };
+  if (!/^[A-Za-z0-9+/]+=*$/.test(t)) return { note: `picture is not base64 (starts with "${text(v, 16)}")` };
+  const type = t.startsWith('/9j/') ? 'jpeg' : t.startsWith('iVBOR') ? 'png' : t.startsWith('UklGR') ? 'webp' : '';
+  if (!type) return { note: `picture is not a JPEG, PNG or WebP (starts with "${t.slice(0, 8)}")` };
+  return { b64: t, type, note: '' };
+}
 const cleanLine = (v) => String(v ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 200);
 
 async function remoteRow(b, memberId: string) {
@@ -263,7 +279,11 @@ async function remotePush(b, s, p) {
   if (p.state && typeof p.state === 'object') { const js = JSON.stringify(p.state); if (js.length <= 4000) patch.state = js; }
   if (Array.isArray(p.log)) patch.log = p.log.slice(-20).map(cleanLine).join('\n');
   const watching = !!(row && Date.parse(row.watch_until || '') > now);
-  if (watching && typeof p.picture === 'string' && p.picture.length <= PIC_MAX && /^\/9j\/[A-Za-z0-9+/=]+$/.test(p.picture)) { patch.picture = p.picture; patch.picture_at = iso; }
+  if (watching) {
+    const pic = readPicture(p.picture ?? p.image ?? p.screenshot);
+    if (pic.b64) { patch.picture = pic.b64; patch.picture_type = pic.type; patch.picture_at = iso; patch.picture_note = ''; }
+    else if (!(row && Date.parse(row.picture_at || '') > now - 15_000)) patch.picture_note = pic.note;   // only while no fresh picture
+  }
   if (!watching && row && row.picture) patch.picture = '';                  // nobody watches: the picture is not kept
   if (row) await E.BotRemote.update(row.id, patch); else row = await E.BotRemote.create({ member_id: s.member_id, ...patch });
 
@@ -301,6 +321,7 @@ async function remoteView(b, me) {
   return Response.json({
     licensed: st.active, device_bound: !!(lic && lic.hwid_hash), online, updated_at: row.updated_at || null,
     state: online ? state : null, log: online ? (row.log || '') : '', picture: online && picFresh ? row.picture : null, picture_at: picFresh ? row.picture_at : null,
+    picture_type: picFresh ? (row.picture_type || 'jpeg') : null, picture_note: online && !picFresh ? (row.picture_note || 'waiting for the first picture') : '',
     commands: items.map((c) => ({ id: c.id, cmd: c.cmd, status: c.status === 'pending' && !(Date.parse(c.expires_at || '') > now) ? 'expired' : c.status, result: c.result || '', created_at: c.created_at }))
   });
 }

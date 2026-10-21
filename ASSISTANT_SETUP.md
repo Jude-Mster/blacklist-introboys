@@ -97,5 +97,9 @@ the app says "No Assistant time" → buy days in the shop → *Check again* → 
 ## Remote control (site 6.36, app 4.5.0)
 New: entities `BotRemote` and `BotCommand`, actions `remotePush` (app) and `remoteView` / `remoteCommand` (member) in `botAuth`,
 and the *Remote control* panel on the Assistant page (`src/components/assistant/RemotePanel.jsx`). Redeploy the functions and entities.
-Members only ever see and control their OWN app; there is no leader view. Commands: start, stop, return_town, upgrade, enhance - nothing else.
+Members only ever see and control their OWN app; there is no leader view. Commands: start, stop, return_town - nothing else (6.37: upgrade and enhance were taken off the site).
 The page polls every 3 s while it is open and visible; the app then reports every 3 s (otherwise every 20 s) and sends a ~30 KB picture every 5 s.
+
+**6.37:** the picture may be JPEG, PNG or WebP, sent as plain base64 or as a `data:image/...;base64,` address (line breaks are fine),
+up to about 300 KB, in the field `picture` (also read from `image` or `screenshot`). When a report has no usable picture the reason is
+kept and shown on the remote page (for example "no picture in the report" or "picture too big"), so a missing live view can be traced.
