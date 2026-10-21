@@ -3,8 +3,9 @@ import { Link, useLocation } from "react-router-dom";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useGuild } from "@/lib/GuildContext";
 import { GAME_ICONS } from "@/lib/gameIcons";
-import { HOME, RANKINGS, PROFILE, ADMIN, CHAT, FIGHT, GuildMark, SHOP, ASSISTANT, MARKET, GUIDE, gameLinks, isActive, isAdminRole, tableLinks } from "./navConfig";
+import { HOME, RANKINGS, PROFILE, ADMIN, CHAT, FIGHT, GuildMark, SHOP, ASSISTANT, MARKET, WARROOM, GUIDE, gameLinks, isActive, isAdminRole, tableLinks } from "./navConfig";
 import { useBuySell, unreadTotal } from "@/lib/buysell";
+import { isCouncil } from "@/lib/warRoom";
 import { cn } from "@/lib/utils";
 import { base44 } from "@/api/base44Client";
 
@@ -52,6 +53,7 @@ export default function Sidebar({ collapsed, onToggle, onChat, chatOpen, unread 
 
         <Group label="Guild" wide={wide}>
           <Item item={MARKET} active={isActive(MARKET, location)} wide={wide} badge={marketUnread} />
+          {(isAdminRole(member) || isCouncil()) && <Item item={WARROOM} active={isActive(WARROOM, location)} wide={wide} />}
           <Item item={SHOP} active={isActive(SHOP, location)} wide={wide} />
           <Item item={ASSISTANT} active={isActive(ASSISTANT, location)} wide={wide} />
           <Item item={RANKINGS} active={isActive(RANKINGS, location)} wide={wide} />

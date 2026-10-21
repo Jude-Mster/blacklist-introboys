@@ -1,5 +1,5 @@
 import React from "react";
-import { Home, Trophy, ScrollText, Shield, Swords, MessageSquare, Spade, BookOpen, Store, Download, Flag, Handshake, Bot } from "lucide-react";
+import { Home, Trophy, ScrollText, Shield, Swords, MessageSquare, Spade, BookOpen, Store, Download, Flag, Handshake, Bot, Map } from "lucide-react";
 import { GAMES } from "@/lib/games";
 
 // One source of truth for every navigation surface.
@@ -34,6 +34,8 @@ export function GuildMark({ className = "", style }) {
 }
 export const FIGHT = { id: "arena", to: "/arena", label: "Fight", short: "Fight", icon: GuildMark };
 export const ASSISTANT = { id: "assistant", to: "/assistant", label: "Assistant", short: "Bot", icon: Bot };
+// 6.33: the War Room (HSB planning) for commanders and people they invited
+export const WARROOM = { id: "warroom", to: "/warroom", label: "War Room", short: "War", icon: Map };
 export const SHOP = { id: "shop", to: "/shop", label: "Guild shop", short: "Shop", icon: Store };
 // 6.25: Wuxen2 Buy and Sell inside the portal (the same open chat as the home page)
 export const MARKET = { id: "market", to: "/market", label: "Market", short: "Market", icon: Handshake };

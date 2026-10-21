@@ -30,6 +30,8 @@ const Poker = deferred(PAGE_LOADERS.poker);
 const Pusoy = deferred(PAGE_LOADERS.pusoy);
 const Shop = deferred(PAGE_LOADERS.shop);
 const Assistant = deferred(PAGE_LOADERS.assistant);
+const WarRoom = deferred(PAGE_LOADERS.warroom);   // 6.33: HSB planning board
+const WarGuest = deferred(PAGE_LOADERS.war);
 const Guide = deferred(PAGE_LOADERS.guide);
 const Derby = deferred(PAGE_LOADERS.derby);
 const Arena = deferred(PAGE_LOADERS.arena);
@@ -59,6 +61,7 @@ const AuthenticatedApp = () => {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/link-app" element={<LinkApp />} />
+      <Route path="/war" element={<Suspense fallback={<LanternSpinner label="Opening the War Room" className="py-24" />}><WarGuest /></Suspense>} />
       <Route path="/register" element={<ToLogin />} />
       <Route path="/forgot-password" element={<ToLogin />} />
       <Route path="/reset-password" element={<ToLogin />} />
@@ -81,6 +84,7 @@ const AuthenticatedApp = () => {
           <Route path="/shop" element={<Shop />} />
           <Route path="/assistant" element={<Suspense fallback={<LanternSpinner label="Opening the Assistant" className="py-24" />}><Assistant /></Suspense>} />
           <Route path="/market" element={<Market />} />
+          <Route path="/warroom" element={<Suspense fallback={<LanternSpinner label="Opening the War Room" className="py-24" />}><WarRoom /></Suspense>} />
           <Route path="/guide" element={<Guide />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/profile" element={<Profile />} />

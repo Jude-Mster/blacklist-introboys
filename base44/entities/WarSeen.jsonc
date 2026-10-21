@@ -1,0 +1,24 @@
+{
+  "name": "WarSeen",
+  "type": "object",
+  "description": "6.34 War Room: when each person last had the War Room open (for the online dots)",
+  "properties": {
+    "who": {
+      "type": "string",
+      "description": "m_<member id> or g_<guest id>"
+    },
+    "name": {
+      "type": "string"
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

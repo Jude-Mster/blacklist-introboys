@@ -10,8 +10,8 @@ import { WAR, warStatus, localTime } from "@/lib/war";
 import { cn } from "@/lib/utils";
 
 const WIKI = "https://wiki.wuxen2.com/";
-// Sections of the official Wuxen2 wiki, in the wiki's own menu order (checked 16 Oct 2026: Event Mall and
-// Life or Death added; the Holy Stone Battle page was taken off the wiki, its old link opens Regular Battle).
+// Sections of the official Wuxen2 wiki, in the wiki's own menu order (checked 20 Oct 2026: the Holy Stone
+// Battle page is back; 16 Oct: Event Mall and Life or Death added).
 const PAGES = [
   { id: "outpost-war", label: "Regular Battle" },
   { id: "boxes", label: "Boxes" },
@@ -30,6 +30,7 @@ const PAGES = [
   { id: "labyrinth", label: "Labyrinth" },
   { id: "life-or-death", label: "Life or Death", isNew: true },
   { id: "golden-charm", label: "Gold Plate Scroll" },
+  { id: "holy-stone", label: "Holy Stone Battle" },
   { id: "rank-buff", label: "Rank Buff" },
   { id: "tribe-leader", label: "Clan Leader" },
   { id: "fury", label: "Rage Burst" },
@@ -42,7 +43,7 @@ const PAGES = [
   { id: "costume", label: "Costume" }
 ];
 // Old links to sections the wiki no longer has go to the closest page that still explains it.
-const MOVED = { "holy-stone": "rank-buff" };
+const MOVED = {};
 
 // The official Wuxen2 wiki, shown inside the guild site, with the live war clock on top.
 export default function Guide() {
@@ -92,7 +93,7 @@ export default function Guide() {
           </dl>
         </div>
         <p className="mt-2 text-xs text-mist/80">Holy Stone Battle (HSB): every Wednesday 16:00 and Saturday 10:00 UTC, for 3 hours, with a 10-minute countdown first. Shown in your own time zone.{" "}
-          <button type="button" onClick={() => setParams({ page: "rank-buff" }, { replace: true })} className="underline hover:text-gold">Rank Buff</button> explains the HSB rank points and buffs.</p>
+          <button type="button" onClick={() => setParams({ page: "holy-stone" }, { replace: true })} className="underline hover:text-gold">Holy Stone Battle</button> has the stones, gates and rewards.</p>
       </section>
 
       <div role="tablist" aria-label="Guide sections" className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">

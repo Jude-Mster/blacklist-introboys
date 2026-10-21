@@ -1,0 +1,41 @@
+{
+  "name": "WarPlan",
+  "type": "object",
+  "description": "6.33 War Room: one HSB plan (several maps)",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Free notes for the plan"
+    },
+    "created_by_name": {
+      "type": "string"
+    },
+    "archived": {
+      "type": "boolean",
+      "default": false,
+      "description": "Deleted from the War Room"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "notified_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "6.34: last time the council was sent a notification about this plan"
+    },
+    "updated_by": {
+      "type": "string",
+      "description": "6.34: who changed it last"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "name": "WarPage",
+  "type": "object",
+  "description": "6.33 War Room: one map of a plan, with its drawings",
+  "properties": {
+    "plan_id": {
+      "type": "string"
+    },
+    "map": {
+      "type": "string",
+      "description": "Wiki map id, e.g. z038 = Ghost Valley"
+    },
+    "title": {
+      "type": "string"
+    },
+    "shapes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "What is drawn: chalk strokes, arrows, words and markers, in map fractions (0..1)"
+    },
+    "version": {
+      "type": "integer",
+      "default": 1,
+      "description": "Goes up with every change, so screens know when to reload"
+    },
+    "edited_by": {
+      "type": "string"
+    },
+    "edited_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}
