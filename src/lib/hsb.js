@@ -1,4 +1,4 @@
-// HSB (Holy Stone Battle) schedule, as published on wiki.wuxen2.com (#holy-stone, a page the wiki took down in Oct 2026; the battle itself still runs, see #rank-buff): every Wednesday
+// HSB (Holy Stone Battle) schedule, as published on wiki.wuxen2.com (#holy-stone; checked again 20 Oct 2026: Wednesday 12:00 and Saturday 06:00 New York time = 16:00 / 10:00 UTC): every Wednesday
 // 16:00-19:00 and every Saturday 10:00-13:00, server time (UTC), after a 10-minute countdown.
 // To change the schedule, edit this list (day: 0 = Sunday ... 6 = Saturday; hours in UTC).
 export const HSB_WINDOWS = [

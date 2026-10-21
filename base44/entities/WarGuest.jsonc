@@ -1,0 +1,44 @@
+{
+  "name": "WarGuest",
+  "type": "object",
+  "description": "6.33 War Room: people let in with a code (allies or members)",
+  "properties": {
+    "invite_id": {
+      "type": "string"
+    },
+    "member_id": {
+      "type": "string",
+      "description": "Set when a guild member used the code"
+    },
+    "discord_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "description": "Name shown on the board"
+    },
+    "token_hash": {
+      "type": "string",
+      "description": "SHA-256 of a non-member's War Room pass (the pass itself is never stored)"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "revoked": {
+      "type": "boolean",
+      "default": false,
+      "description": "Removed by the Guild Leader"
+    },
+    "last_seen_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}
