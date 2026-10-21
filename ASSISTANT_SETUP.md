@@ -27,7 +27,7 @@ Optional secret `SITE_URL` (default `https://blacklistintroboys.com`) is the add
 
 **2. Put the new site files in your repo and publish** (Base44 dashboard → publish, as you do for any change).
 New/changed: `base44/functions/botAuth`, `base44/shared/botLicense.ts`, `base44/functions/shopAction`, `base44/entities/Bot*.jsonc`
-and `ShopItem.jsonc`, `base44/shared/version.ts` (6.31), and in `src/`: `pages/Assistant.jsx`, `pages/Shop.jsx`,
+and `ShopItem.jsonc`, `base44/shared/version.ts` (6.32), and in `src/`: `pages/Assistant.jsx`, `pages/Shop.jsx`,
 `components/shop/ShopAdmin.jsx`, `components/admin/BotSection.jsx`, `lib/assistantLink.js`, nav, `App.jsx`, `GuildLayout.jsx`.
 Then **Admin hall → System check**: the row "IntroBoys Assistant licenses" must be green.
 
@@ -39,7 +39,7 @@ Test it from any PC:
 curl -s -X POST https://blacklistintroboys.com/api/apps/6abe8bba244ec63c6d6d2855/functions/botAuth -H "content-type: application/json" -d "{\"action\":\"ping\"}"
 ```
 
-You should get `{"ok":true,"version":"6.31","signing":true}`. If the address is different on your host, fix `ApiBase` (and `SiteUrl`).
+You should get `{"ok":true,"version":"6.32","signing":true}`. If the address is different on your host, fix `ApiBase` (and `SiteUrl`).
 
 **4. Add the shop item.** Admin hall → Shop → Manage → Add → tick *This is IntroBoys Assistant time*. Set the days (e.g. 30) and the price in
 points (before tax). Add several (7 days, 30 days...) if you like. Days switch on the moment the points are paid and add to the time left (max 730 days at once, max 12 per purchase).

@@ -1,0 +1,51 @@
+{
+  "name": "BotRelease",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "e.g. 4.2.0"
+    },
+    "notes": {
+      "type": "string",
+      "description": "What is new (shown in the app)"
+    },
+    "file_url": {
+      "type": "string",
+      "description": "Direct https download link of the update .zip"
+    },
+    "sha256": {
+      "type": "string",
+      "description": "Hex SHA-256 of the zip"
+    },
+    "size": {
+      "type": "number",
+      "description": "Bytes"
+    },
+    "sig": {
+      "type": "string",
+      "description": "ECDSA signature over IBU1|version|sha256|size"
+    },
+    "mandatory": {
+      "type": "boolean",
+      "description": "Older builds must update before they run"
+    },
+    "active": {
+      "type": "boolean",
+      "description": "Offered to the app. Off = withdrawn"
+    },
+    "published_by": {
+      "type": "string"
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

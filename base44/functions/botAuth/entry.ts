@@ -8,7 +8,7 @@ import { BACKEND_VERSION } from '../../shared/version.ts';
 import {
   TICKET_TTL_S, CHECK_EVERY_S, BOT_SESSION_DAYS, CODE_TTL_MS, RESET_COOLDOWN_DAYS, DAY_MS,
   cleanHwid, cleanNonce, hwHash, deviceTag, newUserCode, normCode, text, siteUrl,
-  getLicense, licenseState, licenseSummary, grantDays, logEvent, botSession, killBotSessions, signTicket, signingConfigured,
+  getLicense, licenseState, licenseSummary, grantDays, logEvent, botSession, killBotSessions, signTicket, signText, signingConfigured,
   START_PER_IP, START_WINDOW_MS, POLL_PER_IP_PER_MIN, clientIp, ipHash, memLimit
 } from '../../shared/botLicense.ts';
 import { rankedMembers } from '../../shared/points.ts';
@@ -16,9 +16,9 @@ import { rankedMembers } from '../../shared/points.ts';
 // The IntroBoys Assistant license service. One function, three kinds of caller:
 //
 //   the app, not signed in   start  poll              (device sign-in: the app shows a code, the member approves it on the site)
-//   the app, signed in       check  logout            (header X-Bot-Token; `check` returns the signed ticket the app needs to run)
+//   the app, signed in       check  logout  update    (header X-Bot-Token; `check` returns the signed ticket the app needs to run)
 //   the site (Discord login) status describe approve resetDevice
-//   the Guild Leader         adminList adminGrant adminRevoke adminRestore adminReset
+//   the Guild Leader         adminList adminGrant adminRevoke adminRestore adminReset adminRelease adminReleases adminReleaseToggle
 //
 // The app can only ever be told "yes" in a ticket signed by this function. See shared/botLicense.ts.
 
@@ -45,10 +45,11 @@ export default async function(req) {
     }
 
     // ---------- the app, signed in ----------
-    if (action === 'check' || action === 'logout') {
+    if (action === 'check' || action === 'logout' || action === 'update') {
       const s = await botSession(b, req);
       if (!s) return fail('session', 'Sign in again.', 401);
       if (action === 'logout') { await b.asServiceRole.entities.BotSession.delete(s.id).catch(() => {}); return Response.json({ ok: true }); }
+      if (action === 'update') return await update(b, p);
       return await check(b, s, p);
     }
 
@@ -197,6 +198,30 @@ async function check(b, s, p) {
   return Response.json({ licensed: true, reason: '', days_left: st.days_left, expires_at: lic.expires_at, ...who, ticket, check_every: CHECK_EVERY_S });
 }
 
+// The newest active release that is newer than the app's own version. The app verifies the
+// signature itself, so a changed link or hash here would only make the update fail, never run.
+const VER = /^\d+\.\d+\.\d+$/;
+const verKey = (v: string) => String(v).split('.').map((n) => Number(n) || 0);
+export const verCmp = (a: string, b: string) => {
+  const x = verKey(a), y = verKey(b);
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0);
+  return 0;
+};
+async function update(b, p) {
+  const cur = String(p.version || '');
+  if (!VER.test(cur)) return fail('bad_request', 'Bad version.');
+  const { items } = await b.asServiceRole.entities.BotRelease.filter({ active: true }, { limit: 200 });
+  const newer = items.filter((r) => VER.test(r.version) && verCmp(r.version, cur) > 0).sort((a, c) => verCmp(c.version, a.version));
+  if (!newer.length) return Response.json({ update_available: false });
+  const r = newer[0];
+  // Mandatory if any release between here and the newest one is mandatory.
+  const mandatory = newer.some((x) => !!x.mandatory);
+  return Response.json({
+    update_available: true, version: r.version, notes: r.notes || '', url: r.file_url, sha256: r.sha256,
+    size: r.size, sig: r.sig, mandatory
+  });
+}
+
 // ======================================================================= the site
 
 async function status(b, me) {
@@ -286,6 +311,34 @@ async function admin(b, me, action: string, p) {
       licenses: items.map((l) => ({ member_id: l.member_id, discord_id: l.discord_id, member_name: l.member_name, online: online.has(l.member_id), hwid_resets: l.hwid_resets || 0, ...licenseSummary(l) })),
       events: events.map((e) => ({ id: e.id, at: e.at, kind: e.kind, discord_id: e.discord_id, detail: e.detail }))
     });
+  }
+  if (action === 'adminReleases') {
+    const { items } = await E.BotRelease.filter({}, { limit: 100 });
+    items.sort((a, c) => verCmp(c.version, a.version));
+    return Response.json({ releases: items.map((r) => ({ id: r.id, version: r.version, notes: r.notes, file_url: r.file_url, size: r.size, mandatory: !!r.mandatory, active: !!r.active, at: r.at })) });
+  }
+  if (action === 'adminRelease') {
+    const version = String(p.version || '').trim();
+    const url = String(p.url || '').trim();
+    const sha = String(p.sha256 || '').trim().toLowerCase();
+    const size = Number(p.size);
+    if (!VER.test(version)) throw new UserError('Version must look like 4.2.0.');
+    if (!/^https:\/\/[^\s]{4,500}$/.test(url)) throw new UserError('The download link must be a direct https:// link.');
+    if (!/^[0-9a-f]{64}$/.test(sha)) throw new UserError('Pick the update zip so its checksum can be calculated.');
+    if (!Number.isInteger(size) || size < 1 || size > 500 * 1024 * 1024) throw new UserError('The file size is not valid (1 byte to 500 MB).');
+    const { items: have } = await E.BotRelease.filter({ version }, { limit: 1 });
+    if (have.length) throw new UserError(`Version ${version} is already published. Use a new version number.`);
+    const sig = await signText(`IBU1|${version}|${sha}|${size}`);
+    const row = await E.BotRelease.create({ version, notes: text(p.notes, 1000), file_url: url, sha256: sha, size, sig, mandatory: !!p.mandatory, active: true, published_by: me.id, at: nowIso() });
+    await logEvent(b, me, 'release', `${version} · ${size} bytes${p.mandatory ? ' · mandatory' : ''}`);
+    return Response.json({ ok: true, id: row.id });
+  }
+  if (action === 'adminReleaseToggle') {
+    const r = await E.BotRelease.get(String(p.id || '')).catch(() => null);
+    if (!r) throw new UserError('Release not found.', 404);
+    await E.BotRelease.update(r.id, { active: !!p.active });
+    await logEvent(b, me, 'release', `${r.version} ${p.active ? 'offered again' : 'withdrawn'}`);
+    return Response.json({ ok: true });
   }
   // 6.31: give (or take) days to several members at once, or to every member with access. Each member is
   // done on their own, under their own lock; one that can't take the days (switched off, over the 730-day

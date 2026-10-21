@@ -221,3 +221,10 @@ export async function signTicket(fields: Record<string, unknown>) {
   const sig = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, new TextEncoder().encode(payload)));
   return { payload, sig: b64(sig) };
 }
+
+// Signs a plain string (used for update manifests: `IBU1|version|sha256|size`).
+export async function signText(msg: string) {
+  const key = await signingKey();
+  if (!key) throw new UserError('The Assistant license key is not set up on the site yet. Tell the Guild Leader.', 503);
+  return b64(new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, new TextEncoder().encode(msg))));
+}

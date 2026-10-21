@@ -284,6 +284,37 @@ ok(rs.status === 200 && ls.licenses.length >= 3 && ls.events.length > 0 && JSON.
 const dec = await call(bot, L, { action: 'adminGrant', discordId: C.discord_id, days: -3 });
 ok(dec.status === 200 && dec.license.days_left === 4, `leader can take days away (${dec.license && dec.license.days_left})`);
 
+// ---------- updates (the patcher) ----------
+const SHA = hex(32), URL = 'https://files.test/IntroBoysAssistant-4.2.0-update.zip';
+const rel = { action: 'adminRelease', version: '4.2.0', notes: 'Auto loot', url: URL, sha256: SHA, size: 123456, mandatory: false };
+ok((await call(bot, C, rel)).status === 403, 'a member cannot publish an update');
+ok((await call(bot, L, { ...rel, version: '4.2' })).status === 400, 'a bad version is refused');
+ok((await call(bot, L, { ...rel, url: 'http://files.test/a.zip' })).status === 400, 'a plain http link is refused');
+ok((await call(bot, L, { ...rel, sha256: 'abc' })).status === 400, 'a bad checksum is refused');
+ok((await call(bot, L, { ...rel, size: 0 })).status === 400, 'an empty size is refused');
+ok((await call(bot, L, rel)).status === 200, 'the leader publishes 4.2.0');
+ok((await call(bot, L, rel)).status === 400, 'the same version cannot be published twice');
+ok((await app({ action: 'update', version: '4.1.0' })).status === 401, 'asking for updates needs the app sign-in');
+const rc3 = await signIn(C, PCC);
+const up = await app({ action: 'update', version: '4.1.0' }, rc3.token);
+ok(up.update_available && up.version === '4.2.0' && up.url === URL && up.sha256 === SHA && up.size === 123456 && up.mandatory === false, 'the app is offered 4.2.0');
+const upKey = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, kp.publicKey, Uint8Array.from(atob(up.sig), (c) => c.charCodeAt(0)), new TextEncoder().encode(`IBU1|4.2.0|${SHA}|123456`));
+ok(upKey, 'the update is signed with the license key (the app checks this)');
+ok(!(await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, kp.publicKey, Uint8Array.from(atob(up.sig), (c) => c.charCodeAt(0)), new TextEncoder().encode(`IBU1|4.2.0|${hex(32)}|123456`))), 'a different file does not match the signature');
+ok(!(await app({ action: 'update', version: '4.2.0' }, rc3.token)).update_available, 'an up-to-date app is offered nothing');
+ok(!(await app({ action: 'update', version: '4.10.0' }, rc3.token)).update_available, 'versions compare as numbers (4.10.0 is newer than 4.2.0)');
+await call(bot, L, { ...rel, version: '4.3.0', mandatory: true, sha256: hex(32) });
+const up2 = await app({ action: 'update', version: '4.1.0' }, rc3.token);
+ok(up2.version === '4.3.0' && up2.mandatory === true, 'the newest release wins and a required one in between makes it required');
+const rl = await call(bot, L, { action: 'adminReleases' });
+ok(rl.releases.length === 2 && rl.releases[0].version === '4.3.0', 'the leader sees the releases');
+await call(bot, L, { action: 'adminReleaseToggle', id: rl.releases[0].id, active: false });
+ok((await app({ action: 'update', version: '4.1.0' }, rc3.token)).version === '4.2.0', 'a withdrawn release is no longer offered');
+ok((await call(bot, C, { action: 'adminReleases' })).status === 403, 'members cannot list releases');
+g.__secrets.BOT_LICENSE_PRIVATE_KEY = '';
+ok((await call(bot, L, { ...rel, version: '4.4.0' })).status === 503, 'without the signing key nothing can be published');
+g.__secrets.BOT_LICENSE_PRIVATE_KEY = pkcs8;
+
 // ---------- no signing key ----------
 g.__secrets = { ...g.__secrets, BOT_LICENSE_PRIVATE_KEY: '' };
 const pingNoKey = await app({ action: 'ping' });
