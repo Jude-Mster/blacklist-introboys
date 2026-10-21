@@ -16,8 +16,8 @@ import { rankedMembers } from '../../shared/points.ts';
 // The IntroBoys Assistant license service. One function, three kinds of caller:
 //
 //   the app, not signed in   start  poll              (device sign-in: the app shows a code, the member approves it on the site)
-//   the app, signed in       check  logout  update    (header X-Bot-Token; `check` returns the signed ticket the app needs to run)
-//   the site (Discord login) status describe approve resetDevice
+//   the app, signed in       check  logout  update  remotePush            (header X-Bot-Token; `check` returns the signed ticket the app needs to run)
+//   the site (Discord login) status describe approve resetDevice  remoteView remoteCommand
 //   the Guild Leader         adminList adminGrant adminRevoke adminRestore adminReset adminRelease adminReleases adminReleaseToggle
 //
 // The app can only ever be told "yes" in a ticket signed by this function. See shared/botLicense.ts.
@@ -45,11 +45,12 @@ export default async function(req) {
     }
 
     // ---------- the app, signed in ----------
-    if (action === 'check' || action === 'logout' || action === 'update') {
+    if (action === 'check' || action === 'logout' || action === 'update' || action === 'remotePush') {
       const s = await botSession(b, req);
       if (!s) return fail('session', 'Sign in again.', 401);
       if (action === 'logout') { await b.asServiceRole.entities.BotSession.delete(s.id).catch(() => {}); return Response.json({ ok: true }); }
       if (action === 'update') return await update(b, p);
+      if (action === 'remotePush') return await remotePush(b, s, p);
       return await check(b, s, p);
     }
 
@@ -65,6 +66,8 @@ export default async function(req) {
     if (action === 'describe') return await describe(b, me, p);
     if (action === 'approve') return await approve(b, me, p);
     if (action === 'resetDevice') return await resetDevice(b, me);
+    if (action === 'remoteView') return await remoteView(b, me);
+    if (action === 'remoteCommand') return await remoteCommand(b, me, p);
 
     if (action.startsWith('admin')) {
       leaderOnly();
@@ -219,6 +222,108 @@ async function update(b, p) {
   return Response.json({
     update_available: true, version: r.version, notes: r.notes || '', url: r.file_url, sha256: r.sha256,
     size: r.size, sig: r.sig, mandatory
+  });
+}
+
+// ======================================================================= remote control
+// The member's own app reports what it is doing (and, while the member watches, a small picture of the game); the member's
+// remote page shows it and queues commands from a fixed list. The app only ever acts on commands from that list, for its own
+// member, on the PC the license is locked to, and only within a minute of the click. The site can never move the mouse or type.
+
+const REMOTE_CMDS = ['start', 'stop', 'return_town', 'upgrade', 'enhance'];
+const CMD_TTL_MS = 60_000, WATCH_MS = 20_000, ONLINE_MS = 25_000, PIC_MAX = 120_000;
+const cleanLine = (v) => String(v ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 200);
+
+async function remoteRow(b, memberId: string) {
+  const { items } = await b.asServiceRole.entities.BotRemote.filter({ member_id: memberId }, { limit: 1 });
+  return items[0] || null;
+}
+
+function cleanArgs(cmd: string, a) {
+  a = a && typeof a === 'object' ? a : {};
+  if (cmd === 'start') {
+    const dungeon = a.dungeon === 'den' ? 'den' : 'labyrinth';
+    const runs = Number.isInteger(Number(a.runs)) ? Math.max(0, Math.min(999, Number(a.runs))) : 1;
+    const startBoss = Number.isInteger(Number(a.start_boss)) ? Math.max(1, Math.min(5, Number(a.start_boss))) : 1;
+    return { dungeon, runs, start_boss: startBoss };
+  }
+  return {};
+}
+
+async function remotePush(b, s, p) {
+  const E = b.asServiceRole.entities;
+  const lic = await getLicense(b, s.member_id);
+  const st = licenseState(lic);
+  // only the PC the license is locked to, with days left, can be controlled
+  if (!st.active || !lic || lic.hwid_hash !== s.hwid_hash) return Response.json({ ok: true, allowed: false, watching: false, commands: [] });
+
+  const now = Date.now(), iso = new Date(now).toISOString();
+  let row = await remoteRow(b, s.member_id);
+  const patch: any = { updated_at: iso };
+  if (p.state && typeof p.state === 'object') { const js = JSON.stringify(p.state); if (js.length <= 4000) patch.state = js; }
+  if (Array.isArray(p.log)) patch.log = p.log.slice(-20).map(cleanLine).join('\n');
+  const watching = !!(row && Date.parse(row.watch_until || '') > now);
+  if (watching && typeof p.picture === 'string' && p.picture.length <= PIC_MAX && /^\/9j\/[A-Za-z0-9+/=]+$/.test(p.picture)) { patch.picture = p.picture; patch.picture_at = iso; }
+  if (!watching && row && row.picture) patch.picture = '';                  // nobody watches: the picture is not kept
+  if (row) await E.BotRemote.update(row.id, patch); else row = await E.BotRemote.create({ member_id: s.member_id, ...patch });
+
+  // what the app did with earlier commands
+  if (Array.isArray(p.results)) {
+    for (const r of p.results.slice(0, 10)) {
+      const c = r && r.id ? await E.BotCommand.get(String(r.id)).catch(() => null) : null;
+      if (c && c.member_id === s.member_id && c.status === 'taken') await E.BotCommand.update(c.id, { status: r.ok ? 'done' : 'failed', result: text(r.message, 200) });
+    }
+  }
+  // new commands: each one is handed out once, and only while it is fresh
+  const { items } = await E.BotCommand.filter({ member_id: s.member_id, status: 'pending' }, { limit: 20 });
+  const out = [];
+  for (const c of items.sort((x, y) => Date.parse(x.created_at) - Date.parse(y.created_at))) {
+    if (!(Date.parse(c.expires_at || '') > now)) { await E.BotCommand.update(c.id, { status: 'expired' }).catch(() => {}); continue; }
+    await E.BotCommand.update(c.id, { status: 'taken' });
+    let args = {}; try { args = JSON.parse(c.args || '{}'); } catch { args = {}; }
+    out.push({ id: c.id, cmd: c.cmd, args: cleanArgs(c.cmd, args), age_s: Math.max(0, Math.round((now - Date.parse(c.created_at)) / 1000)) });
+  }
+  return Response.json({ ok: true, allowed: true, watching: watching || out.length > 0, commands: out });
+}
+
+async function remoteView(b, me) {
+  const E = b.asServiceRole.entities;
+  const now = Date.now();
+  let row = await remoteRow(b, me.id);
+  const watch = new Date(now + WATCH_MS).toISOString();
+  if (row) await E.BotRemote.update(row.id, { watch_until: watch }); else row = await E.BotRemote.create({ member_id: me.id, watch_until: watch });
+  const lic = await getLicense(b, me.id);
+  const st = licenseState(lic);
+  let state = null; try { state = row.state ? JSON.parse(row.state) : null; } catch { state = null; }
+  const online = Date.parse(row.updated_at || '') > now - ONLINE_MS;
+  const picFresh = row.picture && Date.parse(row.picture_at || '') > now - 60_000;
+  const { items } = await E.BotCommand.filter({ member_id: me.id }, { sort: '-created_date', limit: 8 });
+  return Response.json({
+    licensed: st.active, device_bound: !!(lic && lic.hwid_hash), online, updated_at: row.updated_at || null,
+    state: online ? state : null, log: online ? (row.log || '') : '', picture: online && picFresh ? row.picture : null, picture_at: picFresh ? row.picture_at : null,
+    commands: items.map((c) => ({ id: c.id, cmd: c.cmd, status: c.status === 'pending' && !(Date.parse(c.expires_at || '') > now) ? 'expired' : c.status, result: c.result || '', created_at: c.created_at }))
+  });
+}
+
+async function remoteCommand(b, me, p) {
+  const E = b.asServiceRole.entities;
+  const cmd = String(p.cmd || '');
+  if (!REMOTE_CMDS.includes(cmd)) throw new UserError('That is not a command the Assistant knows.');
+  const lic = await getLicense(b, me.id);
+  if (!licenseState(lic).active) throw new UserError('You have no Assistant days left.', 403);
+  if (!lic.hwid_hash) throw new UserError('Your Assistant has not been signed in on a PC yet.', 409);
+  const row = await remoteRow(b, me.id);
+  if (!row || !(Date.parse(row.updated_at || '') > Date.now() - ONLINE_MS)) throw new UserError('Your Assistant is not online. Open the program on your PC (signed in) and try again.', 409);
+  return await withMemberLock(b, me.id, async () => {
+    const { items } = await E.BotCommand.filter({ member_id: me.id, status: 'pending' }, { limit: 20 });
+    const fresh = items.filter((c) => Date.parse(c.expires_at || '') > Date.now());
+    if (fresh.length >= 3) throw new UserError('Your Assistant has not picked up the last commands yet - wait a moment.', 429);
+    const now = Date.now();
+    const c = await E.BotCommand.create({
+      member_id: me.id, cmd, args: JSON.stringify(cleanArgs(cmd, p.args)), status: 'pending',
+      created_at: new Date(now).toISOString(), expires_at: new Date(now + CMD_TTL_MS).toISOString()
+    });
+    return Response.json({ ok: true, id: c.id });
   });
 }
 

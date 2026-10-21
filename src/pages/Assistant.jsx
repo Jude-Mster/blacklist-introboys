@@ -7,6 +7,7 @@ import LanternSpinner from "@/components/LanternSpinner";
 import { useGuild, errorText } from "@/lib/GuildContext";
 import { peekPendingLink, clearPendingLink } from "@/lib/assistantLink";
 import { cn } from "@/lib/utils";
+import RemotePanel from "@/components/assistant/RemotePanel";
 
 const fmt = (n) => Number(n || 0).toLocaleString();
 const WHY = {
@@ -55,6 +56,7 @@ export default function Assistant() {
         <>
           <LinkApp code={code} onDone={load} license={lic} />
           <License data={data} onChange={load} />
+          <RemotePanel licensed={!!(lic && lic.active)} />
         </>
       )}
 
