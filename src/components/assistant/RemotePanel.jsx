@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Hammer, Home, Loader2, Play, Sparkles, Square } from "lucide-react";
+import { Home, Loader2, Play, Square } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import { errorText } from "@/lib/GuildContext";
 import { cn } from "@/lib/utils";
 
 const POLL_MS = 3000;
-const CMD_LABEL = { start: "Start", stop: "Stop", return_town: "Return to town", upgrade: "Upgrade", enhance: "Enhance" };
+const CMD_LABEL = { start: "Start", stop: "Stop", return_town: "Return to town", upgrade: "Upgrade", enhance: "Enhance" };   // the last two: old commands, shown in the history only
 const STATUS_LABEL = { pending: "sent", taken: "received", done: "done", failed: "failed", expired: "not picked up" };
 
 // Remote control of the member's own IntroBoys Assistant: what it is doing, a small picture of the game while this page is open,
@@ -86,8 +86,11 @@ export default function RemotePanel({ licensed }) {
 
           <div className="mt-3 overflow-hidden rounded-md border border-bronze/50 bg-black">
             {view.picture
-              ? <img src={`data:image/jpeg;base64,${view.picture}`} alt="Your game, as the Assistant sees it" className="block w-full" />
-              : <p className="px-3 py-10 text-center text-sm text-mist">The picture of your game shows here in a few seconds.</p>}
+              ? <img src={`data:image/${view.picture_type || "jpeg"};base64,${view.picture}`} alt="Your game, as the Assistant sees it" className="block w-full" />
+              : <div className="px-3 py-10 text-center text-sm text-mist">
+                  <p>The picture of your game shows here in a few seconds.</p>
+                  {view.picture_note && view.picture_note !== "waiting for the first picture" && <p className="mt-2 text-xs text-ember">No picture yet: {view.picture_note}.</p>}
+                </div>}
           </div>
           {view.picture_at && <p className="mt-1 text-right text-[11px] text-mist">picture from {new Date(view.picture_at).toLocaleTimeString()}</p>}
 
@@ -117,21 +120,15 @@ export default function RemotePanel({ licensed }) {
               {busy === "start" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" aria-hidden="true" />} Start
             </button>
           </div>
-          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="mt-2 grid grid-cols-2 gap-2">
             <button disabled={!!busy || !running} onClick={() => send("stop")} className="btn-bronze flex h-10 items-center justify-center gap-2 text-sm !text-ember">
               {busy === "stop" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" aria-hidden="true" />} Stop
             </button>
             <button disabled={!!busy || running} onClick={() => send("return_town")} className="btn-bronze flex h-10 items-center justify-center gap-2 text-sm">
               {busy === "return_town" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Home className="h-4 w-4" aria-hidden="true" />} Return to town
             </button>
-            <button disabled={!!busy || running} onClick={() => send("upgrade")} className="btn-bronze flex h-10 items-center justify-center gap-2 text-sm">
-              {busy === "upgrade" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Hammer className="h-4 w-4" aria-hidden="true" />} Upgrade
-            </button>
-            <button disabled={!!busy || running} onClick={() => send("enhance")} className="btn-bronze flex h-10 items-center justify-center gap-2 text-sm">
-              {busy === "enhance" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" aria-hidden="true" />} Enhance
-            </button>
           </div>
-          <p className="mt-2 text-xs text-mist">Upgrade and Enhance need the NPC window already open in the game. Stop works any time; the others only when the Assistant is idle.</p>
+          <p className="mt-2 text-xs text-mist">Stop works any time; Start and Return to town only when the Assistant is idle.</p>
 
           {view.log && (
             <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded-md border border-bronze/40 bg-black/50 p-2 font-mono text-[11px] leading-snug text-mist">{view.log}</pre>
