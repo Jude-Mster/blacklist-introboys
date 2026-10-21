@@ -103,3 +103,6 @@ The page polls every 3 s while it is open and visible; the app then reports ever
 **6.37:** the picture may be JPEG, PNG or WebP, sent as plain base64 or as a `data:image/...;base64,` address (line breaks are fine),
 up to about 300 KB, in the field `picture` (also read from `image` or `screenshot`). When a report has no usable picture the reason is
 kept and shown on the remote page (for example "no picture in the report" or "picture too big"), so a missing live view can be traced.
+
+**6.38 (app 4.5.1):** an app that can't make its picture sends `picture_error` with the reason, and the page shows it. If the database
+refuses a picture, the rest of the report is still saved and the page says why. Both make a missing live view traceable.

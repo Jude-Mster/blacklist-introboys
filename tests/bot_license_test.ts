@@ -347,6 +347,16 @@ const vbig = await call(bot, C, { action: 'remoteView' });
 ok(!vbig.picture && /too big/.test(vbig.picture_note), `the page says why no picture shows (${vbig.picture_note})`);
 await app({ action: 'remotePush', state: {} }, rc3.token);
 ok(/no picture in the report/.test((await call(bot, C, { action: 'remoteView' })).picture_note), 'and says so when the app sends none');
+await app({ action: 'remotePush', state: {}, picture_error: 'GDI+ failed' }, rc3.token);
+ok(/the app could not take the picture: GDI\+ failed/.test((await call(bot, C, { action: 'remoteView' })).picture_note), 'and shows the reason the app gives');
+{
+  const gg = globalThis as any;
+  gg.__beforeUpdate = (name, x) => { if (name === 'BotRemote' && x.picture) throw new Error('field too large'); };
+  const r = await app({ action: 'remotePush', state: { state: 'STORE' }, picture: '/9j/' + 'D'.repeat(200) }, rc3.token);
+  gg.__beforeUpdate = null;
+  const vv = await call(bot, C, { action: 'remoteView' });
+  ok(r.status === 200 && vv.state.state === 'STORE' && /could not store the picture.*field too large/.test(vv.picture_note), `a picture the database refuses: the report still arrives and the page says why (${vv.picture_note})`);
+}
 const st1 = await call(bot, C, { action: 'remoteCommand', cmd: 'start', args: { dungeon: 'den', runs: 5000, start_boss: 9, evil: 1 } });
 ok(st1.status === 200, 'the owner queues start');
 await call(bot, C, { action: 'remoteCommand', cmd: 'return_town' });
