@@ -89,19 +89,20 @@ const chatWindow = (b) => memo('war:chat', 1000, async () => {
   return items.reverse();
 });
 
-// "Still here", written at most every 45 seconds per person per running copy.
+// "Still here", written at most every 45 seconds per person per running copy. 6.35: awaited: Base44 stops a
+// function once it has answered, so a write left running after the answer was never saved.
 const seenAt = new Map<string, number>();
-function seen(b, who: Who) {
+async function seen(b, who: Who) {
   const last = seenAt.get(who.id) || 0;
   if (Date.now() - last < SEEN_EVERY_MS) return;
   seenAt.set(who.id, Date.now());
   if (seenAt.size > 5000) seenAt.clear();
-  (async () => {
+  try {
     const E = b.asServiceRole.entities.WarSeen;
     const { items } = await E.filter({ who: who.id }, { limit: 2 });
     if (items[0]) await E.update(items[0].id, { at: nowIso(), name: who.name });
-    else await E.create({ who: who.id, name: who.name, at: nowIso() });
-  })().catch(() => {});
+    else { await E.create({ who: who.id, name: who.name, at: nowIso() }); bust('war:roster'); }
+  } catch { seenAt.delete(who.id); }
 }
 
 // Everyone allowed in, grouped by guild (the home guild first), with who is online now.
@@ -159,7 +160,7 @@ async function notify(b, who: Who, plan, body: string, kind: 'new' | 'notes' | '
     notifiedAt.set(key, Date.now());
     if (notifiedAt.size > 5000) notifiedAt.clear();
     const E = b.asServiceRole.entities;
-    if (kind === 'edit' || kind === 'map') E.WarPlan.update(plan.id, { notified_at: nowIso() }).catch(() => {});
+    if (kind === 'edit' || kind === 'map') await E.WarPlan.update(plan.id, { notified_at: nowIso() }).catch(() => {});
     const { items: subs } = await E.WarPush.filter({}, { limit: 1000 });
     const targets = subs.filter((s) => s.who && s.who !== who.id);
     if (!targets.length) return 0;
@@ -227,7 +228,7 @@ export default async function(req) {
 
     const who = await identify(b, req, p);
     if (action === 'me') {
-      if (who) seen(b, who);
+      if (who) await seen(b, who);
       return Response.json({
         ok: true, access: who ? who.level : 'none', name: who ? who.name : '', id: who ? who.id : '', guild: who ? who.guild : '', color: who ? who.color : '',
         leader: !!(who && who.leader), guest: !!(who && who.guest && !who.member), until: who && who.guest ? who.guest.expires_at : null
@@ -238,9 +239,9 @@ export default async function(req) {
     const mustCommand = () => { if (!command) throw new UserError('Only the Guild Leader and Vice Guild Members can do that.', 403); };
     const mustLeader = () => { if (!who.leader) throw new UserError('Only the Guild Leader can do that.', 403); };
     if (who.guest && !who.member && (!who.guest.last_seen_at || Date.now() - Date.parse(who.guest.last_seen_at) > 5 * 60000)) {
-      E.WarGuest.update(who.guest.id, { last_seen_at: nowIso() }).catch(() => {});
+      await E.WarGuest.update(who.guest.id, { last_seen_at: nowIso() }).catch(() => {});
     }
-    seen(b, who);
+    await seen(b, who);
 
     // ---------- plans ----------
     if (action === 'plans') {
