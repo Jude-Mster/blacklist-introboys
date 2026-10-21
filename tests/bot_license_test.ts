@@ -315,6 +315,46 @@ g.__secrets.BOT_LICENSE_PRIVATE_KEY = '';
 ok((await call(bot, L, { ...rel, version: '4.4.0' })).status === 503, 'without the signing key nothing can be published');
 g.__secrets.BOT_LICENSE_PRIVATE_KEY = pkcs8;
 
+// ---------- remote control ----------
+const bindC = await check(rc3.token, PCC);
+ok(bindC.licensed, 'C runs licensed on PCC');
+const off = await call(bot, C, { action: 'remoteCommand', cmd: 'stop' });
+ok(off.status === 409, `no commands while the app has not reported (${off.status})`);
+const v0 = await call(bot, C, { action: 'remoteView' });
+ok(v0.status === 200 && v0.online === false && v0.licensed === true, 'the remote page opens and says the app is offline');
+const push1 = await app({ action: 'remotePush', state: { running: false, state: 'IDLE' }, log: ['hello', 'line\u0007two'], picture: '/9j/' + 'A'.repeat(100) }, rc3.token);
+ok(push1.status === 200 && push1.allowed && push1.watching === true && push1.commands.length === 0, 'the app reports and is told the page is watching');
+const v1 = await call(bot, C, { action: 'remoteView' });
+ok(v1.online && v1.state.state === 'IDLE' && v1.log.split('\n').length === 2 && v1.log.indexOf('\u0007') < 0, 'the page shows the state and the log (control characters removed)');
+ok(v1.picture === '/9j/' + 'A'.repeat(100), 'the page (watching) shows the picture');
+await app({ action: 'remotePush', state: { running: false }, picture: '/9j/' + 'B'.repeat(100) }, rc3.token);
+ok((await call(bot, C, { action: 'remoteView' })).picture === '/9j/' + 'B'.repeat(100), 'while watching, the picture is shown');
+ok((await app({ action: 'remotePush', picture: '<script>' }, rc3.token)).status === 200 && (await call(bot, C, { action: 'remoteView' })).picture === '/9j/' + 'B'.repeat(100), 'a picture that is not a JPEG is ignored');
+ok((await call(bot, C, { action: 'remoteCommand', cmd: 'format_c' })).status === 400, 'an unknown command is refused');
+const st1 = await call(bot, C, { action: 'remoteCommand', cmd: 'start', args: { dungeon: 'den', runs: 5000, start_boss: 9, evil: 1 } });
+ok(st1.status === 200, 'the owner queues start');
+await call(bot, C, { action: 'remoteCommand', cmd: 'return_town' });
+ok((await call(bot, A, { action: 'remoteCommand', cmd: 'stop' })).status !== 200, 'another member cannot send commands (A has no running app of their own)');
+const pull = await app({ action: 'remotePush', state: {} }, rc3.token);
+ok(pull.commands.length === 2 && pull.commands[0].cmd === 'start' && pull.commands[1].cmd === 'return_town', 'the app gets the commands in order');
+ok(JSON.stringify(pull.commands[0].args) === JSON.stringify({ dungeon: 'den', runs: 999, start_boss: 5 }), `arguments are clamped and unknown ones dropped (${JSON.stringify(pull.commands[0].args)})`);
+ok((await app({ action: 'remotePush', state: {} }, rc3.token)).commands.length === 0, 'each command is handed out only once');
+await app({ action: 'remotePush', results: [{ id: pull.commands[0].id, ok: true, message: 'started' }, { id: pull.commands[1].id, ok: false, message: 'busy' }] }, rc3.token);
+const v2 = await call(bot, C, { action: 'remoteView' });
+ok(v2.commands.some((c) => c.cmd === 'start' && c.status === 'done') && v2.commands.some((c) => c.cmd === 'return_town' && c.status === 'failed' && c.result === 'busy'), 'results show on the page');
+for (let i = 0; i < 3; i++) await call(bot, C, { action: 'remoteCommand', cmd: 'stop' });
+ok((await call(bot, C, { action: 'remoteCommand', cmd: 'stop' })).status === 429, 'no more than 3 waiting commands');
+advance(61_000);
+await app({ action: 'remotePush', state: {} }, rc3.token);
+const late = await app({ action: 'remotePush', state: {} }, rc3.token);
+ok(late.commands.length === 0 && (await call(bot, C, { action: 'remoteView' })).commands.filter((c) => c.status === 'expired').length >= 3, 'commands older than a minute are never run');
+advance(21_000);
+const unwatched = await app({ action: 'remotePush', state: {}, picture: '/9j/' + 'C'.repeat(50) }, rc3.token);
+ok(unwatched.watching === false, 'with the page closed the app is told nobody watches');
+const pcB = await signIn(C, PC2);
+ok((await app({ action: 'remotePush', state: { x: 1 } }, pcB.token)).allowed === false, 'an app on another PC (not the locked one) cannot be controlled');
+ok((await app({ action: 'remotePush', state: {} })).status === 401, 'reporting needs the app sign-in');
+
 // ---------- no signing key ----------
 g.__secrets = { ...g.__secrets, BOT_LICENSE_PRIVATE_KEY: '' };
 const pingNoKey = await app({ action: 'ping' });

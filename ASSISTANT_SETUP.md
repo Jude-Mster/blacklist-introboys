@@ -27,7 +27,7 @@ Optional secret `SITE_URL` (default `https://blacklistintroboys.com`) is the add
 
 **2. Put the new site files in your repo and publish** (Base44 dashboard → publish, as you do for any change).
 New/changed: `base44/functions/botAuth`, `base44/shared/botLicense.ts`, `base44/functions/shopAction`, `base44/entities/Bot*.jsonc`
-and `ShopItem.jsonc`, `base44/shared/version.ts` (6.32), and in `src/`: `pages/Assistant.jsx`, `pages/Shop.jsx`,
+and `ShopItem.jsonc`, `base44/shared/version.ts` (6.36), and in `src/`: `pages/Assistant.jsx`, `pages/Shop.jsx`,
 `components/shop/ShopAdmin.jsx`, `components/admin/BotSection.jsx`, `lib/assistantLink.js`, nav, `App.jsx`, `GuildLayout.jsx`.
 Then **Admin hall → System check**: the row "IntroBoys Assistant licenses" must be green.
 
@@ -39,7 +39,7 @@ Test it from any PC:
 curl -s -X POST https://blacklistintroboys.com/api/apps/6abe8bba244ec63c6d6d2855/functions/botAuth -H "content-type: application/json" -d "{\"action\":\"ping\"}"
 ```
 
-You should get `{"ok":true,"version":"6.32","signing":true}`. If the address is different on your host, fix `ApiBase` (and `SiteUrl`).
+You should get `{"ok":true,"version":"6.36","signing":true}`. If the address is different on your host, fix `ApiBase` (and `SiteUrl`).
 
 **4. Add the shop item.** Admin hall → Shop → Manage → Add → tick *This is IntroBoys Assistant time*. Set the days (e.g. 30) and the price in
 points (before tax). Add several (7 days, 30 days...) if you like. Days switch on the moment the points are paid and add to the time left (max 730 days at once, max 12 per purchase).
@@ -93,3 +93,9 @@ the app says "No Assistant time" → buy days in the shop → *Check again* → 
   and give them the same number of days (negative takes days away). Each member is done on their own; anyone who
   can't take the days (switched off, over the 730-day limit) is listed with the reason. Points are never touched.
   Logged as `grant` / `grant_all` per member and one `grant_many` summary.
+
+## Remote control (site 6.36, app 4.5.0)
+New: entities `BotRemote` and `BotCommand`, actions `remotePush` (app) and `remoteView` / `remoteCommand` (member) in `botAuth`,
+and the *Remote control* panel on the Assistant page (`src/components/assistant/RemotePanel.jsx`). Redeploy the functions and entities.
+Members only ever see and control their OWN app; there is no leader view. Commands: start, stop, return_town, upgrade, enhance - nothing else.
+The page polls every 3 s while it is open and visible; the app then reports every 3 s (otherwise every 20 s) and sends a ~30 KB picture every 5 s.

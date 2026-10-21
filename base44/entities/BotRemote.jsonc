@@ -1,0 +1,14 @@
+{
+  "name": "BotRemote",
+  "type": "object",
+  "properties": {
+    "member_id": { "type": "string" },
+    "state": { "type": "string", "description": "JSON: what the app reports (running, boss, hp, dungeon, runs, game found, version)" },
+    "log": { "type": "string", "description": "The app's latest log lines, newline separated" },
+    "picture": { "type": "string", "description": "Small JPEG of the game (base64), only sent while the owner watches" },
+    "picture_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time", "description": "Last report from the app" },
+    "watch_until": { "type": "string", "format": "date-time", "description": "The owner has the remote page open until then: the app reports fast" }
+  },
+  "rls": { "read": false, "create": false, "update": false, "delete": false }
+}
