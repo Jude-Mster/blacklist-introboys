@@ -158,3 +158,63 @@ export async function warPushStatus() {
   if (!endpoint) return false;
   try { const r = await war("pushStatus", { endpoint }); if (!r.on) write(PUSH_KEY, ""); return !!r.on; } catch { return true; }
 }
+
+// ---------- 6.39: one refresh loop for the whole War Room screen ----------
+// The open map and the chat are kept fresh by ONE call ("sync") instead of two. It runs every 1.5 s while
+// things are happening, eases off to 3 s and then 5 s when nothing has changed for a while, pauses while the
+// tab is hidden, and backs off (up to 15 s) when the server is busy, without showing an error for a short hiccup.
+export const errStatus = (e) => (e && (e.status || (e.response && e.response.status))) || 0;
+export const retryable = (e) => { const s = errStatus(e); return !s || s === 409 || s === 429 || s >= 500; };
+const loop = { page: null, chat: null, timer: 0, busy: false, active: Date.now(), fails: 0, listeners: new Set() };
+export const syncHealth = () => loop.fails;
+function nextDelay() {
+  if (typeof document !== "undefined" && document.hidden) return 15000;
+  if (loop.fails) return Math.min(15000, 1500 * 2 ** loop.fails);
+  const quiet = Date.now() - loop.active;
+  return quiet < 20000 ? 1500 : quiet < 60000 ? 3000 : 5000;
+}
+function schedule(ms) {
+  clearTimeout(loop.timer);
+  if (!loop.page && !loop.chat) return;
+  loop.timer = setTimeout(runSync, ms);
+}
+async function runSync() {
+  if (loop.busy) return schedule(300);
+  if (typeof document !== "undefined" && document.hidden && !loop.chat) return schedule(15000);
+  const page = loop.page, chat = loop.chat;
+  if (!page && !chat) return;
+  loop.busy = true;
+  try {
+    const body = {};
+    if (page && !page.paused()) { body.page = page.id; body.v = page.getV(); }
+    if (chat) { const c = chat.cursor(); body.chat = true; body.chatAfter = c.after; body.trSince = c.since; }
+    if (!body.page && !body.chat) return;
+    const r = await war("sync", body);
+    loop.fails = 0;
+    let changed = false;
+    if (r.page && page && loop.page === page && body.page) { if (!r.page.same) changed = true; page.onPage(r.page); }
+    if (r.chat && chat && loop.chat === chat) { if (r.chat.messages.length || r.chat.updates.length) changed = true; chat.onChat(r.chat); }
+    if (changed) loop.active = Date.now();
+  } catch (e) {
+    loop.fails = Math.min(loop.fails + 1, 6);
+    if (!retryable(e) && loop.page) loop.page.onError && loop.page.onError(e);
+  } finally {
+    loop.busy = false;
+    loop.listeners.forEach((f) => f(loop.fails));
+    schedule(nextDelay());
+  }
+}
+if (typeof document !== "undefined") document.addEventListener("visibilitychange", () => { if (!document.hidden) schedule(0); });
+// Something happened here (a stroke, a message): refresh at the quick pace for a while.
+export function pokeSync(soon = false) { loop.active = Date.now(); if (soon) schedule(400); }
+export function watchPage(id, getV, onPage, paused = () => false, onError = null) {
+  const w = { id, getV, onPage, paused, onError };
+  loop.page = w; schedule(0);
+  return () => { if (loop.page === w) loop.page = null; };
+}
+export function watchChat(cursor, onChat) {
+  const w = { cursor, onChat };
+  loop.chat = w; schedule(0);
+  return () => { if (loop.chat === w) loop.chat = null; };
+}
+export function onSyncHealth(f) { loop.listeners.add(f); return () => loop.listeners.delete(f); }

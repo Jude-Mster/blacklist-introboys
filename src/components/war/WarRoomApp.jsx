@@ -6,7 +6,7 @@ import WarChat, { Badge } from "./WarChat";
 import HsbTimer from "@/components/HsbTimer";
 import { WAR_MAPS, TRIBES, mapById, mapUrl } from "@/lib/warMaps";
 import {
-  war, warError, applyLocal, setPass, markCouncil, GUILD_COLORS, planSeen, markPlanSeen,
+  war, warError, applyLocal, setPass, markCouncil, GUILD_COLORS, planSeen, markPlanSeen, retryable, watchPage, pokeSync, onSyncHealth,
   warPushSupported, enableWarPush, disableWarPush, warPushStatus, warPushEndpoint
 } from "@/lib/warRoom";
 import { cn } from "@/lib/utils";
@@ -188,10 +188,11 @@ function Board({ pageMeta, me, command, colorOf, showPins, onTogglePins, strengt
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState("");
-  const v = useRef(-1);
+  const v = useRef("");
   const queue = useRef([]);
   const sending = useRef(false);
   const timer = useRef(0);
+  const retries = useRef(0);
   const [lastBy, setLastBy] = useState(pageMeta.edited_by || "");
 
   const flush = useCallback(async () => {
@@ -199,42 +200,50 @@ function Board({ pageMeta, me, command, colorOf, showPins, onTogglePins, strengt
     if (sending.current || !queue.current.length) return;
     sending.current = true; setSaving(true);
     const ops = queue.current.splice(0, 60);
+    let wait = 120;
     try {
       const r = await war("edit", { id: pageMeta.id, ops });
       v.current = r.page.v;
       setShapes(applyLocal(r.page.shapes, queue.current, me.name));
-      setNote("");
+      setLastBy(r.page.edited_by || me.name);
+      setNote(""); retries.current = 0;
+      pokeSync();
     } catch (e) {
-      setNote(warError(e, "Couldn't save the last drawing."));
-      // put the board back to what the server has
-      try { const r = await war("page", { id: pageMeta.id, v: -1 }); v.current = r.page.v; setShapes(applyLocal(r.page.shapes, queue.current, me.name)); } catch { /* next poll */ }
+      if (retryable(e) && retries.current < 8) {
+        // 6.39: a busy moment: keep the drawing and send it again shortly (it stays on the screen meanwhile)
+        queue.current.unshift(...ops);
+        retries.current++;
+        wait = Math.min(8000, 600 * 2 ** retries.current);
+        if (retries.current >= 3) setNote("The server is slow right now. Your drawing is kept and sent again in a moment.");
+      } else {
+        retries.current = 0;
+        setNote(warError(e, "Couldn't save the last drawing."));
+        // put the board back to what the server has
+        try { const r = await war("page", { id: pageMeta.id, v: "" }); v.current = r.page.v; setShapes(applyLocal(r.page.shapes, queue.current, me.name)); } catch { /* next refresh */ }
+      }
     } finally {
       sending.current = false; setSaving(false);
-      if (queue.current.length) timer.current = setTimeout(flush, 120);
+      if (queue.current.length) timer.current = setTimeout(flush, wait);
     }
   }, [pageMeta.id, me.name]);
 
   const onOps = useCallback((ops) => {
     queue.current.push(...ops);
+    pokeSync();
     setShapes((s) => applyLocal(s, ops, me.name));
     if (!timer.current) timer.current = setTimeout(flush, 200);
   }, [flush, me.name]);
 
+  // 6.39: kept fresh by the War Room's single refresh loop (with the chat), not a loop of its own
   useEffect(() => {
-    let alive = true, t = 0;
-    const tick = async () => {
-      if (!alive) return;
-      if (!document.hidden && !sending.current && !queue.current.length) {
-        try {
-          const r = await war("page", { id: pageMeta.id, v: v.current });
-          if (alive && !r.same && r.page && !sending.current && !queue.current.length) { v.current = r.page.v; setShapes(r.page.shapes); setLastBy(r.page.edited_by || ""); }
-          if (alive) setReady(true);
-        } catch (e) { if (alive) setNote(warError(e, "Can't reach the War Room. Trying again.")); }
-      }
-      t = setTimeout(tick, 1500);
-    };
-    tick();
-    return () => { alive = false; clearTimeout(t); clearTimeout(timer.current); };
+    const stop = watchPage(pageMeta.id, () => v.current, (pg) => {
+      setReady(true);
+      if (pg.gone) { setNote("This map was removed from the plan."); return; }
+      if (pg.same || sending.current || queue.current.length) return;
+      v.current = pg.v; setShapes(pg.shapes); setLastBy(pg.edited_by || "");
+    }, () => sending.current || queue.current.length > 0, (e) => setNote(warError(e, "Can't open this map.")));
+    const off = onSyncHealth((fails) => { if (fails >= 4) setNote("Can't reach the War Room right now. Trying again…"); else setNote((n) => (n.startsWith("Can't reach") ? "" : n)); });
+    return () => { stop(); off(); clearTimeout(timer.current); };
   }, [pageMeta.id]);
 
   return (

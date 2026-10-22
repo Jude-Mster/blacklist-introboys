@@ -1,0 +1,36 @@
+{
+  "name": "WarShape",
+  "type": "object",
+  "description": "6.39 War Room: one drawing on a map (stroke, arrow, words or marker)",
+  "properties": {
+    "page_id": {
+      "type": "string"
+    },
+    "sid": {
+      "type": "string",
+      "description": "The drawing's own id (made by the screen that drew it)"
+    },
+    "data": {
+      "type": "object",
+      "description": "The drawing: t (path/arrow/text/stamp), colour, points or position"
+    },
+    "by": {
+      "type": "string",
+      "description": "Who drew it"
+    },
+    "t": {
+      "type": "number",
+      "description": "When it was drawn or last moved (ms)"
+    },
+    "cby": {
+      "type": "string",
+      "description": "Who changed it last (drew or moved it)"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

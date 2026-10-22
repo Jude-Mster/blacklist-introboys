@@ -5,7 +5,7 @@ import { memo, bust } from '../../shared/memo.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
 import {
   WAR_MAP_IDS, MAX_SHAPES, MAX_POINTS, MAX_OPS, MAX_PAGES, MAX_PLANS, GUEST_DAYS_DEFAULT,
-  cleanText, applyOps, pointCount, CODE_RE, normCode, tokenHash, memLimit, clientIp,
+  cleanText, applyOps, cleanShape, pointCount, CODE_RE, normCode, tokenHash, memLimit, clientIp,
   HOME_GUILD, GUILD_COLORS, cleanGuild, cleanColor, WAR_LANGS, CHAT_MAX_LEN, CHAT_WINDOW, CHAT_GAP_MS,
   ONLINE_MS, SEEN_EVERY_MS, NOTIFY_EDIT_GAP_MS, NOTIFY_NOTES_GAP_MS
 } from '../../shared/warRoom.ts';
@@ -47,7 +47,7 @@ async function identify(b, req, p): Promise<Who | null> {
       const name = m.discord_name || 'Member';
       if (COMMAND.includes(m.role)) return { level: 'command', id: 'm_' + m.id, name, leader: m.role === 'leader', ...HOME_GUILD, member: m };
       // a member who was given a code
-      const { items } = await b.asServiceRole.entities.WarGuest.filter({ member_id: m.id, revoked: false }, { limit: 5 });
+      const items = await memo(`war:mg:${m.id}`, 20000, async () => (await b.asServiceRole.entities.WarGuest.filter({ member_id: m.id, revoked: false }, { limit: 5 })).items);
       for (const g of items) if (await guestOk(b, g)) return { level: 'council', id: 'm_' + m.id, name, leader: false, ...HOME_GUILD, member: m, guest: g };
     }
   }
@@ -83,6 +83,66 @@ const chatView = (m) => ({
   text: m.removed ? '' : (m.text || ''), lang: m.lang || '', tr: m.removed ? null : (m.tr || null), image: m.removed ? '' : (m.image_url || ''),
   removed: !!m.removed, at: m.created_date
 });
+// ---------- 6.39: the board, one row per drawing ----------
+const pageRow = (b, id: string) => memo(`war:pg:${id}`, 30000, async () => { try { return await b.asServiceRole.entities.WarPage.get(id); } catch { return null; } });
+const planRow = (b, id: string) => memo(`war:pl:${id}`, 30000, async () => { try { return await b.asServiceRole.entities.WarPlan.get(id); } catch { return null; } });
+// Boards drawn before 6.39 kept every drawing inside the page: moved into rows once, the first time the board is opened.
+async function migrateBoard(b, page) {
+  if (!page || !Array.isArray(page.shapes) || !page.shapes.length) return;
+  const E = b.asServiceRole.entities;
+  await withRecordLock(b, 'WarPage', page.id, async () => {
+    const fresh = await E.WarPage.get(page.id).catch(() => null);
+    if (!fresh || !Array.isArray(fresh.shapes) || !fresh.shapes.length) return;
+    const { items } = await E.WarShape.filter({ page_id: page.id }, { limit: 3000 });
+    const have = new Set(items.map((r) => r.sid));
+    const t = Date.now();
+    await runLimited(fresh.shapes.filter((sh) => sh && sh.id && !have.has(sh.id)).map((sh) => () => E.WarShape.create({ page_id: page.id, sid: sh.id, data: sh, by: sh.by || '', t })), 6);
+    await E.WarPage.update(page.id, { shapes: [] });
+  }, 60000, 20000);
+  page.shapes = [];
+  bust(`war:pg:${page.id}`);
+}
+// What a board holds now. Every screen watching it shares one read a second. v changes whenever anything was
+// drawn, moved or erased (count + newest change), so a screen with nothing new is told "same" and no drawings.
+const boardState = (b, id: string) => memo(`war:board:${id}`, PAGE_MS, async () => {
+  const page = await pageRow(b, id);
+  if (!page) return null;
+  await migrateBoard(b, page);
+  const { items } = await b.asServiceRole.entities.WarShape.filter({ page_id: id }, { limit: 3000 });
+  return boardOf(page, items);
+});
+function boardOf(page, rows) {
+  let newest = null;
+  for (const r of rows) if (!newest || (r.t || 0) > (newest.t || 0)) newest = r;
+  return { page, rows, v: `${rows.length}.${newest ? newest.t || 0 : 0}`, last: newest ? newest.cby || newest.by || '' : '' };
+}
+const boardView = (st) => ({
+  id: st.page.id, plan_id: st.page.plan_id, map: st.page.map, title: st.page.title || '', v: st.v, n: st.rows.length,
+  edited_by: st.last || st.page.edited_by || '', shapes: st.rows.map((r) => (r.data ? { ...r.data, by: r.data.by || r.by || '' } : null)).filter(Boolean)
+});
+async function runLimited(jobs: (() => Promise<any>)[], n: number) {
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(n, jobs.length) }, async () => { while (i < jobs.length) { const j = jobs[i++]; await j(); } }));
+}
+// A plan's "last changed" is written at most once a minute per plan (it only orders the list and marks "new").
+const touched = new Map<string, number>();
+async function touchPlan(b, planId: string, by: string) {
+  if (!planId || Date.now() - (touched.get(planId) || 0) < 60_000) return;
+  touched.set(planId, Date.now());
+  if (touched.size > 2000) touched.clear();
+  await b.asServiceRole.entities.WarPlan.update(planId, { updated_at: nowIso(), updated_by: by }).catch(() => {});
+  bust('war:plans');
+}
+async function chatSince(b, after, trSince) {
+  const rows = await chatWindow(b);
+  const at = after ? rows.findIndex((m) => m.id === String(after)) : -1;
+  const fresh = at >= 0 ? rows.slice(at + 1) : rows;
+  const since = Date.parse(String(trSince || '')) || 0;
+  const old = at >= 0 ? rows.slice(0, at + 1) : [];
+  const updates = since ? old.filter((m) => (Date.parse(m.tr_at || '') || 0) > since) : [];
+  return { messages: fresh.map(chatView), updates: updates.map(chatView), now: nowIso() };
+}
+
 // Every screen asks for the same newest messages: one database read a second, however many are watching.
 const chatWindow = (b) => memo('war:chat', 1000, async () => {
   const { items } = await b.asServiceRole.entities.WarChat.filter({}, { sort: '-created_date', limit: CHAT_WINDOW });
@@ -161,7 +221,7 @@ async function notify(b, who: Who, plan, body: string, kind: 'new' | 'notes' | '
     if (notifiedAt.size > 5000) notifiedAt.clear();
     const E = b.asServiceRole.entities;
     if (kind === 'edit' || kind === 'map') await E.WarPlan.update(plan.id, { notified_at: nowIso() }).catch(() => {});
-    const { items: subs } = await E.WarPush.filter({}, { limit: 1000 });
+    const subs = await memo('war:push', 30000, async () => (await E.WarPush.filter({}, { limit: 1000 })).items);
     const targets = subs.filter((s) => s.who && s.who !== who.id);
     if (!targets.length) return 0;
     const allowed = new Set((await people(b)).map((x) => x.id));
@@ -219,7 +279,7 @@ export default async function(req) {
           // guild members keep the guild's own name and colour; everyone else gets the code's
           ...(member ? { guild: '', color: '' } : guildOf(fresh))
         });
-        bust('war:roster');
+        bust('war:roster'); bust('war:mg:');
         await E.WarInvite.update(fresh.id, { uses: (fresh.uses || 0) + 1 });
         bust(`war:inv:${fresh.id}`);
         return Response.json({ ok: true, token: member ? '' : token, name, days, label: fresh.label || '', ...(member ? HOME_GUILD : guildOf(fresh)) });
@@ -245,7 +305,7 @@ export default async function(req) {
 
     // ---------- plans ----------
     if (action === 'plans') {
-      const { items } = await E.WarPlan.filter({ archived: false }, { sort: '-updated_at', limit: MAX_PLANS });
+      const items = await memo('war:plans', 4000, async () => (await E.WarPlan.filter({ archived: false }, { sort: '-updated_at', limit: MAX_PLANS })).items);
       return Response.json({ ok: true, plans: items.map(planView), can_command: command, leader: who.leader });
     }
     if (action === 'createPlan') {
@@ -255,6 +315,7 @@ export default async function(req) {
       const { items } = await E.WarPlan.filter({ archived: false }, { limit: MAX_PLANS + 1 });
       if (items.length >= MAX_PLANS) throw new UserError(`At most ${MAX_PLANS} plans. Delete an old one first.`);
       const plan = await E.WarPlan.create({ title, notes: '', created_by_name: who.name, archived: false, updated_at: nowIso() });
+      bust('war:plans');
       const page = await E.WarPage.create({ plan_id: plan.id, map, title: '', shapes: [], version: 1, edited_by: who.name, edited_at: nowIso() });
       await notify(b, who, plan, `New battle plan from ${who.name}: ${title}`, 'new');
       return Response.json({ ok: true, plan: planView(plan), pages: [pageMeta(page)] });
@@ -266,6 +327,7 @@ export default async function(req) {
       if (p.title !== undefined) { mustCommand(); fields.title = cleanText(p.title, 60) || plan.title; }
       if (p.notes !== undefined) fields.notes = String(p.notes ?? '').slice(0, 2000);
       const saved = await E.WarPlan.update(plan.id, fields);
+      bust('war:plans'); bust(`war:pl:${plan.id}`);
       if (p.notes !== undefined && String(p.notes ?? '').trim() && fields.notes !== (plan.notes || '')) {
         await notify(b, who, plan, `${who.name} changed the orders: ${cleanText(fields.notes, 90)}`, 'notes');
       }
@@ -276,6 +338,7 @@ export default async function(req) {
       const plan = await E.WarPlan.get(String(p.id || '')).catch(() => null);
       if (!plan) throw new UserError('That plan is gone.', 404);
       await E.WarPlan.update(plan.id, { archived: true });
+      bust('war:plans'); bust(`war:pl:${plan.id}`);
       return Response.json({ ok: true });
     }
     if (action === 'pages') {
@@ -292,6 +355,7 @@ export default async function(req) {
       if (items.length >= MAX_PAGES) throw new UserError(`At most ${MAX_PAGES} maps in one plan.`);
       const page = await E.WarPage.create({ plan_id: plan.id, map: String(p.map), title: cleanText(p.title, 40), shapes: [], version: 1, edited_by: who.name, edited_at: nowIso() });
       await E.WarPlan.update(plan.id, { updated_at: nowIso(), updated_by: who.name }).catch(() => {});
+      bust('war:plans');
       await notify(b, who, plan, `${who.name} added a map: ${MAP_NAMES[String(p.map)] || 'a map'}`, 'map');
       return Response.json({ ok: true, page: pageMeta(page) });
     }
@@ -302,38 +366,85 @@ export default async function(req) {
       const { items } = await E.WarPage.filter({ plan_id: page.plan_id }, { limit: 2 });
       if (items.length <= 1) throw new UserError('A plan keeps at least one map.');
       await E.WarPage.delete(page.id);
-      bust(`war:page:${page.id}`);
+      bust(`war:pg:${page.id}`); bust(`war:board:${page.id}`);
+      const { items: drawn } = await E.WarShape.filter({ page_id: page.id }, { limit: 3000 });
+      await runLimited(drawn.map((r) => () => E.WarShape.delete(r.id).catch(() => {})), 6);
       return Response.json({ ok: true });
     }
 
     // ---------- one board ----------
     if (action === 'page') {
       const id = String(p.id || '');
-      const page = await memo(`war:page:${id}`, PAGE_MS, async () => { try { return await E.WarPage.get(id); } catch { return null; } });
-      if (!page) throw new UserError('That map is gone.', 404);
-      if (Number(p.v) === (page.version || 0)) return Response.json({ ok: true, same: true, v: page.version || 0 });
-      return Response.json({ ok: true, page: pageView(page) });
+      const st = await boardState(b, id);
+      if (!st) throw new UserError('That map is gone.', 404);
+      if (String(p.v) === st.v) return Response.json({ ok: true, same: true, v: st.v });
+      return Response.json({ ok: true, page: boardView(st) });
+    }
+    // 6.39: one call for everything a War Room screen keeps fresh (the open map and the chat), instead of two
+    // that each ran every second or two.
+    if (action === 'sync') {
+      const out: Record<string, any> = { ok: true, now: nowIso() };
+      if (p.page) {
+        const st = await boardState(b, String(p.page));
+        out.page = !st ? { gone: true } : String(p.v) === st.v ? { same: true, v: st.v } : boardView(st);
+      }
+      if (p.chat) out.chat = await chatSince(b, p.chatAfter, p.trSince);
+      return Response.json(out);
     }
     if (action === 'edit') {
+      // 6.39: no lock. Every drawing is its own row, so people drawing at the same moment never wait for each
+      // other (the lock was ~10 database calls a stroke, and queuing for it is what made the War Room "busy").
       const id = String(p.id || '');
       const ops = Array.isArray(p.ops) ? p.ops.slice(0, MAX_OPS) : [];
       if (!ops.length) throw new UserError('Nothing to save.');
-      const out = await withRecordLock(b, 'WarPage', id, async () => {
-        const page = await E.WarPage.get(id).catch(() => null);
-        if (!page) throw new UserError('That map is gone.', 404);
-        const { shapes, changed } = applyOps(page.shapes || [], ops, who.name, command);
-        if (!changed) return page;
-        if (shapes.length > MAX_SHAPES || pointCount(shapes) > MAX_POINTS) throw new UserError('This map is full. Erase some drawings or use another map.', 413);
-        const saved = await E.WarPage.update(id, { shapes, version: (page.version || 0) + 1, edited_by: who.name, edited_at: nowIso() });
-        return { ...page, ...saved, shapes };
-      }, 10000, 6000);
-      bust(`war:page:${id}`);
-      const plan = await E.WarPlan.get(out.plan_id).catch(() => null);
-      if (plan) {
-        await E.WarPlan.update(plan.id, { updated_at: nowIso(), updated_by: who.name }).catch(() => {});
-        if (ops.some((o) => o && o.op === 'add')) await notify(b, who, plan, `${who.name} is drawing on ${MAP_NAMES[out.map] || 'the map'}`, 'edit');
+      const page = await pageRow(b, id);
+      if (!page) throw new UserError('That map is gone.', 404);
+      await migrateBoard(b, page);
+      const S = E.WarShape;
+      const { items: rows } = await S.filter({ page_id: id }, { limit: 3000 });
+      const bySid = new Map(rows.map((r) => [r.sid, r]));
+      let shapes = rows.map((r) => r.data).filter(Boolean);
+      const jobs: (() => Promise<any>)[] = [];
+      let added = 0;
+      for (const o of ops) {
+        if (!o || typeof o !== 'object') continue;
+        if (o.op === 'add') {
+          const sh = cleanShape(o.shape, who.name);
+          if (!sh || bySid.has(sh.id)) continue;
+          if (shapes.length + 1 > MAX_SHAPES || pointCount(shapes) + (sh.t === 'path' ? sh.pts.length : 4) > MAX_POINTS) throw new UserError('This map is full. Erase some drawings or use another map.', 413);
+          const row = { page_id: id, sid: sh.id, data: sh, by: who.name, cby: who.name, t: Date.now() };
+          bySid.set(sh.id, row); shapes.push(sh); added++;
+          jobs.push(() => S.create(row));
+        } else if (o.op === 'move') {
+          const r = bySid.get(String(o.id));
+          if (!r || !r.id) continue;
+          const moved = applyOps([r.data], [o], who.name, false).shapes[0];
+          if (!moved || moved === r.data) continue;
+          r.data = moved; r.t = Date.now(); r.cby = who.name; shapes = shapes.map((x) => (x.id === moved.id ? moved : x));
+          jobs.push(() => S.update(r.id, { data: moved, t: r.t, cby: who.name }));
+        } else if (o.op === 'remove') {
+          for (const sid of (Array.isArray(o.ids) ? o.ids : [o.id]).map(String)) {
+            const r = bySid.get(sid);
+            if (!r) continue;
+            bySid.delete(sid); shapes = shapes.filter((x) => x.id !== sid);
+            if (r.id) jobs.push(() => S.delete(r.id).catch(() => {}));
+          }
+        } else if (o.op === 'clear' && command) {
+          for (const r of bySid.values()) if (r.id) jobs.push(() => S.delete(r.id).catch(() => {}));
+          bySid.clear(); shapes = [];
+        }
       }
-      return Response.json({ ok: true, page: pageView(out) });
+      await runLimited(jobs, 6);
+      bust(`war:board:${id}`);
+      if (jobs.length) {
+        await touchPlan(b, page.plan_id, who.name);
+        if (added) {
+          const plan = await planRow(b, page.plan_id);
+          if (plan) await notify(b, who, plan, `${who.name} is drawing on ${MAP_NAMES[page.map] || 'the map'}`, 'edit');
+        }
+      }
+      // the answer is built from what was just written (no second read)
+      return Response.json({ ok: true, page: boardView(boardOf(page, [...bySid.values()])) });
     }
 
     // ---------- the Guild Leader: invites and the council ----------
@@ -381,7 +492,7 @@ export default async function(req) {
         const g = guildOf({ ...inv, ...saved });
         await Promise.all(items.filter((x) => !x.member_id).map((x) => E.WarGuest.update(x.id, g).catch(() => {})));
       }
-      bust(`war:inv:${inv.id}`); bust('war:tok:'); bust('war:roster');
+      bust(`war:inv:${inv.id}`); bust('war:tok:'); bust('war:mg:'); bust('war:roster');
       return Response.json({ ok: true, invite: inviteView({ ...inv, ...saved }) });
     }
     if (action === 'revokeInvite') {
@@ -389,7 +500,7 @@ export default async function(req) {
       const inv = await E.WarInvite.get(String(p.id || '')).catch(() => null);
       if (!inv) throw new UserError('That code is gone.', 404);
       await E.WarInvite.update(inv.id, { revoked: true });
-      bust(`war:inv:${inv.id}`); bust('war:roster');
+      bust(`war:inv:${inv.id}`); bust('war:roster'); bust('war:mg:');
       return Response.json({ ok: true });
     }
     if (action === 'removeGuest') {
@@ -397,7 +508,7 @@ export default async function(req) {
       const g = await E.WarGuest.get(String(p.id || '')).catch(() => null);
       if (!g) throw new UserError('Not found.', 404);
       await E.WarGuest.update(g.id, { revoked: true });
-      bust('war:tok:'); bust('war:roster');
+      bust('war:tok:'); bust('war:mg:'); bust('war:roster');
       return Response.json({ ok: true });
     }
     // ---------- 6.34: who is in the War Room, by guild ----------
@@ -407,16 +518,7 @@ export default async function(req) {
 
     // ---------- 6.34: the War Room chat ----------
     if (action === 'chat') {
-      const rows = await chatWindow(b);
-      // `after`: the id of the newest message this screen has (by id, as the data store's times don't all
-      // parse the same way). `trSince`: the server time of its last answer; translations and removals made
-      // since then are sent again (tr_at is always written by this function, so it compares cleanly).
-      const at = p.after ? rows.findIndex((m) => m.id === String(p.after)) : -1;
-      const fresh = at >= 0 ? rows.slice(at + 1) : rows;
-      const since = Date.parse(String(p.trSince || '')) || 0;
-      const old = at >= 0 ? rows.slice(0, at + 1) : [];
-      const updates = since ? old.filter((m) => (Date.parse(m.tr_at || '') || 0) > since) : [];
-      return Response.json({ ok: true, messages: fresh.map(chatView), updates: updates.map(chatView), now: nowIso() });
+      return Response.json({ ok: true, ...(await chatSince(b, p.after, p.trSince)) });
     }
     if (action === 'chatSend') {
       const text = cleanChat(p.text);
@@ -468,6 +570,7 @@ export default async function(req) {
       const endpoint = String(p.sub.endpoint);
       const fields = { who: who.id, endpoint, p256dh: p.sub.keys.p256dh, auth: p.sub.keys.auth, fails: 0, device: cleanText(p.device, 60) };
       const { items: same } = await E.WarPush.filter({ endpoint }, { limit: 5 });
+      bust('war:push');
       if (same.length) { await E.WarPush.update(same[0].id, fields); await Promise.all(same.slice(1).map((x) => E.WarPush.delete(x.id).catch(() => {}))); }
       else await E.WarPush.create(fields);
       const { items: all } = await E.WarPush.filter({ who: who.id }, { sort: 'created_date', limit: 50 });
@@ -477,6 +580,7 @@ export default async function(req) {
     if (action === 'pushOff') {
       const { items } = await E.WarPush.filter({ endpoint: String(p.endpoint || '') }, { limit: 5 });
       await Promise.all(items.filter((x) => x.who === who.id).map((x) => E.WarPush.delete(x.id).catch(() => {})));
+      bust('war:push');
       return Response.json({ ok: true });
     }
     if (action === 'pushStatus') {

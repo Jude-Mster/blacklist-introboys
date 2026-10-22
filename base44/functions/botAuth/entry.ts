@@ -281,11 +281,23 @@ async function remotePush(b, s, p) {
   const watching = !!(row && Date.parse(row.watch_until || '') > now);
   if (watching) {
     const pic = readPicture(p.picture ?? p.image ?? p.screenshot);
+    // 6.38: an app that could not make its picture says why (picture_error); that reason is shown instead
+    const appWhy = typeof p.picture_error === 'string' && p.picture_error ? 'the app could not take the picture: ' + text(p.picture_error, 160) : '';
     if (pic.b64) { patch.picture = pic.b64; patch.picture_type = pic.type; patch.picture_at = iso; patch.picture_note = ''; }
-    else if (!(row && Date.parse(row.picture_at || '') > now - 15_000)) patch.picture_note = pic.note;   // only while no fresh picture
+    else if (!(row && Date.parse(row.picture_at || '') > now - 15_000)) patch.picture_note = appWhy || pic.note;   // only while no fresh picture
   }
   if (!watching && row && row.picture) patch.picture = '';                  // nobody watches: the picture is not kept
-  if (row) await E.BotRemote.update(row.id, patch); else row = await E.BotRemote.create({ member_id: s.member_id, ...patch });
+  // 6.38: if the picture can't be stored, the rest of the report still is, and the reason is kept for the page
+  const save = (x) => (row ? E.BotRemote.update(row.id, x) : E.BotRemote.create({ member_id: s.member_id, ...x }));
+  try { const r2 = await save(patch); if (!row) row = r2; }
+  catch (e) {
+    if (!patch.picture) throw e;
+    const why = text(String((e && (e as any).message) || e), 140);
+    console.log('remotePush: picture not stored', patch.picture.length, why);
+    const { picture: _p, picture_type: _t, picture_at: _a, ...rest } = patch;
+    const r2 = await save({ ...rest, picture_note: `the site could not store the picture (${Math.round(patch.picture.length * 3 / 4 / 1024)} KB): ${why}` });
+    if (!row) row = r2;
+  }
 
   // what the app did with earlier commands
   if (Array.isArray(p.results)) {

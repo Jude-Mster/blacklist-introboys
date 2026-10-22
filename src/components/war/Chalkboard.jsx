@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Pencil, MoveUpRight, Type, Stamp, Hand, Eraser, Undo2, Trash2, MapPin, Loader2, ZoomIn, ZoomOut, Maximize } from "lucide-react";
-import { CHALK, STAMPS, TRIBES, mapUrl, pinsFor, stoneName } from "@/lib/warMaps";
+import { CHALK, STAMPS, TRIBES, mapUrl, pinsFor } from "@/lib/warMaps";
 import { newId, simplify } from "@/lib/warRoom";
 import { cn } from "@/lib/utils";
 
@@ -283,6 +283,15 @@ export default function Chalkboard({ map, shapes, onOps, me, canClear, saving, s
           {saving && <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded bg-black/50 px-2 py-0.5 text-xs text-white/80"><Loader2 className="h-3 w-3 animate-spin" /> saving</span>}
         </div>
       </div>
+      {pins.length > 0 && (
+        <p className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-mist" aria-label="What the dots mean">
+          {[...(pins.some((x) => !x.outpost) ? [["wd", "White Dragon holds it"], ["bs", "Black Snake holds it"], ["gt", "Golden Tiger holds it"], ["none", "No owner"]] : []), ...(pins.some((x) => x.outpost) ? [["outpost", "Outpost"]] : [])]
+            .filter(([k]) => k === "outpost" || pins.some((x) => x.holder === k))
+            .map(([k, label]) => (
+              <span key={k} className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full ring-2 ring-black/60" style={{ background: k === "outpost" ? "#ff5a52" : TRIBES[k].color }} />{label}</span>
+            ))}
+        </p>
+      )}
       <p className="text-center text-xs text-mist/80">
         <span className="sm:hidden">Pinch with two fingers to zoom. </span>{TRIBES[map.tribe].name} · {map.step} · {me.name ? `you draw as ${me.name}` : ""} · Map pictures © Wuxen2 (wiki.wuxen2.com)
       </p>
@@ -345,28 +354,15 @@ function Shape({ s, W, H, tool }) {
   return null;
 }
 
-// 6.34: big and easy to spot: a glowing disc with the stone's sign, in the colour of the tribe holding it.
-const STONE_SIGN = { solar: "☀", lunar: "☾", astral: "★", legacy: "♛" };
+// 6.39: a small bold dot, no label: the colour says which tribe holds the stone (White Dragon white, Black Snake
+// violet, Golden Tiger gold, no owner teal); the Outpost is red.
 function WikiPin({ p, W, H }) {
   const x = (p.x / 100) * W, y = (p.y / 100) * H;
-  const name = p.outpost ? p.label : stoneName(p.stone).replace(" Holy Stone", " Stone");
-  const sub = p.outpost ? "Outpost capture" : p.holder !== "none" ? `if ${TRIBES[p.holder].name} holds it` : "no owner";
   const tint = p.outpost ? "#ff5a52" : TRIBES[p.holder].color;
-  const sign = p.outpost ? "⚑" : STONE_SIGN[p.stone] || "◆";
-  const wide = Math.max(name.length * 14.5, sub.length * 10.2) + 26;
-  const S = 1.5;                           // drawn half as big again as the shapes around it
-  const left = x + (50 + wide) * S > W;    // keep the label on the board
   return (
-    <g transform={`translate(${x} ${y}) scale(${S})`} style={{ pointerEvents: "none" }} className="war-pin">
-      <circle r="44" fill={tint} opacity="0.16"><animate attributeName="r" values="40;64;40" dur="2.4s" repeatCount="indefinite" /><animate attributeName="opacity" values="0.35;0;0.35" dur="2.4s" repeatCount="indefinite" /></circle>
-      <circle r="37" fill="none" stroke={tint} strokeWidth="3" strokeDasharray="7 6" opacity="0.9" />
-      <circle r="29" fill="rgba(8,14,10,0.88)" stroke={tint} strokeWidth="5" />
-      <text textAnchor="middle" dominantBaseline="central" fontSize="34" fill={tint} y="1">{sign}</text>
-      <g transform={`translate(${left ? -46 - wide : 46} -26)`}>
-        <rect width={wide} height="52" rx="8" fill="rgba(8,14,10,0.86)" stroke={tint} strokeWidth="2" />
-        <text x="13" y="22" fill="#fff" fontSize="22" fontWeight="700" fontFamily="system-ui, sans-serif">{name}</text>
-        <text x="13" y="42" fill={tint} fontSize="16" fontFamily="system-ui, sans-serif">{sub}</text>
-      </g>
+    <g transform={`translate(${x} ${y})`} style={{ pointerEvents: "none" }} className="war-pin">
+      <circle r="15" fill="rgba(8,14,10,0.55)" />
+      <circle r="10" fill={tint} stroke="#0d1510" strokeWidth="3.5" />
     </g>
   );
 }

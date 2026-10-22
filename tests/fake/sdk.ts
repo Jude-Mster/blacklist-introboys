@@ -33,7 +33,7 @@ function entity(name: string) {
     async list(sort, limit) { return (await this.filter({}, { sort, limit })).items; },
     async get(id) { gate(); g.__calls++; if (g.__byOp) g.__byOp[name + '.get'] = (g.__byOp[name + '.get'] || 0) + 1; const r = table(name).get(id); if (!r) { const e: any = new Error('Not found'); e.status = 404; throw e; } return clone(r); },
     async create(d) { gate(); g.__calls++; if (g.__byOp) g.__byOp[name + '.create'] = (g.__byOp[name + '.create'] || 0) + 1; const id = `${name}_${++g.__seq}`; const r = { ...clone(d), id, created_date: new Date(Date.now()).toISOString() + String(g.__seq).padStart(6, '0') }; table(name).set(id, r); return clone(r); },
-    async update(id, d) { gate(); g.__calls++; if (g.__byOp) g.__byOp[name + '.update'] = (g.__byOp[name + '.update'] || 0) + 1; const r = table(name).get(id); if (!r) { const e: any = new Error('Not found'); e.status = 404; throw e; } Object.assign(r, clone(d)); return clone(r); },
+    async update(id, d) { gate(); if (g.__beforeUpdate) g.__beforeUpdate(name, d); g.__calls++; if (g.__byOp) g.__byOp[name + '.update'] = (g.__byOp[name + '.update'] || 0) + 1; const r = table(name).get(id); if (!r) { const e: any = new Error('Not found'); e.status = 404; throw e; } Object.assign(r, clone(d)); return clone(r); },
     async delete(id) { gate(); g.__calls++; if (g.__byOp) g.__byOp[name + '.delete'] = (g.__byOp[name + '.delete'] || 0) + 1; table(name).delete(id); return {}; }
   };
 }
