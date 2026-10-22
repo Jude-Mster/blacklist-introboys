@@ -166,11 +166,11 @@ ok(oth.status === 200 && oth.licensed === false && oth.reason === 'other_device'
 // moving the license
 const reset = await call(bot, A, { action: 'resetDevice' });
 ok(reset.status === 200, `Alice moves her license (${reset.status} ${reset.error || ''})`);
-const dead = await check(r4.token, PC2);
-ok(dead.status === 401, 'moving it signs the app out');
-const r5 = await signIn(A, PC2);
-const now2 = await check(r5.token, PC2);
-ok(now2.licensed, 'the other PC works after signing in again');
+// 6.41: moving signs out only the PC that loses the device; the waiting PC takes the freed device at its next check
+const deadOld = await check(r3.token, PC1);
+ok(deadOld.status === 401, 'moving it signs the old PC out');
+const now2 = await check(r4.token, PC2);
+ok(now2.licensed && now2.device === 1, 'the other PC takes the freed device and works');
 const reset2 = await call(bot, A, { action: 'resetDevice' });
 ok(reset2.status === 429, `a second move within a week is refused (${reset2.status})`);
 const r6 = await signIn(A, PC1);
@@ -478,6 +478,64 @@ await ledger('end');
   const mixed = await call(bot, L, { action: 'adminGrantMany', discordIds: [D.discord_id, Ev.discord_id], days: 1 });
   ok(mixed.given === 1 && mixed.skipped.length === 1 && /switched off/i.test(mixed.skipped[0].why), 'a switched-off member is skipped with the reason; the others still get days');
   await ledger('after giving days');
+}
+
+
+// ---------- 6.41: several devices ----------
+{
+  const Mx = await member('Multi', START);
+  const P1 = hex(32), P2 = hex(32), P3 = hex(32);
+  await call(bot, L, { action: 'adminGrant', discordId: Mx.discord_id, days: 30 });
+  const m1 = await signIn(Mx, P1);
+  ok((await check(m1.token, P1)).licensed, 'Multi runs on PC 1 (device 1)');
+  const m2 = await signIn(Mx, P2);
+  ok((await check(m1.token, P1)).licensed, 'signing in on a second PC no longer signs the first one out');
+  const w2 = await check(m2.token, P2);
+  ok(w2.licensed === false && w2.reason === 'other_device', 'without a second device the second PC does not run');
+  const d = await call(bot, Mx, { action: 'describe', code: (await (async () => { const st = await app({ action: 'start', hwid: hex(32), app_version: '4.7.0' }); return st.user_code; })()) });
+  ok(d.status === 200 && d.other_device === true, 'the sign-in page warns that every device with days is in use');
+  // divide the days: 10 of device 1's 30 go to a new device
+  const mv = await call(bot, Mx, { action: 'moveDays', from: 1, to: 'new', days: 10 });
+  ok(mv.ok && mv.to.seat === 2 && mv.to.days_left === 10 && mv.from.days_left === 20, `10 days moved to a new device 2 (${mv.from && mv.from.days_left} / ${mv.to && mv.to.days_left})`);
+  const ok2 = await check(m2.token, P2);
+  ok(ok2.licensed && ok2.device === 2, 'the second PC takes device 2 and runs');
+  ok((await check(m1.token, P1)).licensed, 'and the first PC still runs');
+  ok((await call(bot, Mx, { action: 'moveDays', from: 2, to: 1, days: 11 })).status === 400, 'you can not move more days than the device has');
+  ok((await call(bot, Mx, { action: 'moveDays', from: 1, to: 1, days: 1 })).status === 400, 'or move days to the same device');
+  // buy days for a third PC in the shop
+  const item = await E.ShopItem.create({ name: 'Assistant 7 days', category: 'Assistant', price: 100, value_cp: 0, stock: 0, active: true, sort: 1, bot_days: 7 });
+  const st0 = await call(bot, Mx, { action: 'status' });
+  const buy = await call(shop, Mx, { action: 'buy', itemId: item.id, qty: 1, botSeat: 'new' });
+  ok(buy.ok && /Device 3/.test(buy.order.delivery_code || ''), `a purchase can be for a new device (${buy.error || buy.order && buy.order.delivery_code})`);
+  const m3 = await signIn(Mx, P3);
+  ok((await check(m3.token, P3)).licensed, 'the third PC runs on the device just bought');
+  const buy2 = await call(shop, Mx, { action: 'buy', itemId: item.id, qty: 1, botSeat: 2 });
+  const st = await call(bot, Mx, { action: 'status' });
+  ok(buy2.ok && st.devices.length === 3 && st.devices.find((x) => x.seat === 2).days_left === 17, 'or for one of your devices (device 2 now has 17)');
+  ok(st.license.active && st.license.devices === 3 && st.max_devices === 5, 'the page lists every device');
+  // names, moving one device to another PC, removing an empty device
+  ok((await call(bot, Mx, { action: 'renameDevice', seat: 2, label: 'Laptop <b>' })).label === 'Laptop b', 'a device can be named');
+  ok((await call(bot, Mx, { action: 'removeDevice', seat: 2 })).status === 400, 'a device with days can not be removed');
+  await call(bot, Mx, { action: 'moveDays', from: 3, to: 1, days: 6 });
+  const rm = await call(bot, Mx, { action: 'removeDevice', seat: 3 });
+  ok(rm.ok && (await check(m3.token, P3)).status === 401, 'an empty device can be removed (its PC is signed out)');
+  for (let i = 0; i < 3; i++) await call(bot, Mx, { action: 'moveDays', from: 1, to: 'new', days: 1 });
+  ok((await call(bot, Mx, { action: 'moveDays', from: 1, to: 'new', days: 1 })).status === 400, 'at most 5 devices');
+  // remote control is per device
+  await app({ action: 'remotePush', state: { state: 'ON PC2' } }, m2.token);
+  await app({ action: 'remotePush', state: { state: 'ON PC1' } }, m1.token);
+  const rv2 = await call(bot, Mx, { action: 'remoteView', seat: 2 });
+  ok(rv2.seat === 2 && rv2.state && rv2.state.state === 'ON PC2' && rv2.devices.length === 5, 'the remote page shows the device you pick');
+  await call(bot, Mx, { action: 'remoteCommand', cmd: 'stop', seat: 2 });
+  const pull1 = await app({ action: 'remotePush', state: {} }, m1.token);
+  const pull2 = await app({ action: 'remotePush', state: {} }, m2.token);
+  ok(pull1.commands.length === 0 && pull2.commands.length === 1, 'a command goes only to the device it was sent to');
+  // switching off is for the member: every device stops
+  await call(bot, L, { action: 'adminRevoke', discordId: Mx.discord_id, reason: 'test' });
+  const c1 = await check(m1.token, P1), c2 = await check(m2.token, P2);
+  ok(!c1.licensed && !c2.licensed && !c1.ticket && !c2.ticket, `switching off stops every device (${c1.status}/${c2.status})`);
+  const adm = await call(bot, L, { action: 'adminList' });
+  ok(adm.licenses.filter((l) => l.member_id === Mx.id).length === 5, 'the leader sees one line per device');
 }
 
 done();

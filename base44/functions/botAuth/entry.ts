@@ -8,7 +8,8 @@ import { BACKEND_VERSION } from '../../shared/version.ts';
 import {
   TICKET_TTL_S, CHECK_EVERY_S, BOT_SESSION_DAYS, CODE_TTL_MS, RESET_COOLDOWN_DAYS, DAY_MS,
   cleanHwid, cleanNonce, hwHash, deviceTag, newUserCode, normCode, text, siteUrl,
-  getLicense, licenseState, licenseSummary, grantDays, logEvent, botSession, killBotSessions, signTicket, signText, signingConfigured,
+  getLicense, getLicenses, licenseState, licenseSummary, memberSummary, grantDays, moveDays, seatOf, seatName, MAX_SEATS,
+  logEvent, botSession, killBotSessions, signTicket, signText, signingConfigured,
   START_PER_IP, START_WINDOW_MS, POLL_PER_IP_PER_MIN, clientIp, ipHash, memLimit
 } from '../../shared/botLicense.ts';
 import { rankedMembers } from '../../shared/points.ts';
@@ -65,8 +66,11 @@ export default async function(req) {
     if (action === 'status') return await status(b, me);
     if (action === 'describe') return await describe(b, me, p);
     if (action === 'approve') return await approve(b, me, p);
-    if (action === 'resetDevice') return await resetDevice(b, me);
-    if (action === 'remoteView') return await remoteView(b, me);
+    if (action === 'resetDevice') return await resetDevice(b, me, p);
+    if (action === 'moveDays') return await moveDaysAction(b, me, p);
+    if (action === 'renameDevice') return await renameDevice(b, me, p);
+    if (action === 'removeDevice') return await removeDevice(b, me, p);
+    if (action === 'remoteView') return await remoteView(b, me, p);
     if (action === 'remoteCommand') return await remoteCommand(b, me, p);
 
     if (action.startsWith('admin')) {
@@ -142,7 +146,7 @@ async function poll(b, p) {
     if (!row) return Response.json({ state: 'expired' });
     const member = await b.asServiceRole.entities.Member.get(row.member_id).catch(() => null);
     if (!member || member.no_access || member.banned) { await E.delete(row.id).catch(() => {}); return Response.json({ state: 'denied' }); }
-    await killBotSessions(b, member.id);                   // only the newest sign-in works
+    await killBotSessions(b, member.id, row.hwid_hash);    // only the newest sign-in of THIS computer works (6.41: other PCs stay signed in)
     const token = randomHex(32);
     const exp = new Date(Date.now() + BOT_SESSION_DAYS * DAY_MS).toISOString();
     await b.asServiceRole.entities.BotSession.create({ token_hash: await sha256Hex(token), member_id: member.id, hwid_hash: row.hwid_hash, expires_at: exp, last_seen_at: nowIso() });
@@ -171,25 +175,34 @@ async function check(b, s, p) {
   const E = b.asServiceRole.entities;
   if (!minutesAgo(s.last_seen_at, 1)) await E.BotSession.update(s.id, { last_seen_at: nowIso(), expires_at: new Date(Date.now() + BOT_SESSION_DAYS * DAY_MS).toISOString() }).catch(() => {});
 
-  const lic = await getLicense(b, member.id);
-  const st = licenseState(lic);
+  // 6.41: each of the member's devices has its own license. This computer uses the one locked to it, or takes a free
+  // one (with days, not locked yet). When every device with days is locked to another PC, it can't run here.
   const who = { name: member.discord_name || '', avatar_url: member.avatar_url || '' };
-  if (!st.active) return Response.json({ licensed: false, reason: st.reason, days_left: 0, expires_at: lic ? lic.expires_at || null : null, ...who, check_every: CHECK_EVERY_S });
-
-  // The license belongs to one computer: the first one that uses it keeps it until the member moves it.
-  if (!lic.hwid_hash) {
+  let all = await getLicenses(b, member.id);
+  if (all.some((l) => l.revoked)) return Response.json({ licensed: false, reason: 'revoked', days_left: 0, expires_at: null, ...who, check_every: CHECK_EVERY_S });
+  let lic = all.find((l) => l.hwid_hash === s.hwid_hash) || null;
+  if (!lic && all.some((l) => !l.hwid_hash && licenseState(l).active)) {
     await withMemberLock(b, member.id, async () => {
-      const fresh = await getLicense(b, member.id);
-      if (fresh && !fresh.hwid_hash) {
-        await E.BotLicense.update(fresh.id, { hwid_hash: s.hwid_hash, hwid_bound_at: nowIso() });
-        await logEvent(b, member, 'bind', `device ${deviceTag(s.hwid_hash)}`);
-        lic.hwid_hash = s.hwid_hash;
-      } else if (fresh) lic.hwid_hash = fresh.hwid_hash;
+      all = await getLicenses(b, member.id);
+      lic = all.find((l) => l.hwid_hash === s.hwid_hash) || null;
+      const free = lic ? null : all.find((l) => !l.hwid_hash && licenseState(l).active);
+      if (free) {
+        await E.BotLicense.update(free.id, { hwid_hash: s.hwid_hash, hwid_bound_at: nowIso() });
+        await logEvent(b, member, 'bind', `device ${seatOf(free)} · PC ${deviceTag(s.hwid_hash)}`);
+        lic = { ...free, hwid_hash: s.hwid_hash };
+      }
     });
   }
-  if (lic.hwid_hash !== s.hwid_hash) {
-    return Response.json({ licensed: false, reason: 'other_device', days_left: st.days_left, expires_at: lic.expires_at, device_tag: deviceTag(lic.hwid_hash), ...who, check_every: CHECK_EVERY_S });
+  if (!lic) {
+    const live = all.filter((l) => licenseState(l).active);
+    if (!live.length) {
+      const best = memberSummary(all);
+      return Response.json({ licensed: false, reason: best.reason || 'no_license', days_left: 0, expires_at: best.expires_at, ...who, check_every: CHECK_EVERY_S });
+    }
+    return Response.json({ licensed: false, reason: 'other_device', days_left: live[0] ? licenseState(live[0]).days_left : 0, expires_at: live[0].expires_at, device_tag: live.map((l) => deviceTag(l.hwid_hash)).join(', '), devices: all.length, max_devices: MAX_SEATS, ...who, check_every: CHECK_EVERY_S });
   }
+  const st = licenseState(lic);
+  if (!st.active) return Response.json({ licensed: false, reason: st.reason, days_left: 0, expires_at: lic.expires_at || null, device: seatOf(lic), ...who, check_every: CHECK_EVERY_S });
   if (!minutesAgo(lic.last_seen_at, 5)) await E.BotLicense.update(lic.id, { last_seen_at: nowIso() }).catch(() => {});
 
   const now = Math.floor(Date.now() / 1000);
@@ -198,7 +211,7 @@ async function check(b, s, p) {
     v: 1, mid: member.id, did: String(member.discord_id || ''), hw: hwid, n: nonce, sid: s.id,
     iat: now, ttl: Math.max(30, Math.min(TICKET_TTL_S, exp - now)), exp
   });
-  return Response.json({ licensed: true, reason: '', days_left: st.days_left, expires_at: lic.expires_at, ...who, ticket, check_every: CHECK_EVERY_S });
+  return Response.json({ licensed: true, reason: '', days_left: st.days_left, expires_at: lic.expires_at, device: seatOf(lic), device_name: seatName(lic), ...who, ticket, check_every: CHECK_EVERY_S });
 }
 
 // The newest active release that is newer than the app's own version. The app verifies the
@@ -250,9 +263,10 @@ function readPicture(v): { b64?: string; type?: string; note: string } {
 }
 const cleanLine = (v) => String(v ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 200);
 
-async function remoteRow(b, memberId: string) {
-  const { items } = await b.asServiceRole.entities.BotRemote.filter({ member_id: memberId }, { limit: 1 });
-  return items[0] || null;
+// 6.41: one remote row per device of the member (rows from before have no seat: device 1)
+async function remoteRow(b, memberId: string, seat = 1) {
+  const { items } = await b.asServiceRole.entities.BotRemote.filter({ member_id: memberId }, { limit: 20 });
+  return items.find((r) => seatOf(r) === seat) || null;
 }
 
 function cleanArgs(cmd: string, a) {
@@ -309,13 +323,14 @@ async function storePicture(b, row, b64: string, type: string, iso: string) {
 
 async function remotePush(b, s, p) {
   const E = b.asServiceRole.entities;
-  const lic = await getLicense(b, s.member_id);
+  const lic = (await getLicenses(b, s.member_id)).find((l) => l.hwid_hash === s.hwid_hash) || null;
   const st = licenseState(lic);
-  // only the PC the license is locked to, with days left, can be controlled
-  if (!st.active || !lic || lic.hwid_hash !== s.hwid_hash) return Response.json({ ok: true, allowed: false, watching: false, commands: [] });
+  // only a PC a license is locked to, with days left, can be controlled
+  if (!st.active || !lic || lic.revoked) return Response.json({ ok: true, allowed: false, watching: false, commands: [] });
+  const seat = seatOf(lic);
 
   const now = Date.now(), iso = new Date(now).toISOString();
-  let row = await remoteRow(b, s.member_id);
+  let row = await remoteRow(b, s.member_id, seat);
   const patch: any = { updated_at: iso };
   if (p.state && typeof p.state === 'object') { const js = JSON.stringify(p.state); if (js.length <= 4000) patch.state = js; }
   if (Array.isArray(p.log)) patch.log = p.log.slice(-20).map(cleanLine).join('\n');
@@ -329,7 +344,7 @@ async function remotePush(b, s, p) {
   }
   if (!watching && row && hasPicture(row)) Object.assign(patch, NO_PICTURE);   // nobody watches: the picture is not kept
   // the report itself (state, log) is saved first, on its own, so a picture problem can never lose it
-  if (row) await E.BotRemote.update(row.id, patch); else row = await E.BotRemote.create({ member_id: s.member_id, ...patch });
+  if (row) await E.BotRemote.update(row.id, patch); else row = await E.BotRemote.create({ member_id: s.member_id, seat, ...patch });
   if (pic.b64) await storePicture(b, row, pic.b64, pic.type || 'jpeg', iso);
 
   // what the app did with earlier commands
@@ -340,7 +355,8 @@ async function remotePush(b, s, p) {
     }
   }
   // new commands: each one is handed out once, and only while it is fresh
-  const { items } = await E.BotCommand.filter({ member_id: s.member_id, status: 'pending' }, { limit: 20 });
+  const { items: pend } = await E.BotCommand.filter({ member_id: s.member_id, status: 'pending' }, { limit: 40 });
+  const items = pend.filter((c) => seatOf(c) === seat);         // only this device's commands
   const out = [];
   for (const c of items.sort((x, y) => Date.parse(x.created_at) - Date.parse(y.created_at))) {
     if (!(Date.parse(c.expires_at || '') > now)) { await E.BotCommand.update(c.id, { status: 'expired' }).catch(() => {}); continue; }
@@ -351,20 +367,28 @@ async function remotePush(b, s, p) {
   return Response.json({ ok: true, allowed: true, watching: watching || out.length > 0, commands: out });
 }
 
-async function remoteView(b, me) {
+async function remoteView(b, me, p) {
   const E = b.asServiceRole.entities;
   const now = Date.now();
-  let row = await remoteRow(b, me.id);
+  // 6.41: which device to watch: the one asked for, else the first one that is online, else device 1
+  const all = await getLicenses(b, me.id);
+  const { items: rows } = await E.BotRemote.filter({ member_id: me.id }, { limit: 20 });
+  const onlineSeat = (n) => rows.some((r) => seatOf(r) === n && Date.parse(r.updated_at || '') > now - ONLINE_MS);
+  const asked = Math.round(Number(p && p.seat) || 0);
+  const seat = all.some((l) => seatOf(l) === asked) ? asked : (all.map(seatOf).find(onlineSeat) || (all[0] ? seatOf(all[0]) : 1));
+  let row = rows.find((r) => seatOf(r) === seat) || null;
   const watch = new Date(now + WATCH_MS).toISOString();
-  if (row) await E.BotRemote.update(row.id, { watch_until: watch }); else row = await E.BotRemote.create({ member_id: me.id, watch_until: watch });
-  const lic = await getLicense(b, me.id);
+  if (row) await E.BotRemote.update(row.id, { watch_until: watch }); else row = await E.BotRemote.create({ member_id: me.id, seat, watch_until: watch });
+  const lic = all.find((l) => seatOf(l) === seat) || null;
   const st = licenseState(lic);
   let state = null; try { state = row.state ? JSON.parse(row.state) : null; } catch { state = null; }
   const online = Date.parse(row.updated_at || '') > now - ONLINE_MS;
   const picData = row.parts ? PART_KEYS.slice(0, row.parts).map((k) => row[k] || '').join('') : (row.picture || '');
   const picFresh = !!(picData || row.picture_url) && Date.parse(row.picture_at || '') > now - 60_000;
-  const { items } = await E.BotCommand.filter({ member_id: me.id }, { sort: '-created_date', limit: 8 });
+  const { items: cmds } = await E.BotCommand.filter({ member_id: me.id }, { sort: '-created_date', limit: 40 });
+  const items = cmds.filter((c) => seatOf(c) === seat).slice(0, 8);
   return Response.json({
+    seat, devices: all.map((l) => ({ seat: seatOf(l), label: seatName(l), device_tag: l.hwid_hash ? deviceTag(l.hwid_hash) : '', active: licenseState(l).active, online: onlineSeat(seatOf(l)) })),
     licensed: st.active, device_bound: !!(lic && lic.hwid_hash), online, updated_at: row.updated_at || null,
     state: online ? state : null, log: online ? (row.log || '') : '', picture: online && picFresh && picData ? picData : null, picture_url: online && picFresh && !picData ? row.picture_url || null : null, picture_at: picFresh ? row.picture_at : null,
     picture_type: picFresh ? (row.picture_type || 'jpeg') : null, picture_note: online && !picFresh ? (row.picture_note || 'waiting for the first picture') : '',
@@ -376,18 +400,19 @@ async function remoteCommand(b, me, p) {
   const E = b.asServiceRole.entities;
   const cmd = String(p.cmd || '');
   if (!REMOTE_CMDS.includes(cmd)) throw new UserError('That is not a command the Assistant knows.');
-  const lic = await getLicense(b, me.id);
-  if (!licenseState(lic).active) throw new UserError('You have no Assistant days left.', 403);
-  if (!lic.hwid_hash) throw new UserError('Your Assistant has not been signed in on a PC yet.', 409);
-  const row = await remoteRow(b, me.id);
+  const seat = Math.round(Number(p.seat) || 1);
+  const lic = await getLicense(b, me.id, seat);
+  if (!licenseState(lic).active) throw new UserError('That device has no Assistant days left.', 403);
+  if (!lic.hwid_hash) throw new UserError('That device has not been signed in on a PC yet.', 409);
+  const row = await remoteRow(b, me.id, seat);
   if (!row || !(Date.parse(row.updated_at || '') > Date.now() - ONLINE_MS)) throw new UserError('Your Assistant is not online. Open the program on your PC (signed in) and try again.', 409);
   return await withMemberLock(b, me.id, async () => {
-    const { items } = await E.BotCommand.filter({ member_id: me.id, status: 'pending' }, { limit: 20 });
-    const fresh = items.filter((c) => Date.parse(c.expires_at || '') > Date.now());
+    const { items } = await E.BotCommand.filter({ member_id: me.id, status: 'pending' }, { limit: 40 });
+    const fresh = items.filter((c) => seatOf(c) === seat && Date.parse(c.expires_at || '') > Date.now());
     if (fresh.length >= 3) throw new UserError('Your Assistant has not picked up the last commands yet - wait a moment.', 429);
     const now = Date.now();
     const c = await E.BotCommand.create({
-      member_id: me.id, cmd, args: JSON.stringify(cleanArgs(cmd, p.args)), status: 'pending',
+      member_id: me.id, seat, cmd, args: JSON.stringify(cleanArgs(cmd, p.args)), status: 'pending',
       created_at: new Date(now).toISOString(), expires_at: new Date(now + CMD_TTL_MS).toISOString()
     });
     return Response.json({ ok: true, id: c.id });
@@ -397,16 +422,24 @@ async function remoteCommand(b, me, p) {
 // ======================================================================= the site
 
 async function status(b, me) {
-  const lic = await getLicense(b, me.id);
-  const { items: sess } = await b.asServiceRole.entities.BotSession.filter({ member_id: me.id }, { limit: 5 });
-  const online = sess.some((x) => minutesAgo(x.last_seen_at, 5));
+  const all = await getLicenses(b, me.id);
+  const { items: sess } = await b.asServiceRole.entities.BotSession.filter({ member_id: me.id }, { limit: 20 });
+  const onlineHw = new Set(sess.filter((x) => minutesAgo(x.last_seen_at, 5)).map((x) => x.hwid_hash));
   const { items: shop } = await b.asServiceRole.entities.ShopItem.filter({ active: true }, { sort: 'sort', limit: 300 });
-  const sum = licenseSummary(lic);
-  const nextReset = lic && lic.hwid_reset_at ? Date.parse(lic.hwid_reset_at) + RESET_COOLDOWN_DAYS * DAY_MS : 0;
+  const now = Date.now();
+  const devices = all.map((l) => {
+    const nextReset = l.hwid_reset_at ? Date.parse(l.hwid_reset_at) + RESET_COOLDOWN_DAYS * DAY_MS : 0;
+    return {
+      ...licenseSummary(l), online: !!(l.hwid_hash && onlineHw.has(l.hwid_hash)),
+      whole_days: Math.max(0, Math.floor((Date.parse(l.expires_at || '') - now) / DAY_MS)),
+      can_reset: !!l.hwid_hash && !(nextReset > now), next_reset_at: nextReset > now ? new Date(nextReset).toISOString() : null
+    };
+  });
+  const sum = memberSummary(all);
   return Response.json({
-    license: sum, app_online: online,
-    can_reset: !!(lic && lic.hwid_hash) && !(nextReset > Date.now()),
-    next_reset_at: nextReset > Date.now() ? new Date(nextReset).toISOString() : null,
+    // 6.41: `license` is the member as a whole (best device); `devices` lists each device with its own days
+    license: sum, devices, max_devices: MAX_SEATS, app_online: devices.some((d) => d.online),
+    can_reset: devices.some((d) => d.can_reset), next_reset_at: null,
     shop_items: shop.filter((it) => (it.bot_days || 0) > 0).map((it) => ({ id: it.id, name: it.name, days: it.bot_days }))
   });
 }
@@ -430,11 +463,15 @@ async function findPending(b, me, p) {
 
 async function describe(b, me, p) {
   const row = await findPending(b, me, p);
-  const lic = await getLicense(b, me.id);
+  const all = await getLicenses(b, me.id);
+  const mine = all.find((l) => l.hwid_hash === row.hwid_hash);
+  const free = all.find((l) => !l.hwid_hash && licenseState(l).active);
   return Response.json({
     code: row.user_code, device_tag: deviceTag(row.hwid_hash), app_version: row.app_version || '',
-    other_device: !!(lic && lic.hwid_hash && lic.hwid_hash !== row.hwid_hash),
-    license: licenseSummary(lic)
+    // 6.41: this PC already has its device, or will take a free one; otherwise every device with days is locked elsewhere
+    device: mine ? seatName(mine) : free ? seatName(free) : '',
+    other_device: !mine && !free && all.some((l) => licenseState(l).active),
+    license: memberSummary(all)
   });
 }
 
@@ -457,15 +494,45 @@ async function approve(b, me, p) {
   return Response.json({ ok: true });
 }
 
-async function resetDevice(b, me) {
+async function resetDevice(b, me, p) {
+  const seat = Math.round(Number(p && p.seat) || 1);
   return await withMemberLock(b, me.id, async () => {
-    const lic = await getLicense(b, me.id);
-    if (!lic || !lic.hwid_hash) throw new UserError('Your license is not locked to a computer yet.');
+    const lic = await getLicense(b, me.id, seat);
+    if (!lic || !lic.hwid_hash) throw new UserError('That device is not locked to a computer yet.');
     const next = lic.hwid_reset_at ? Date.parse(lic.hwid_reset_at) + RESET_COOLDOWN_DAYS * DAY_MS : 0;
-    if (next > Date.now()) throw new UserError(`You can move the license to another computer once every ${RESET_COOLDOWN_DAYS} days. Next time: ${new Date(next).toLocaleDateString('en-US')}.`, 429);
+    if (next > Date.now()) throw new UserError(`A device can move to another computer once every ${RESET_COOLDOWN_DAYS} days. Next time: ${new Date(next).toLocaleDateString('en-US')}.`, 429);
     await b.asServiceRole.entities.BotLicense.update(lic.id, { hwid_hash: '', hwid_resets: (lic.hwid_resets || 0) + 1, hwid_reset_at: nowIso() });
-    await killBotSessions(b, me.id);
-    await logEvent(b, me, 'reset', `was device ${deviceTag(lic.hwid_hash)}`);
+    await killBotSessions(b, me.id, lic.hwid_hash);
+    await logEvent(b, me, 'reset', `device ${seat} · was PC ${deviceTag(lic.hwid_hash)}`);
+    return Response.json({ ok: true });
+  });
+}
+
+// 6.41: divide days between devices: move whole days from one device to another, or to a new device
+async function moveDaysAction(b, me, p) {
+  if (me.banned) throw new UserError('You are banned.', 403);
+  const to = p.to === 'new' ? 'new' : Math.round(Number(p.to) || 0);
+  const r = await withMemberLock(b, me.id, () => moveDays(b, me, Math.round(Number(p.from) || 0), to, Number(p.days)));
+  return Response.json({ ok: true, from: licenseSummary(r.from), to: licenseSummary(r.to) });
+}
+async function renameDevice(b, me, p) {
+  const lic = await getLicense(b, me.id, Math.round(Number(p.seat) || 1));
+  if (!lic) throw new UserError('That device does not exist.', 404);
+  const label = text(p.label, 24).replace(/[<>]/g, '');
+  await b.asServiceRole.entities.BotLicense.update(lic.id, { label });
+  return Response.json({ ok: true, label: label || `Device ${seatOf(lic)}` });
+}
+// A device with no days left (and not device 1) can be taken off the list.
+async function removeDevice(b, me, p) {
+  const seat = Math.round(Number(p.seat) || 0);
+  if (seat <= 1) throw new UserError('Device 1 stays on your list.');
+  return await withMemberLock(b, me.id, async () => {
+    const lic = await getLicense(b, me.id, seat);
+    if (!lic) throw new UserError('That device does not exist.', 404);
+    if (Math.floor((Date.parse(lic.expires_at || '') - Date.now()) / DAY_MS) >= 1) throw new UserError('Move its days to another device first.');
+    if (lic.hwid_hash) await killBotSessions(b, me.id, lic.hwid_hash);
+    await b.asServiceRole.entities.BotLicense.delete(lic.id);
+    await logEvent(b, me, 'remove_device', `device ${seat}`);
     return Response.json({ ok: true });
   });
 }
@@ -477,10 +544,12 @@ async function admin(b, me, action: string, p) {
   if (action === 'adminList') {
     const { items } = await E.BotLicense.filter({}, { sort: '-expires_at', limit: 500 });
     const { items: sess } = await E.BotSession.filter({}, { limit: 500 });
-    const online = new Set(sess.filter((x) => minutesAgo(x.last_seen_at, 5)).map((x) => x.member_id));
+    const online = new Set(sess.filter((x) => minutesAgo(x.last_seen_at, 5)).map((x) => `${x.member_id}|${x.hwid_hash}`));
     const { items: events } = await E.BotEvent.filter({}, { sort: '-created_date', limit: 40 });
     return Response.json({
-      licenses: items.map((l) => ({ member_id: l.member_id, discord_id: l.discord_id, member_name: l.member_name, online: online.has(l.member_id), hwid_resets: l.hwid_resets || 0, ...licenseSummary(l) })),
+      // 6.41: one line per device
+      licenses: items.map((l) => ({ member_id: l.member_id, discord_id: l.discord_id, member_name: l.member_name, online: !!l.hwid_hash && online.has(`${l.member_id}|${l.hwid_hash}`), hwid_resets: l.hwid_resets || 0, ...licenseSummary(l) }))
+        .sort((a, c) => String(a.member_name).localeCompare(String(c.member_name)) || a.seat - c.seat),
       events: events.map((e) => ({ id: e.id, at: e.at, kind: e.kind, discord_id: e.discord_id, detail: e.detail }))
     });
   }
@@ -553,29 +622,36 @@ async function admin(b, me, action: string, p) {
   if (action === 'adminGrant') {
     const days = Number(p.days);
     if (!Number.isInteger(days) || days === 0 || Math.abs(days) > 3650) throw new UserError('Days must be a whole number between -3650 and 3650 (not 0).');
-    const { license } = await withMemberLock(b, target.id, () => grantDays(b, target, days, 'grant', me.id, text(p.note, 100)));
+    const seat = p.seat === 'new' ? 'new' : Math.round(Number(p.seat) || 1);
+    const { license } = await withMemberLock(b, target.id, () => grantDays(b, target, days, 'grant', me.id, text(p.note, 100), seat));
     return Response.json({ ok: true, license: licenseSummary(license) });
   }
-  const lic = await getLicense(b, target.id);
+  const all = await getLicenses(b, target.id);
+  const lic = all[0] || null;
   if (!lic) throw new UserError('That member has no Assistant license.', 404);
   if (action === 'adminRevoke') {
     await withMemberLock(b, target.id, async () => {
-      await E.BotLicense.update(lic.id, { revoked: true, revoked_reason: text(p.reason, 200) });
+      for (const l of all) await E.BotLicense.update(l.id, { revoked: true, revoked_reason: text(p.reason, 200) });
       await killBotSessions(b, target.id);
       await logEvent(b, target, 'revoke', `${text(p.reason, 100)} · by ${me.id}`);
     });
     return Response.json({ ok: true });
   }
   if (action === 'adminRestore') {
-    await E.BotLicense.update(lic.id, { revoked: false, revoked_reason: '' });
+    for (const l of all) await E.BotLicense.update(l.id, { revoked: false, revoked_reason: '' });
     await logEvent(b, target, 'restore', `by ${me.id}`);
     return Response.json({ ok: true });
   }
   if (action === 'adminReset') {
+    // 6.41: one device (seat), or all of them when none is named
+    const seat = p.seat ? Math.round(Number(p.seat)) : 0;
     await withMemberLock(b, target.id, async () => {
-      await E.BotLicense.update(lic.id, { hwid_hash: '', hwid_resets: (lic.hwid_resets || 0) + 1 });
-      await killBotSessions(b, target.id);
-      await logEvent(b, target, 'reset', `by leader ${me.id}`);
+      for (const l of all) {
+        if (seat && seatOf(l) !== seat) continue;
+        await E.BotLicense.update(l.id, { hwid_hash: '', hwid_resets: (l.hwid_resets || 0) + 1 });
+        if (l.hwid_hash) await killBotSessions(b, target.id, l.hwid_hash);
+      }
+      await logEvent(b, target, 'reset', `${seat ? 'device ' + seat : 'all devices'} · by leader ${me.id}`);
     });
     return Response.json({ ok: true });
   }

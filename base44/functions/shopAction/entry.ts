@@ -8,7 +8,7 @@ import {
   checkCode, codeHash, codeFields, cleanLabel, ownerView, runStockLocked, stockSummary, deliver, last4
 } from '../../shared/prizeCodes.ts';
 import { resilient } from '../../shared/points.ts';
-import { assertCanHold, grantDays, undoGrant, licenseSummary } from '../../shared/botLicense.ts';
+import { assertCanHold, grantDays, undoGrant, licenseSummary, seatName } from '../../shared/botLicense.ts';
 
 // The guild shop.
 //   1 point = 1 CP = 0.5 GP = 1M silver (in-game value)
@@ -269,7 +269,9 @@ export default async function(req) {
           // Assistant days: paid for and switched on in one go, under the member's lock (taken above).
           if (qty > MAX_BOT_QTY) throw new UserError(`Buy up to ${MAX_BOT_QTY} at a time.`);
           const days = item.bot_days * qty;
-          await assertCanHold(b, me, days);                       // refused here, before any points are taken
+          // 6.41: which of the member's devices gets the days (device 1 when not said, or 'new' for another PC)
+          const seat = p.botSeat === 'new' ? 'new' : Math.round(Number(p.botSeat) || 1);
+          await assertCanHold(b, me, days, seat);                 // refused here, before any points are taken
           const q = quote(item, qty, r);
           if (p.expectTotal !== undefined && Number(p.expectTotal) !== q.total) {
             throw new UserError('The price changed. Check the new price and try again.', 409);
@@ -277,11 +279,11 @@ export default async function(req) {
           const { balance } = await changePoints(b, me.id, -q.total, 'shop', `Shop: ${qty} x ${item.name}`, null);
           let undo = null;
           try {
-            const g = await grantDays(b, me, days, 'shop', null, `${qty} x ${item.name}`);
+            const g = await grantDays(b, me, days, 'shop', null, `${qty} x ${item.name}`, seat);
             undo = g.undo;
             const order = await Orders.create({
               ...orderBase(item, q), status: 'completed', resolved_at: new Date().toISOString(),
-              delivery_code: `IntroBoys Assistant: ${days} day${days === 1 ? '' : 's'} added`
+              delivery_code: `IntroBoys Assistant: ${days} day${days === 1 ? '' : 's'} added to ${seatName(g.license)}`
             });
             return { balance, order: myOrder(order), license: licenseSummary(g.license) };
           } catch (e) {

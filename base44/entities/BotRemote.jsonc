@@ -110,6 +110,10 @@
     "picture_url": {
       "type": "string",
       "description": "6.40: the picture as an uploaded file, when even small pieces are refused"
+    },
+    "seat": {
+      "type": "number",
+      "description": "6.41: which of the member's devices this is (none = 1)"
     }
   },
   "rls": {

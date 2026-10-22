@@ -110,3 +110,14 @@ refuses a picture, the rest of the report is still saved and the page says why. 
 **6.40:** the database refuses a single field as big as a game picture ("Field 'picture' exceeds the maximum allowed size", seen at
 26 KB). The picture is now kept in up to 16 pieces (`pic_0`..`pic_15`, entity `BotRemote`); the piece size that works (12 000, 6 000 or
 3 000 characters) is learned. If even small pieces are refused it is uploaded as a file (`picture_url`). No change to the app is needed.
+
+## Several devices (site 6.41, app 4.7.0)
+A member can run the app on up to 5 PCs. Each PC uses its own **device**: one `BotLicense` row per device (field `seat` 1-5, optional
+`label`; rows from before have no seat and are device 1), with its own days and its own locked PC. Signing in on one PC no longer signs
+the others out. A PC that signs in takes the device locked to it, or a free device with days; if every device with days is locked to
+another PC the app is told `other_device`.
+* Assistant page: the list of devices (days, PC, running, rename, move to another PC once a week each, remove an empty one) and
+  **Divide your days**: move whole days from one device to another or to a new device (`moveDays`).
+* Shop: buying Assistant days asks which device gets them, or a new device (`botSeat`).
+* Leader: one line per device; give days / free a PC per device; switching off stops every device of the member.
+* Remote control: per device (`BotRemote.seat`, `BotCommand.seat`); the page shows a device picker when there are several.

@@ -12,6 +12,7 @@ export default function BotSection() {
   const [target, setTarget] = useState(null);
   const [days, setDays] = useState("30");
   const [reason, setReason] = useState("");
+  const [seat, setSeat] = useState("1");          // 6.41: which of the member's devices
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
@@ -31,23 +32,37 @@ export default function BotSection() {
     finally { setBusy(false); }
   };
   const name = target ? target.discord_name || target.discord_id : "";
-  const mine = data && target ? data.licenses.find((l) => l.discord_id === target.discord_id) : null;
+  const theirs = data && target ? data.licenses.filter((l) => l.discord_id === target.discord_id).sort((a, c) => a.seat - c.seat) : [];
+  const mine = theirs.find((l) => String(l.seat) === seat) || theirs[0] || null;
 
   return (
     <Panel title="IntroBoys Assistant licenses">
       <p className="mb-3 text-sm text-mist">Members buy days in the shop (add an item there with "Assistant days"). Here you can give or take days, switch a license off, or free its locked PC.</p>
-      {target ? <SelectedMember m={target} onClear={() => { setTarget(null); setMsg(""); setError(""); }} /> : <MemberSearch onSelect={setTarget} />}
+      {target ? <SelectedMember m={target} onClear={() => { setTarget(null); setMsg(""); setError(""); }} /> : <MemberSearch onSelect={(m) => { setTarget(m); setSeat("1"); }} />}
       {target && (
         <div className="mt-3 space-y-3 text-sm">
-          <p className="text-mist">
-            {mine ? `${mine.active ? mine.days_left + " days left" : mine.revoked ? "Switched off" : "No active days"}${mine.device_bound ? ` · PC ${mine.device_tag}` : " · no PC locked yet"}` : "No license yet."}
-          </p>
+          {theirs.length === 0 ? <p className="text-mist">No license yet.</p> : (
+            <ul className="space-y-0.5 text-mist">
+              {theirs.map((l) => (
+                <li key={l.seat}><b className="text-white">{l.label}</b>: {l.active ? `${l.days_left} days left` : l.revoked ? "Switched off" : "No active days"}{l.device_bound ? ` · PC ${l.device_tag}` : " · no PC locked yet"}{l.online ? " · running" : ""}</li>
+              ))}
+            </ul>
+          )}
+          {theirs.length > 0 && (
+            <div>
+              <label htmlFor="bot-seat" className="label">Device</label>
+              <select id="bot-seat" value={seat} onChange={(e) => setSeat(e.target.value)} className="field w-56">
+                {theirs.map((l) => <option key={l.seat} value={String(l.seat)}>{l.label}</option>)}
+                {theirs.length < 5 && <option value="new">A new device</option>}
+              </select>
+            </div>
+          )}
           <div className="flex flex-wrap items-end gap-2">
             <div>
               <label htmlFor="bot-days" className="label">Days to add (negative takes away)</label>
               <input id="bot-days" type="number" step="1" value={days} onChange={(e) => setDays(e.target.value)} className="field w-32" />
             </div>
-            <button disabled={busy} onClick={() => act("adminGrant", { days: Number(days) }, `${days} days for ${name}.`)} className="btn-seal h-10 px-4 text-sm">Give days</button>
+            <button disabled={busy} onClick={() => act("adminGrant", { days: Number(days), seat: theirs.length ? seat : 1 }, `${days} days for ${name}.`)} className="btn-seal h-10 px-4 text-sm">Give days</button>
           </div>
           {mine && (
             <div className="flex flex-wrap items-end gap-2">
@@ -59,7 +74,7 @@ export default function BotSection() {
                   <button disabled={busy} onClick={() => act("adminRevoke", { reason }, `${name}'s license is switched off and the app signed out.`)} className="btn-bronze h-10 px-4 text-sm !text-ember">Switch off</button>
                 </>
               )}
-              <button disabled={busy || !mine.device_bound} onClick={() => act("adminReset", {}, `${name}'s PC lock is cleared.`)} className="btn-bronze h-10 px-4 text-sm">Free the locked PC</button>
+              <button disabled={busy || !mine.device_bound} onClick={() => act("adminReset", { seat: mine.seat }, `${name}'s PC lock is cleared on ${mine.label}.`)} className="btn-bronze h-10 px-4 text-sm">Free the locked PC ({mine.label})</button>
             </div>
           )}
           {msg && <p role="status" className="text-gold">{msg}</p>}
@@ -72,12 +87,12 @@ export default function BotSection() {
 
       {data && (
         <details className="mt-4 text-sm" open>
-          <summary className="cursor-pointer text-mist hover:text-gold">All licenses ({data.licenses.length})</summary>
+          <summary className="cursor-pointer text-mist hover:text-gold">All licenses ({data.licenses.length} devices)</summary>
           {busy && <Loader2 className="mt-2 h-4 w-4 animate-spin" />}
           <ul className="mt-2 divide-y divide-bronze/25">
             {data.licenses.map((l) => (
-              <li key={l.member_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
-                <span className="min-w-0 flex-1 truncate font-bold text-gold">{l.member_name || l.discord_id}</span>
+              <li key={`${l.member_id}-${l.seat}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+                <span className="min-w-0 flex-1 truncate font-bold text-gold">{l.member_name || l.discord_id}{l.seat > 1 || l.label !== "Device 1" ? <span className="ml-1.5 font-normal text-mist">· {l.label}</span> : null}</span>
                 <span className={cn("rounded-[3px] border px-1.5 py-px text-[11px] font-bold uppercase", l.active ? "border-white/70 text-white" : "border-ember/60 text-ember")}>
                   {l.active ? `${l.days_left} d` : l.revoked ? "off" : "expired"}
                 </span>

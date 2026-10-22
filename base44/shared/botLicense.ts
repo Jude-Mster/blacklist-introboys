@@ -62,11 +62,21 @@ export function normCode(v): string | null {
 export const text = (v, max: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 
 // ---------- licenses ----------
-
-export async function getLicense(b, memberId: string) {
-  const { items } = await b.asServiceRole.entities.BotLicense.filter({ member_id: memberId }, { limit: 1 });
-  return items[0] || null;
+// 6.41: one license row PER DEVICE ("seat"). Each has its own days and its own locked computer, so a member can run
+// the app on several PCs: they move days between their devices, or buy days for a new one. Rows from before 6.41
+// have no seat number and are device 1. "Switched off" (revoked) is for the member: it is set on all their rows.
+export const MAX_SEATS = 5;
+export const seatOf = (l) => Math.max(1, Math.round(Number(l && l.seat) || 1));
+export async function getLicenses(b, memberId: string) {
+  const { items } = await b.asServiceRole.entities.BotLicense.filter({ member_id: memberId }, { limit: 50 });
+  return items.sort((a, c) => seatOf(a) - seatOf(c) || String(a.created_date || a.id).localeCompare(String(c.created_date || c.id)));
 }
+// One device's license (device 1 when none is named).
+export async function getLicense(b, memberId: string, seat = 1) {
+  const all = await getLicenses(b, memberId);
+  return all.find((l) => seatOf(l) === seat) || null;
+}
+export const seatName = (l) => text(l && l.label, 24) || `Device ${seatOf(l)}`;
 
 // active / days left / why not
 export function licenseState(lic, now = Date.now()) {
@@ -80,6 +90,7 @@ export function licenseState(lic, now = Date.now()) {
 export function licenseSummary(lic) {
   const st = licenseState(lic);
   return {
+    seat: lic ? seatOf(lic) : 1, label: lic ? seatName(lic) : 'Device 1',
     active: st.active, reason: st.reason, days_left: st.days_left,
     expires_at: lic && lic.expires_at ? lic.expires_at : null,
     total_days: lic ? lic.total_days || 0 : 0,
@@ -89,10 +100,33 @@ export function licenseSummary(lic) {
   };
 }
 
-// Throws before any points are taken when this member can't be given days.
-export async function assertCanHold(b, member, days: number) {
-  const lic = await getLicense(b, member.id);
-  if (lic && lic.revoked) throw new UserError('Your Assistant license was switched off by the Guild Leader. Ask them about it.', 403);
+// The member as a whole: their best device (the active one with the most time, else device 1), for screens that show one license.
+export function memberSummary(all) {
+  const best = all.filter((l) => licenseState(l).active).sort((a, c) => Date.parse(c.expires_at) - Date.parse(a.expires_at))[0] || all.find((l) => seatOf(l) === 1) || all[0] || null;
+  return { ...licenseSummary(best), devices: all.length, active_devices: all.filter((l) => licenseState(l).active).length };
+}
+
+// Which device a grant is for: a seat number, or 'new' (the next free number, up to MAX_SEATS).
+export function pickSeat(all, seat): { seat: number; isNew: boolean } {
+  if (seat === 'new') {
+    if (all.length >= MAX_SEATS) throw new UserError(`You can have at most ${MAX_SEATS} devices.`);
+    const used = new Set(all.map(seatOf));
+    let n = 1; while (used.has(n)) n++;
+    return { seat: n, isNew: true };
+  }
+  const n = Math.round(Number(seat) || 1);
+  if (n < 1 || n > MAX_SEATS) throw new UserError('Pick one of your devices.');
+  const have = all.some((l) => seatOf(l) === n);
+  if (!have && !(n === 1 && all.length === 0)) throw new UserError('That device does not exist. Pick one of your devices or a new one.', 404);
+  return { seat: n, isNew: !have };
+}
+
+// Throws before any points are taken when this member can't be given days (on that device).
+export async function assertCanHold(b, member, days: number, seat: number | 'new' = 1) {
+  const all = await getLicenses(b, member.id);
+  if (all.some((l) => l.revoked)) throw new UserError('Your Assistant license was switched off by the Guild Leader. Ask them about it.', 403);
+  const pick = pickSeat(all, seat);
+  const lic = all.find((l) => seatOf(l) === pick.seat) || null;
   const now = Date.now();
   const base = lic && Date.parse(lic.expires_at || '') > now ? Date.parse(lic.expires_at) : now;
   if (days > 0 && base + days * DAY_MS - now > MAX_DAYS_AHEAD * DAY_MS) {
@@ -101,11 +135,13 @@ export async function assertCanHold(b, member, days: number) {
   return lic;
 }
 
-// Add (or, for the leader, take away) days. Call it inside withMemberLock(member.id).
-// Returns the license and what is needed to put it back exactly as it was.
-export async function grantDays(b, member, days: number, kind: string, byId: string | null, note = '') {
+// Add (or, for the leader, take away) days, on one device (1 when none is named, or 'new'). Call it inside
+// withMemberLock(member.id). Returns the license and what is needed to put it back exactly as it was.
+export async function grantDays(b, member, days: number, kind: string, byId: string | null, note = '', seat: number | 'new' = 1) {
   if (!Number.isInteger(days) || days === 0) throw new UserError('Days must be a whole number.');
-  const lic = await assertCanHold(b, member, days);
+  const all = await getLicenses(b, member.id);
+  const pick = pickSeat(all, seat);
+  const lic = await assertCanHold(b, member, days, pick.isNew ? 'new' : pick.seat);
   const now = Date.now();
   const E = b.asServiceRole.entities.BotLicense;
   const live = lic && Date.parse(lic.expires_at || '') > now;
@@ -117,10 +153,10 @@ export async function grantDays(b, member, days: number, kind: string, byId: str
     undo = { id: lic.id, created: false, expires_at: lic.expires_at || '', total_days: lic.total_days || 0 };
     row = await E.update(lic.id, { expires_at: next, total_days: (lic.total_days || 0) + Math.max(0, days), member_name: name, discord_id: String(member.discord_id || '') });
   } else {
-    row = await E.create({ member_id: member.id, discord_id: String(member.discord_id || ''), member_name: name, expires_at: next, total_days: Math.max(0, days), hwid_hash: '', hwid_resets: 0, revoked: false });
+    row = await E.create({ member_id: member.id, seat: pick.seat, label: '', discord_id: String(member.discord_id || ''), member_name: name, expires_at: next, total_days: Math.max(0, days), hwid_hash: '', hwid_resets: 0, revoked: false });
     undo = { id: row.id, created: true };
   }
-  await logEvent(b, member, kind, `${days > 0 ? '+' : ''}${days} days${note ? ' · ' + note : ''} · until ${next}${byId ? ' · by ' + byId : ''}`);
+  await logEvent(b, member, kind, `${days > 0 ? '+' : ''}${days} days · device ${pick.seat}${note ? ' · ' + note : ''} · until ${next}${byId ? ' · by ' + byId : ''}`);
   return { license: row, undo };
 }
 
@@ -157,12 +193,44 @@ export async function botSession(b, req) {
   return s;
 }
 
-export async function killBotSessions(b, memberId: string) {
+// hwidHash: only the sign-ins of that one computer (6.41: signing in on one PC no longer signs the others out).
+export async function killBotSessions(b, memberId: string, hwidHash = '') {
   try {
     const E = b.asServiceRole.entities.BotSession;
     const { items } = await E.filter({ member_id: memberId }, { limit: 100 });
-    for (const s of items) await E.delete(s.id).catch(() => {});
+    for (const s of items) if (!hwidHash || s.hwid_hash === hwidHash) await E.delete(s.id).catch(() => {});
   } catch { /* best effort */ }
+}
+
+// 6.41: move whole days from one of the member's devices to another (or to a new one). Call inside withMemberLock.
+export async function moveDays(b, member, from: number, to: number | 'new', days: number) {
+  if (!Number.isInteger(days) || days < 1) throw new UserError('Move at least 1 whole day.');
+  const all = await getLicenses(b, member.id);
+  if (all.some((l) => l.revoked)) throw new UserError('Your Assistant license was switched off by the Guild Leader. Ask them about it.', 403);
+  const src = all.find((l) => seatOf(l) === Math.round(Number(from)));
+  if (!src) throw new UserError('Pick the device to take the days from.', 404);
+  const now = Date.now();
+  const left = Math.floor((Date.parse(src.expires_at || '') - now) / DAY_MS);
+  if (!(left >= days)) throw new UserError(`${seatName(src)} has ${Math.max(0, left)} whole day${left === 1 ? '' : 's'} to move.`);
+  const pick = pickSeat(all, to);
+  if (pick.seat === seatOf(src)) throw new UserError('Pick a different device to move the days to.');
+  const dst = all.find((l) => seatOf(l) === pick.seat) || null;
+  const base = dst && Date.parse(dst.expires_at || '') > now ? Date.parse(dst.expires_at) : now;
+  if (base + days * DAY_MS - now > MAX_DAYS_AHEAD * DAY_MS) throw new UserError(`A device can hold at most ${MAX_DAYS_AHEAD} days.`);
+  const E = b.asServiceRole.entities.BotLicense;
+  const srcExp = new Date(Date.parse(src.expires_at) - days * DAY_MS).toISOString();
+  const dstExp = new Date(base + days * DAY_MS).toISOString();
+  await E.update(src.id, { expires_at: srcExp });
+  let row;
+  try {
+    row = dst ? await E.update(dst.id, { expires_at: dstExp })
+      : await E.create({ member_id: member.id, seat: pick.seat, label: '', discord_id: String(member.discord_id || ''), member_name: member.discord_name || '', expires_at: dstExp, total_days: 0, hwid_hash: '', hwid_resets: 0, revoked: false });
+  } catch (e) {
+    await E.update(src.id, { expires_at: src.expires_at }).catch(() => {});      // put the days back
+    throw e;
+  }
+  await logEvent(b, member, 'move', `${days} days · device ${seatOf(src)} -> device ${pick.seat}`);
+  return { from: { ...src, expires_at: srcExp }, to: row };
 }
 
 export { randomHex };
