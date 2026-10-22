@@ -266,6 +266,47 @@ function cleanArgs(cmd: string, a) {
   return {};
 }
 
+// 6.40: the database refuses one field as big as a game picture ("Field 'picture' exceeds the maximum allowed size",
+// seen live at 26 KB). So the picture is kept in pieces (pic_0 .. pic_15), each small enough; the piece size that
+// works is learned and remembered. If even small pieces are refused, the picture is uploaded as a file instead (what
+// the platform suggests) and only its address is kept. Each new picture replaces the last one.
+const PIC_PARTS = 16;
+const PART_KEYS = Array.from({ length: PIC_PARTS }, (_, i) => `pic_${i}`);
+const PART_SIZES = [12_000, 6_000, 3_000];
+let partSize = PART_SIZES[0];
+const NO_PICTURE: Record<string, any> = { picture: '', picture_url: '', parts: 0, ...Object.fromEntries(PART_KEYS.map((k) => [k, ''])) };
+const hasPicture = (r) => !!(r && (r.picture || r.picture_url || r.parts));
+const sizeRefused = (e) => /maximum allowed size|too large|exceeds|payload/i.test(String((e && (e as any).message) || e));
+async function storePicture(b, row, b64: string, type: string, iso: string) {
+  const E = b.asServiceRole.entities;
+  let lastErr = '';
+  for (const size of PART_SIZES.filter((x) => x <= partSize)) {
+    const n = Math.ceil(b64.length / size);
+    if (n > PIC_PARTS) break;                              // smaller pieces would only need more of them
+    const fields: Record<string, any> = { ...NO_PICTURE, parts: n, picture_type: type, picture_at: iso, picture_note: '' };
+    for (let i = 0; i < n; i++) fields[PART_KEYS[i]] = b64.slice(i * size, (i + 1) * size);
+    try { await E.BotRemote.update(row.id, fields); partSize = size; return; }
+    catch (e) {
+      lastErr = text(String((e && (e as any).message) || e), 140);
+      if (!sizeRefused(e)) break;
+      console.log('remotePush: pieces of', size, 'refused:', lastErr);
+    }
+  }
+  try {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const res: any = await b.asServiceRole.integrations.Core.UploadFile({ file: new File([bytes], `remote-${row.member_id}-${Date.now()}.${type === 'jpeg' ? 'jpg' : type}`, { type: 'image/' + type }) });
+    const url = String((res && (res.file_url || (res.data && res.data.file_url))) || '');
+    if (!/^https:\/\//.test(url)) throw new Error('the upload gave no address');
+    await E.BotRemote.update(row.id, { ...NO_PICTURE, picture_url: url, picture_type: type, picture_at: iso, picture_note: '' });
+  } catch (e) {
+    const why = text(String((e && (e as any).message) || e), 120);
+    console.log('remotePush: picture not stored', b64.length, lastErr, why);
+    await E.BotRemote.update(row.id, { picture_note: `the site could not store the picture (${Math.round(b64.length * 3 / 4 / 1024)} KB): ${lastErr || why}` }).catch(() => {});
+  }
+}
+
 async function remotePush(b, s, p) {
   const E = b.asServiceRole.entities;
   const lic = await getLicense(b, s.member_id);
@@ -279,25 +320,17 @@ async function remotePush(b, s, p) {
   if (p.state && typeof p.state === 'object') { const js = JSON.stringify(p.state); if (js.length <= 4000) patch.state = js; }
   if (Array.isArray(p.log)) patch.log = p.log.slice(-20).map(cleanLine).join('\n');
   const watching = !!(row && Date.parse(row.watch_until || '') > now);
+  let pic: { b64?: string; type?: string; note: string } = { note: '' };
   if (watching) {
-    const pic = readPicture(p.picture ?? p.image ?? p.screenshot);
+    pic = readPicture(p.picture ?? p.image ?? p.screenshot);
     // 6.38: an app that could not make its picture says why (picture_error); that reason is shown instead
     const appWhy = typeof p.picture_error === 'string' && p.picture_error ? 'the app could not take the picture: ' + text(p.picture_error, 160) : '';
-    if (pic.b64) { patch.picture = pic.b64; patch.picture_type = pic.type; patch.picture_at = iso; patch.picture_note = ''; }
-    else if (!(row && Date.parse(row.picture_at || '') > now - 15_000)) patch.picture_note = appWhy || pic.note;   // only while no fresh picture
+    if (!pic.b64 && !(row && Date.parse(row.picture_at || '') > now - 15_000)) patch.picture_note = appWhy || pic.note;   // only while no fresh picture
   }
-  if (!watching && row && row.picture) patch.picture = '';                  // nobody watches: the picture is not kept
-  // 6.38: if the picture can't be stored, the rest of the report still is, and the reason is kept for the page
-  const save = (x) => (row ? E.BotRemote.update(row.id, x) : E.BotRemote.create({ member_id: s.member_id, ...x }));
-  try { const r2 = await save(patch); if (!row) row = r2; }
-  catch (e) {
-    if (!patch.picture) throw e;
-    const why = text(String((e && (e as any).message) || e), 140);
-    console.log('remotePush: picture not stored', patch.picture.length, why);
-    const { picture: _p, picture_type: _t, picture_at: _a, ...rest } = patch;
-    const r2 = await save({ ...rest, picture_note: `the site could not store the picture (${Math.round(patch.picture.length * 3 / 4 / 1024)} KB): ${why}` });
-    if (!row) row = r2;
-  }
+  if (!watching && row && hasPicture(row)) Object.assign(patch, NO_PICTURE);   // nobody watches: the picture is not kept
+  // the report itself (state, log) is saved first, on its own, so a picture problem can never lose it
+  if (row) await E.BotRemote.update(row.id, patch); else row = await E.BotRemote.create({ member_id: s.member_id, ...patch });
+  if (pic.b64) await storePicture(b, row, pic.b64, pic.type || 'jpeg', iso);
 
   // what the app did with earlier commands
   if (Array.isArray(p.results)) {
@@ -328,11 +361,12 @@ async function remoteView(b, me) {
   const st = licenseState(lic);
   let state = null; try { state = row.state ? JSON.parse(row.state) : null; } catch { state = null; }
   const online = Date.parse(row.updated_at || '') > now - ONLINE_MS;
-  const picFresh = row.picture && Date.parse(row.picture_at || '') > now - 60_000;
+  const picData = row.parts ? PART_KEYS.slice(0, row.parts).map((k) => row[k] || '').join('') : (row.picture || '');
+  const picFresh = !!(picData || row.picture_url) && Date.parse(row.picture_at || '') > now - 60_000;
   const { items } = await E.BotCommand.filter({ member_id: me.id }, { sort: '-created_date', limit: 8 });
   return Response.json({
     licensed: st.active, device_bound: !!(lic && lic.hwid_hash), online, updated_at: row.updated_at || null,
-    state: online ? state : null, log: online ? (row.log || '') : '', picture: online && picFresh ? row.picture : null, picture_at: picFresh ? row.picture_at : null,
+    state: online ? state : null, log: online ? (row.log || '') : '', picture: online && picFresh && picData ? picData : null, picture_url: online && picFresh && !picData ? row.picture_url || null : null, picture_at: picFresh ? row.picture_at : null,
     picture_type: picFresh ? (row.picture_type || 'jpeg') : null, picture_note: online && !picFresh ? (row.picture_note || 'waiting for the first picture') : '',
     commands: items.map((c) => ({ id: c.id, cmd: c.cmd, status: c.status === 'pending' && !(Date.parse(c.expires_at || '') > now) ? 'expired' : c.status, result: c.result || '', created_at: c.created_at }))
   });

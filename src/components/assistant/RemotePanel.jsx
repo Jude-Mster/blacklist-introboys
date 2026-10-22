@@ -85,8 +85,8 @@ export default function RemotePanel({ licensed }) {
           {st.locked && <p className="mt-2 rounded-md border border-ember/40 bg-ember/10 px-3 py-2 text-sm text-ember">Your PC looks locked or asleep: the Assistant cannot see the game or press keys until it is unlocked.</p>}
 
           <div className="mt-3 overflow-hidden rounded-md border border-bronze/50 bg-black">
-            {view.picture
-              ? <img src={`data:image/${view.picture_type || "jpeg"};base64,${view.picture}`} alt="Your game, as the Assistant sees it" className="block w-full" />
+            {view.picture || view.picture_url
+              ? <img src={view.picture ? `data:image/${view.picture_type || "jpeg"};base64,${view.picture}` : view.picture_url} alt="Your game, as the Assistant sees it" className="block w-full" />
               : <div className="px-3 py-10 text-center text-sm text-mist">
                   <p>The picture of your game shows here in a few seconds.</p>
                   {view.picture_note && view.picture_note !== "waiting for the first picture" && <p className="mt-2 text-xs text-ember">No picture yet: {view.picture_note}.</p>}

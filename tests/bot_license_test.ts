@@ -350,12 +350,34 @@ ok(/no picture in the report/.test((await call(bot, C, { action: 'remoteView' })
 await app({ action: 'remotePush', state: {}, picture_error: 'GDI+ failed' }, rc3.token);
 ok(/the app could not take the picture: GDI\+ failed/.test((await call(bot, C, { action: 'remoteView' })).picture_note), 'and shows the reason the app gives');
 {
+  // 6.40: the database's field limit, as seen live ("Field 'picture' exceeds the maximum allowed size" at 26 KB)
   const gg = globalThis as any;
-  gg.__beforeUpdate = (name, x) => { if (name === 'BotRemote' && x.picture) throw new Error('field too large'); };
-  const r = await app({ action: 'remotePush', state: { state: 'STORE' }, picture: '/9j/' + 'D'.repeat(200) }, rc3.token);
-  gg.__beforeUpdate = null;
+  const big = '/9j/' + 'Q'.repeat(35_000);                         // a 26 KB JPEG as base64
+  gg.__beforeUpdate = (name, x) => { if (name === 'BotRemote') for (const [k, v] of Object.entries(x)) if (typeof v === 'string' && v.length > 5000) throw new Error(`Field '${k}' exceeds the maximum allowed size. Please upload large content using the UploadPublicFile integration`); };
+  const r = await app({ action: 'remotePush', state: { state: 'STORE' }, picture: big }, rc3.token);
   const vv = await call(bot, C, { action: 'remoteView' });
-  ok(r.status === 200 && vv.state.state === 'STORE' && /could not store the picture.*field too large/.test(vv.picture_note), `a picture the database refuses: the report still arrives and the page says why (${vv.picture_note})`);
+  ok(r.status === 200 && vv.state.state === 'STORE' && vv.picture === big, 'a picture too big for one field is stored in pieces and shown whole');
+  const row = (await E.BotRemote.filter({ member_id: C.id }, {})).items[0];
+  ok(row.parts === 12 && !row.picture, `pieces of 3000 were learned (${row.parts} pieces)`);
+  // every piece refused: uploaded as a file instead
+  const ups = gg.__uploads || 0;
+  gg.__beforeUpdate = (name, x) => { if (name === 'BotRemote' && Object.keys(x).some((k) => /^pic_/.test(k) && x[k])) throw new Error('Field exceeds the maximum allowed size'); };
+  await app({ action: 'remotePush', state: {}, picture: big }, rc3.token);
+  const vu = await call(bot, C, { action: 'remoteView' });
+  ok(gg.__uploads === ups + 1 && /^https:\/\//.test(vu.picture_url) && !vu.picture, 'if even small pieces are refused, the picture is uploaded and its address shown');
+  // and if the upload fails too, the page says why
+  const keep = gg.__upload; gg.__upload = async () => { throw new Error('upload down'); };
+  advance(70_000);
+  await call(bot, C, { action: 'remoteView' });
+  await app({ action: 'remotePush', state: {}, picture: big }, rc3.token);
+  const vn = await call(bot, C, { action: 'remoteView' });
+  gg.__upload = keep; gg.__beforeUpdate = null;
+  ok(!vn.picture && !vn.picture_url && /could not store the picture \(26 KB\)/.test(vn.picture_note), `the reason is shown (${vn.picture_note})`);
+  // nobody watching: the pieces are cleared
+  advance(25_000);
+  await app({ action: 'remotePush', state: {} }, rc3.token);
+  const cleared = (await E.BotRemote.filter({ member_id: C.id }, {})).items[0];
+  ok(!cleared.parts && !cleared.pic_0 && !cleared.picture_url, 'with the page closed nothing of the picture is kept');
 }
 const st1 = await call(bot, C, { action: 'remoteCommand', cmd: 'start', args: { dungeon: 'den', runs: 5000, start_boss: 9, evil: 1 } });
 ok(st1.status === 200, 'the owner queues start');
