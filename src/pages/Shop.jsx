@@ -250,6 +250,15 @@ function BuyDialog({ item, rates, balance, onClose, onBought }) {
   const isCode = !!item.gp_code;
   const isBot = item.bot_days > 0;
   const [gotDays, setGotDays] = useState(null);   // the license after buying Assistant days
+  // 6.41: which of the member's devices gets the days (or a new device for another PC)
+  const [devices, setDevices] = useState(null);
+  const [botSeat, setBotSeat] = useState("1");
+  useEffect(() => {
+    if (!isBot) return;
+    base44.functions.invoke("botAuth", { action: "status" })
+      .then((r) => { const d = (r.data && r.data.devices) || []; setDevices({ list: d, max: (r.data && r.data.max_devices) || 5 }); if (d.length) setBotSeat(String(d[0].seat)); })
+      .catch(() => setDevices({ list: [], max: 5 }));
+  }, [isBot]);
   const instant = isCode && item.code_source !== "manual";
   const n = Math.max(0, Math.floor(Number(qty) || 0));
   const subtotal = item.price * n;
@@ -263,7 +272,7 @@ function BuyDialog({ item, rates, balance, onClose, onBought }) {
     setError("");
     try {
       const res = await base44.functions.invoke("shopAction", {
-        action: "buy", itemId: item.id, qty: n, character, note, expectTotal: total
+        action: "buy", itemId: item.id, qty: n, character, note, expectTotal: total, ...(isBot ? { botSeat: botSeat === "new" ? "new" : Number(botSeat) } : {})
       });
       const order = res.data.order;
       if (res.data.license) { setGotDays(res.data.license); setBusy(false); }
@@ -283,7 +292,7 @@ function BuyDialog({ item, rates, balance, onClose, onBought }) {
             <DialogHeader>
               <DialogTitle className="font-heading text-gold">Assistant days added</DialogTitle>
               <DialogDescription className="text-mist">
-                You now have <b className="text-white">{fmt(gotDays.days_left)} day{gotDays.days_left === 1 ? "" : "s"}</b> of the IntroBoys Assistant, until {new Date(gotDays.expires_at).toLocaleString()}. Open the app and sign in with Discord to use it.
+                <b className="text-white">{gotDays.label}</b> now has <b className="text-white">{fmt(gotDays.days_left)} day{gotDays.days_left === 1 ? "" : "s"}</b> of the IntroBoys Assistant, until {new Date(gotDays.expires_at).toLocaleString()}. Open the app on that PC and sign in with Discord to use it.
               </DialogDescription>
             </DialogHeader>
             <Link to="/assistant" className="btn-seal block h-11 w-full text-center text-base leading-[2.75rem]" onClick={onClose}>Open the Assistant page</Link>
@@ -308,7 +317,7 @@ function BuyDialog({ item, rates, balance, onClose, onBought }) {
           <DialogTitle className="font-heading text-gold">Buy {item.name}</DialogTitle>
           <DialogDescription className="text-mist">
             {isBot
-              ? `Points are taken now and ${fmt(item.bot_days)} day${item.bot_days === 1 ? "" : "s"} of the IntroBoys Assistant are added to your license straight away (on top of any time you have left). Nothing is delivered by hand.`
+              ? `Points are taken now and ${fmt(item.bot_days)} day${item.bot_days === 1 ? "" : "s"} of the IntroBoys Assistant are added to the device you pick straight away (on top of any time it has left). Nothing is delivered by hand.`
               : instant
               ? "Points are taken now and your code is shown straight away. It is also sent to you by Discord DM and kept under My prizes."
               : isCode
@@ -327,6 +336,18 @@ function BuyDialog({ item, rates, balance, onClose, onBought }) {
             <label htmlFor="shop-qty" className="label">How many</label>
             <input id="shop-qty" type="number" inputMode="numeric" min={1} max={isBot ? 12 : isCode ? Math.min(20, item.stock) : item.stock} value={qty} onChange={(e) => setQty(e.target.value)} className="field" required />
           </div>
+          {isBot && devices && (devices.list.length > 0 || devices.max > 1) && (
+            <div>
+              <label htmlFor="shop-seat" className="label">Add the days to</label>
+              <select id="shop-seat" value={botSeat} onChange={(e) => setBotSeat(e.target.value)} className="field">
+                {devices.list.map((d) => (
+                  <option key={d.seat} value={String(d.seat)}>{d.label}{d.device_bound ? ` (PC ${d.device_tag})` : ""} · {d.active ? `${fmt(d.days_left)} days left` : "no days"}</option>
+                ))}
+                {devices.list.length > 0 && devices.list.length < devices.max && <option value="new">A new device (another PC)</option>}
+              </select>
+              {botSeat === "new" && <p className="mt-1 text-xs text-mist">A new device is made for the next PC that signs in to the app.</p>}
+            </div>
+          )}
           {!isCode && !isBot && (
             <div>
               <label htmlFor="shop-char" className="label">In-game character name</label>

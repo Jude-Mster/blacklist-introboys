@@ -19,11 +19,13 @@ export default function RemotePanel({ licensed }) {
   const [dungeon, setDungeon] = useState("labyrinth");
   const [runs, setRuns] = useState("1");
   const [startBoss, setStartBoss] = useState("1");
+  const [seat, setSeat] = useState(0);              // 6.41: which device (0 = the one online, picked by the site)
+  const seatRef = useRef(0); seatRef.current = seat;
   const timer = useRef(null);
 
   const load = useCallback(async () => {
     try {
-      const res = await base44.functions.invoke("botAuth", { action: "remoteView" });
+      const res = await base44.functions.invoke("botAuth", { action: "remoteView", ...(seatRef.current ? { seat: seatRef.current } : {}) });
       setView(res.data); setError("");
     } catch (e) { setError(errorText(e, "Couldn't reach your Assistant.")); }
   }, []);
@@ -44,7 +46,7 @@ export default function RemotePanel({ licensed }) {
     else if (!window.confirm(`Send "${CMD_LABEL[cmd]}" to the Assistant on your PC? The game must be open and in front on that PC.`)) return;
     setBusy(cmd); setError(""); setMsg("");
     try {
-      await base44.functions.invoke("botAuth", { action: "remoteCommand", cmd, args });
+      await base44.functions.invoke("botAuth", { action: "remoteCommand", cmd, args, seat: (view && view.seat) || 1 });
       setMsg(`"${CMD_LABEL[cmd]}" sent - your PC picks it up within a few seconds.`);
       await load();
     } catch (e) { setError(errorText(e, "Couldn't send that.")); }
@@ -57,6 +59,16 @@ export default function RemotePanel({ licensed }) {
   const running = !!st.running;
   return (
     <Panel title="Remote control">
+      {view && view.devices && view.devices.length > 1 && (
+        <div role="tablist" aria-label="Device" className="mb-3 flex flex-wrap gap-1.5">
+          {view.devices.map((d) => (
+            <button key={d.seat} type="button" role="tab" aria-selected={view.seat === d.seat} onClick={() => { setSeat(d.seat); seatRef.current = d.seat; setView(null); load(); }}
+              className={cn("flex h-9 items-center gap-1.5 rounded-md border px-3 text-sm", view.seat === d.seat ? "border-gold text-gold" : "border-bronze/50 text-mist hover:text-white")}>
+              <span className={cn("h-2 w-2 rounded-full", d.online ? "bg-emerald-400" : "bg-white/20")} aria-hidden="true" />{d.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className={cn("flex items-center gap-1.5 rounded-[3px] border px-2 py-0.5 text-xs font-bold uppercase", online ? "border-emerald-400/70 text-emerald-300" : "border-ember/60 text-ember")}>
           <span className={cn("h-2 w-2 rounded-full", online ? "bg-emerald-400" : "bg-ember")} aria-hidden="true" />

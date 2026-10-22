@@ -2,18 +2,68 @@
   "name": "BotLicense",
   "type": "object",
   "properties": {
-    "member_id": { "type": "string", "description": "Member who owns the license (one row per member)" },
-    "discord_id": { "type": "string" },
-    "member_name": { "type": "string" },
-    "expires_at": { "type": "string", "format": "date-time", "description": "The IntroBoys Assistant works until this moment. Buying days adds to it." },
-    "total_days": { "type": "integer", "default": 0, "description": "Days ever granted (shop + leader), for the record" },
-    "hwid_hash": { "type": "string", "description": "SHA-256 of the one computer the license is locked to. Empty until the app is first used." },
-    "hwid_bound_at": { "type": "string", "format": "date-time" },
-    "hwid_resets": { "type": "integer", "default": 0 },
-    "hwid_reset_at": { "type": "string", "format": "date-time" },
-    "revoked": { "type": "boolean", "default": false, "description": "Leader switched this license off" },
-    "revoked_reason": { "type": "string" },
-    "last_seen_at": { "type": "string", "format": "date-time", "description": "Last time the app checked in" }
+    "member_id": {
+      "type": "string",
+      "description": "Member who owns the license (6.41: one row per device of the member)"
+    },
+    "discord_id": {
+      "type": "string"
+    },
+    "member_name": {
+      "type": "string"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "The IntroBoys Assistant works until this moment. Buying days adds to it."
+    },
+    "total_days": {
+      "type": "integer",
+      "default": 0,
+      "description": "Days ever granted (shop + leader), for the record"
+    },
+    "hwid_hash": {
+      "type": "string",
+      "description": "SHA-256 of the one computer the license is locked to. Empty until the app is first used."
+    },
+    "hwid_bound_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "hwid_resets": {
+      "type": "integer",
+      "default": 0
+    },
+    "hwid_reset_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "revoked": {
+      "type": "boolean",
+      "default": false,
+      "description": "Leader switched this license off"
+    },
+    "revoked_reason": {
+      "type": "string"
+    },
+    "last_seen_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last time the app checked in"
+    },
+    "seat": {
+      "type": "number",
+      "description": "6.41: which of the member's devices this is (1-5); none = 1"
+    },
+    "label": {
+      "type": "string",
+      "description": "6.41: the member's own name for the device, e.g. Laptop"
+    }
   },
-  "rls": { "read": false, "create": false, "update": false, "delete": false }
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

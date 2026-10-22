@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
-import { CheckCircle2, Loader2, MonitorSmartphone, ShieldCheck } from "lucide-react";
+import { ArrowRight, CheckCircle2, Loader2, MonitorSmartphone, Pencil, ShieldCheck, Trash2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import LanternSpinner from "@/components/LanternSpinner";
@@ -55,7 +55,7 @@ export default function Assistant() {
       {!data && !error ? <LanternSpinner label="Checking your license" className="py-10" /> : data && (
         <>
           <LinkApp code={code} onDone={load} license={lic} />
-          <License data={data} onChange={load} />
+          <Devices data={data} onChange={load} />
           <RemotePanel licensed={!!(lic && lic.active)} />
         </>
       )}
@@ -66,51 +66,123 @@ export default function Assistant() {
           <li>Open IntroBoys Assistant on your PC and press <b className="text-white">Sign in with Discord</b>. Your browser opens this page with a code.</li>
           <li>Check that the <b className="text-white">device ID</b> matches the one in the app, then press Approve.</li>
           <li>The app runs while you have days left and still hold the guild member role. It checks in every couple of minutes; if it can't, it stops.</li>
-          <li>Your license is locked to the first PC that uses it. You can move it to another PC once a week.</li>
+          <li>Each device is a license for one PC: it is locked to the first PC that uses it, and can be moved to another PC once a week.</li>
+          <li>Want the app on more PCs (up to 5)? Move some of your days to a new device below, or buy days for a new device in the shop. Each PC then runs on its own device's days.</li>
         </ol>
       </Panel>
     </div>
   );
 }
 
-function License({ data, onChange }) {
+// 6.41: the member's devices. Each one is a license for one PC with its own days; days can be moved between them.
+function Devices({ data, onChange }) {
   const lic = data.license;
-  const [busy, setBusy] = useState(false);
+  const devices = data.devices || [];
+  const max = data.max_devices || 5;
+  const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const reset = async () => {
-    if (!window.confirm("Move your license to another PC? The app is signed out here and the next PC that signs in gets the license.")) return;
-    setBusy(true); setError("");
-    try { await base44.functions.invoke("botAuth", { action: "resetDevice" }); await onChange(); }
-    catch (e) { setError(errorText(e, "Couldn't move the license.")); }
-    finally { setBusy(false); }
-  };
-  return (
-    <Panel title="Your license">
-      <div className="flex flex-wrap items-center gap-3">
-        <span className={cn("rounded-[3px] border px-2 py-0.5 text-xs font-bold uppercase", lic.active ? "border-white/70 text-white" : "border-ember/60 text-ember")}>
-          {lic.active ? "Active" : lic.revoked ? "Switched off" : lic.total_days ? "Expired" : "No license"}
-        </span>
-        {lic.active && <span className="font-heading text-2xl font-extrabold text-gold">{fmt(lic.days_left)} day{lic.days_left === 1 ? "" : "s"} left</span>}
-        {data.app_online && <span className="ml-auto flex items-center gap-1.5 text-xs text-mist"><span className="h-2 w-2 rounded-full bg-emerald-400" aria-hidden="true" /> App running</span>}
-      </div>
-      {lic.active && <p className="mt-1 text-sm text-mist">Runs until {new Date(lic.expires_at).toLocaleString()}.</p>}
-      {!lic.active && <p className="mt-2 text-sm text-mist">{WHY[lic.reason] || WHY.no_license}{lic.revoked && lic.revoked_reason ? ` (${lic.revoked_reason})` : ""}</p>}
+  const [msg, setMsg] = useState("");
+  const [renaming, setRenaming] = useState(null);       // { seat, label }
+  const firstWithDays = devices.find((d) => d.whole_days > 0);
+  const [mv, setMv] = useState({ from: firstWithDays ? String(firstWithDays.seat) : "1", to: "new", days: "" });
+  const fromDev = devices.find((d) => String(d.seat) === mv.from);
 
-      <div className="mt-3 rounded-md border border-bronze/50 bg-black/30 p-3 text-sm">
-        <p className="flex items-center gap-2 font-bold text-white"><MonitorSmartphone className="h-4 w-4 text-gold" aria-hidden="true" /> Locked PC</p>
-        {lic.device_bound ? (
-          <>
-            <p className="mt-1 text-mist">Locked to the PC with device ID <b className="font-mono text-gold">{lic.device_tag}</b>.</p>
-            {data.next_reset_at && <p className="text-xs text-mist/80">You can move it again after {new Date(data.next_reset_at).toLocaleDateString()}.</p>}
-            <button onClick={reset} disabled={busy || !data.can_reset} className="btn-bronze mt-2 h-9 px-3 text-sm">
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Move to another PC"}
-            </button>
-          </>
-        ) : (
-          <p className="mt-1 text-mist">Not locked yet. The first PC that runs the app with your license keeps it.</p>
-        )}
-        {error && <p role="alert" className="mt-2 text-ember">{error}</p>}
-      </div>
+  const run = async (key, body, done) => {
+    setBusy(key); setError(""); setMsg("");
+    try { await base44.functions.invoke("botAuth", body); if (done) setMsg(done); await onChange(); return true; }
+    catch (e) { setError(errorText(e, "That didn't work.")); return false; }
+    finally { setBusy(""); }
+  };
+  const reset = (d) => {
+    if (!window.confirm(`Move ${d.label} to another PC? The app on PC ${d.device_tag} is signed out, and the next PC that signs in without a device takes it.`)) return;
+    run(`reset${d.seat}`, { action: "resetDevice", seat: d.seat }, `${d.label} is free: the next PC that signs in takes it.`);
+  };
+  const move = async (e) => {
+    e.preventDefault();
+    const days = Number(mv.days);
+    const to = mv.to === "new" ? "new" : Number(mv.to);
+    const ok = await run("move", { action: "moveDays", from: Number(mv.from), to, days },
+      `${days} day${days === 1 ? "" : "s"} moved to ${to === "new" ? "a new device" : (devices.find((d) => d.seat === to) || {}).label}.`);
+    if (ok) setMv((m) => ({ ...m, days: "" }));
+  };
+
+  return (
+    <Panel title={`Your devices (${devices.length} of ${max})`}>
+      {devices.length === 0 ? (
+        <p className="text-sm text-mist">{WHY[lic.reason] || WHY.no_license}</p>
+      ) : (
+        <ul className="space-y-2">
+          {devices.map((d) => (
+            <li key={d.seat} className="rounded-md border border-bronze/50 bg-black/30 p-3 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <MonitorSmartphone className="h-4 w-4 text-gold" aria-hidden="true" />
+                {renaming && renaming.seat === d.seat ? (
+                  <form onSubmit={(e) => { e.preventDefault(); run(`name${d.seat}`, { action: "renameDevice", seat: d.seat, label: renaming.label }).then(() => setRenaming(null)); }} className="flex gap-1.5">
+                    <input autoFocus value={renaming.label} onChange={(e) => setRenaming({ ...renaming, label: e.target.value })} maxLength={24} className="field h-8 w-40 text-sm" aria-label="Device name" />
+                    <button className="btn-seal h-8 px-2 text-xs">Save</button>
+                    <button type="button" onClick={() => setRenaming(null)} className="text-xs text-mist underline">Cancel</button>
+                  </form>
+                ) : (
+                  <button type="button" onClick={() => setRenaming({ seat: d.seat, label: d.label })} className="group flex items-center gap-1.5 font-bold text-white" title="Rename">
+                    {d.label}<Pencil className="h-3 w-3 text-mist opacity-60 group-hover:opacity-100" aria-hidden="true" />
+                  </button>
+                )}
+                <span className={cn("rounded-[3px] border px-1.5 py-px text-[11px] font-bold uppercase", d.active ? "border-white/70 text-white" : "border-ember/60 text-ember")}>
+                  {d.active ? `${fmt(d.days_left)} day${d.days_left === 1 ? "" : "s"}` : d.revoked ? "Switched off" : "No days"}
+                </span>
+                {d.online && <span className="ml-auto flex items-center gap-1.5 text-xs text-mist"><span className="h-2 w-2 rounded-full bg-emerald-400" aria-hidden="true" /> App running</span>}
+              </div>
+              <p className="mt-1 text-mist">
+                {d.device_bound ? <>Locked to the PC with device ID <b className="font-mono text-gold">{d.device_tag}</b>.</> : "Not locked yet: the next PC that signs in without a device takes it."}
+                {d.active && <> Runs until {new Date(d.expires_at).toLocaleDateString()}.</>}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {d.device_bound && (
+                  <button onClick={() => reset(d)} disabled={!!busy || !d.can_reset} className="btn-bronze h-8 px-2.5 text-xs" title={d.next_reset_at ? `You can move it again after ${new Date(d.next_reset_at).toLocaleDateString()}` : ""}>
+                    {busy === `reset${d.seat}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Move to another PC"}
+                  </button>
+                )}
+                {d.next_reset_at && <span className="self-center text-xs text-mist/80">Can move again after {new Date(d.next_reset_at).toLocaleDateString()}</span>}
+                {d.seat > 1 && d.whole_days < 1 && (
+                  <button onClick={() => run(`rm${d.seat}`, { action: "removeDevice", seat: d.seat }, `${d.label} removed.`)} disabled={!!busy} className="btn-bronze h-8 px-2.5 text-xs !text-ember">
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> Remove
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {devices.some((d) => d.whole_days > 0) && (
+        <form onSubmit={move} className="mt-3 rounded-md border border-bronze/40 p-3 text-sm">
+          <p className="mb-2 font-bold text-white">Divide your days between devices</p>
+          <div className="flex flex-wrap items-end gap-2">
+            <div>
+              <label htmlFor="mv-from" className="label">From</label>
+              <select id="mv-from" value={mv.from} onChange={(e) => setMv({ ...mv, from: e.target.value })} className="field h-10">
+                {devices.filter((d) => d.whole_days > 0).map((d) => <option key={d.seat} value={String(d.seat)}>{d.label} ({d.whole_days} d)</option>)}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="mv-days" className="label">Days</label>
+              <input id="mv-days" type="number" min="1" max={fromDev ? fromDev.whole_days : 1} step="1" value={mv.days} onChange={(e) => setMv({ ...mv, days: e.target.value })} className="field h-10 w-24" required />
+            </div>
+            <ArrowRight className="mb-3 h-4 w-4 text-mist" aria-hidden="true" />
+            <div>
+              <label htmlFor="mv-to" className="label">To</label>
+              <select id="mv-to" value={mv.to} onChange={(e) => setMv({ ...mv, to: e.target.value })} className="field h-10">
+                {devices.filter((d) => String(d.seat) !== mv.from).map((d) => <option key={d.seat} value={String(d.seat)}>{d.label}</option>)}
+                {devices.length < max && <option value="new">A new device (another PC)</option>}
+              </select>
+            </div>
+            <button disabled={!!busy || !(Number(mv.days) >= 1)} className="btn-seal h-10 px-4 text-sm">{busy === "move" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Move days"}</button>
+          </div>
+          <p className="mt-2 text-xs text-mist">A new device is ready for the next PC that signs in. Each PC runs on its own device&apos;s days.</p>
+        </form>
+      )}
+      {msg && <p role="status" className="mt-2 text-sm text-gold">{msg}</p>}
+      {error && <p role="alert" className="mt-2 text-sm text-ember">{error}</p>}
 
       {data.shop_items.length > 0 ? (
         <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-mist">
@@ -119,8 +191,9 @@ function License({ data, onChange }) {
           <Link to="/shop" className="btn-seal ml-auto h-9 px-4 text-sm leading-9">Buy days</Link>
         </div>
       ) : (
-        <p className="mt-3 text-sm text-mist">The Guild Leader hasn't put Assistant days in the shop yet.</p>
+        <p className="mt-3 text-sm text-mist">The Guild Leader hasn&apos;t put Assistant days in the shop yet.</p>
       )}
+      {data.shop_items.length > 0 && <p className="mt-1 text-xs text-mist">When you buy, you pick which device gets the days, or a new device for another PC.</p>}
     </Panel>
   );
 }
@@ -172,7 +245,8 @@ function LinkApp({ code: initial, onDone, license }) {
           </p>
           <p className="flex items-start gap-2 text-mist"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-gold" aria-hidden="true" />
             Only approve it if the same device ID is showing in <b className="text-white">your own</b> app. If someone sent you this code, press Cancel.</p>
-          {found.other_device && <p className="text-ember">Your license is locked to another PC, so the app on this one will not run until you move the license (below).</p>}
+          {found.device && <p className="text-mist">This PC will run on <b className="text-white">{found.device}</b>.</p>}
+          {found.other_device && <p className="text-ember">Every device with days is in use on another PC, so the app on this one will not run yet. Move some days to a new device (below), or buy days for a new device in the shop.</p>}
           {!license.active && <p className="text-mist">You have no active days, so the app will sign in but not run until you buy some.</p>}
           {error && <p role="alert" className="text-ember">{error}</p>}
           <div className="flex gap-2">

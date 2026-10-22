@@ -2,13 +2,41 @@
   "name": "BotCommand",
   "type": "object",
   "properties": {
-    "member_id": { "type": "string" },
-    "cmd": { "type": "string", "description": "start, stop, return_town" },
-    "args": { "type": "string", "description": "JSON arguments (checked against the allowed list)" },
-    "status": { "type": "string", "description": "pending, taken, done, failed, expired" },
-    "result": { "type": "string" },
-    "created_at": { "type": "string", "format": "date-time" },
-    "expires_at": { "type": "string", "format": "date-time" }
+    "member_id": {
+      "type": "string"
+    },
+    "cmd": {
+      "type": "string",
+      "description": "start, stop, return_town"
+    },
+    "args": {
+      "type": "string",
+      "description": "JSON arguments (checked against the allowed list)"
+    },
+    "status": {
+      "type": "string",
+      "description": "pending, taken, done, failed, expired"
+    },
+    "result": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "seat": {
+      "type": "number",
+      "description": "6.41: the device the command is for (none = 1)"
+    }
   },
-  "rls": { "read": false, "create": false, "update": false, "delete": false }
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }
