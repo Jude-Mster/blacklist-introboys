@@ -38,6 +38,78 @@
     "picture_note": {
       "type": "string",
       "description": "6.37: why the last report had no usable picture (shown on the remote page)"
+    },
+    "pic_0": {
+      "type": "string",
+      "description": "6.40: piece 1 of the picture (base64)"
+    },
+    "pic_1": {
+      "type": "string",
+      "description": "6.40: piece 2 of the picture (base64)"
+    },
+    "pic_2": {
+      "type": "string",
+      "description": "6.40: piece 3 of the picture (base64)"
+    },
+    "pic_3": {
+      "type": "string",
+      "description": "6.40: piece 4 of the picture (base64)"
+    },
+    "pic_4": {
+      "type": "string",
+      "description": "6.40: piece 5 of the picture (base64)"
+    },
+    "pic_5": {
+      "type": "string",
+      "description": "6.40: piece 6 of the picture (base64)"
+    },
+    "pic_6": {
+      "type": "string",
+      "description": "6.40: piece 7 of the picture (base64)"
+    },
+    "pic_7": {
+      "type": "string",
+      "description": "6.40: piece 8 of the picture (base64)"
+    },
+    "pic_8": {
+      "type": "string",
+      "description": "6.40: piece 9 of the picture (base64)"
+    },
+    "pic_9": {
+      "type": "string",
+      "description": "6.40: piece 10 of the picture (base64)"
+    },
+    "pic_10": {
+      "type": "string",
+      "description": "6.40: piece 11 of the picture (base64)"
+    },
+    "pic_11": {
+      "type": "string",
+      "description": "6.40: piece 12 of the picture (base64)"
+    },
+    "pic_12": {
+      "type": "string",
+      "description": "6.40: piece 13 of the picture (base64)"
+    },
+    "pic_13": {
+      "type": "string",
+      "description": "6.40: piece 14 of the picture (base64)"
+    },
+    "pic_14": {
+      "type": "string",
+      "description": "6.40: piece 15 of the picture (base64)"
+    },
+    "pic_15": {
+      "type": "string",
+      "description": "6.40: piece 16 of the picture (base64)"
+    },
+    "parts": {
+      "type": "number",
+      "description": "6.40: how many pic_ pieces make the picture (0 = none)"
+    },
+    "picture_url": {
+      "type": "string",
+      "description": "6.40: the picture as an uploaded file, when even small pieces are refused"
     }
   },
   "rls": {

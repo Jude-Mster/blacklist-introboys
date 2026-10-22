@@ -106,3 +106,7 @@ kept and shown on the remote page (for example "no picture in the report" or "pi
 
 **6.38 (app 4.5.1):** an app that can't make its picture sends `picture_error` with the reason, and the page shows it. If the database
 refuses a picture, the rest of the report is still saved and the page says why. Both make a missing live view traceable.
+
+**6.40:** the database refuses a single field as big as a game picture ("Field 'picture' exceeds the maximum allowed size", seen at
+26 KB). The picture is now kept in up to 16 pieces (`pic_0`..`pic_15`, entity `BotRemote`); the piece size that works (12 000, 6 000 or
+3 000 characters) is learned. If even small pieces are refused it is uploaded as a file (`picture_url`). No change to the app is needed.
