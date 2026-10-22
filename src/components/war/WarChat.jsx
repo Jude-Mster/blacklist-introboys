@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ImagePlus, Languages, Loader2, Send, Shield, Trash2, X, Swords, Store } from "lucide-react";
 import BuySellChat from "@/components/buysell/BuySellChat";
 import { readImage } from "@/lib/buysell";
-import { war, warError, newId, WAR_LANGS, WAR_LANG_NAME, CHAT_MAX_LEN, chatPrefs, saveChatPrefs } from "@/lib/warRoom";
+import { war, warError, newId, WAR_LANGS, WAR_LANG_NAME, CHAT_MAX_LEN, chatPrefs, saveChatPrefs, watchChat, pokeSync } from "@/lib/warRoom";
 import { cn } from "@/lib/utils";
 
 // 6.34: the War Room's chat box, with two tabs: the War Room chat (only the commanders and the council can
@@ -40,28 +40,18 @@ export default function WarChat({ me, open, onClose, onUnread, className }) {
     });
   }, []);
 
-  // Asks for new messages every 2 seconds while the War Room chat is on screen, every 8 while it isn't.
+  // 6.39: new messages come with the War Room's single refresh loop (together with the open map)
   useEffect(() => {
-    let alive = true, t = 0;
-    const tick = async () => {
-      if (!alive) return;
-      if (!document.hidden) {
-        try {
-          const r = await war("chat", { after: lastId.current, trSince: since.current });
-          if (!alive) return;
-          const first = !lastId.current;
-          if (r.messages.length) lastId.current = r.messages[r.messages.length - 1].id;
-          since.current = r.now;
-          merge(r.messages, r.updates);
-          const others = first ? 0 : r.messages.filter((m) => m.who !== me.id && !m.removed).length;
-          if (others && !seeingRef.current) setUnread((n) => n + others);
-          setReady(true);
-        } catch { /* next time */ }
-      }
-      t = setTimeout(tick, seeingRef.current ? 2000 : 8000);
-    };
-    tick();
-    return () => { alive = false; clearTimeout(t); };
+    const first = { v: true };
+    return watchChat(() => ({ after: lastId.current, since: since.current }), (r) => {
+      if (r.messages.length) lastId.current = r.messages[r.messages.length - 1].id;
+      since.current = r.now;
+      merge(r.messages, r.updates);
+      const others = first.v ? 0 : r.messages.filter((m) => m.who !== me.id && !m.removed).length;
+      first.v = false;
+      if (others && !seeingRef.current) setUnread((n) => n + others);
+      setReady(true);
+    });
   }, [me.id, merge]);
 
   useEffect(() => { if (seeing) setUnread(0); }, [seeing]);
@@ -85,6 +75,7 @@ export default function WarChat({ me, open, onClose, onUnread, className }) {
     setMsgs((cur) => [...cur, temp]);
     try {
       const r = await war("chatSend", { text, image });
+      pokeSync(true);
       setMsgs((cur) => cur.map((m) => (m.id === temp.id ? r.message : m)));
       if (r.message.text) {
         war("chatTranslate", { id: r.message.id }).then((t) => setMsgs((cur) => cur.map((m) => (m.id === t.message.id ? t.message : m)))).catch(() => {});
