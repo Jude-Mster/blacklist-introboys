@@ -5,6 +5,7 @@ import {
 } from '../../shared/points.ts';
 import { refreshAccess } from '../../shared/access.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
+import { memo, bust } from '../../shared/memo.ts';
 import {
   TICKET_TTL_S, CHECK_EVERY_S, BOT_SESSION_DAYS, CODE_TTL_MS, RESET_COOLDOWN_DAYS, DAY_MS,
   cleanHwid, cleanNonce, hwHash, deviceTag, newUserCode, normCode, text, siteUrl,
@@ -53,6 +54,7 @@ export default async function(req) {
       if (action === 'update') return await update(b, p);
       if (action === 'remotePush') return await remotePush(b, s, p);
       if (action === 'lootPush') return await lootPush(b, s, p);
+      bust('blic:' + s.member_id);              // 6.43: a check may lock a license to this PC
       return await check(b, s, p);
     }
 
@@ -64,6 +66,8 @@ export default async function(req) {
     const leader = me.role === 'leader';
     const leaderOnly = () => { if (!leader) throw new UserError('Only the Guild Leader can do that.', 403); };
 
+    // 6.43: anything but a look may change a license: the shared copy of the licenses is dropped first
+    if (!['status', 'remoteView', 'lootView', 'describe', 'remoteCommand'].includes(action)) bust('blic:');
     if (action === 'status') return await status(b, me);
     if (action === 'describe') return await describe(b, me, p);
     if (action === 'approve') return await approve(b, me, p);
@@ -248,6 +252,12 @@ async function update(b, p) {
 // 6.37: upgrade and enhance taken off the site (the app may still know them; the site never sends them).
 const REMOTE_CMDS = ['start', 'stop', 'return_town'];
 const CMD_TTL_MS = 60_000, WATCH_MS = 20_000, ONLINE_MS = 25_000, PIC_MAX = 400_000;
+
+// 6.43: the database allows the whole site ~210 list reads a minute (every function shares the service account). The live view and the
+// app's reports ask every few seconds, so their read-only lookups are shared for a few seconds: the member's licenses (10 s, dropped at
+// once when this copy changes them) and the command history shown on the page (5 s). Commands handed to the app are always read fresh.
+const LIC_MS = 10_000, CMD_VIEW_MS = 5_000;
+const licensesSoon = (b, memberId: string) => memo('blic:' + memberId, LIC_MS, () => getLicenses(b, memberId));
 // 6.37: the picture is taken as JPEG, PNG or WebP, plain base64 or a data: address, line breaks allowed, up to
 // ~300 KB. What happened to the last one is kept in picture_note, so the page can say why none shows.
 function readPicture(v): { b64?: string; type?: string; note: string } {
@@ -325,7 +335,7 @@ async function storePicture(b, row, b64: string, type: string, iso: string) {
 
 async function remotePush(b, s, p) {
   const E = b.asServiceRole.entities;
-  const lic = (await getLicenses(b, s.member_id)).find((l) => l.hwid_hash === s.hwid_hash) || null;
+  const lic = (await licensesSoon(b, s.member_id)).find((l) => l.hwid_hash === s.hwid_hash) || null;
   const st = licenseState(lic);
   // only a PC a license is locked to, with days left, can be controlled
   if (!st.active || !lic || lic.revoked) return Response.json({ ok: true, allowed: false, watching: false, commands: [] });
@@ -378,7 +388,7 @@ const cleanItem = (v) => text(String(v ?? '').replace(/[\u0000-\u001f\u007f<>]/g
 async function lootPush(b, s, p) {
   const E = b.asServiceRole.entities;
   if (!memLimit('loot:' + s.member_id, LOOT_PUSH_PER_MIN, 60000)) return fail('busy', 'Slow down: try again in a minute.', 429);
-  const lic = (await getLicenses(b, s.member_id)).find((l) => l.hwid_hash === s.hwid_hash) || null;
+  const lic = (await licensesSoon(b, s.member_id)).find((l) => l.hwid_hash === s.hwid_hash) || null;
   if (!lic || !licenseState(lic).active) return Response.json({ ok: true, saved: 0 });
   const seat = seatOf(lic);
   const batch = text(p.batch, 40);
@@ -438,21 +448,23 @@ async function remoteView(b, me, p) {
   const E = b.asServiceRole.entities;
   const now = Date.now();
   // 6.41: which device to watch: the one asked for, else the first one that is online, else device 1
-  const all = await getLicenses(b, me.id);
+  const all = await licensesSoon(b, me.id);
   const { items: rows } = await E.BotRemote.filter({ member_id: me.id }, { limit: 20 });
   const onlineSeat = (n) => rows.some((r) => seatOf(r) === n && Date.parse(r.updated_at || '') > now - ONLINE_MS);
   const asked = Math.round(Number(p && p.seat) || 0);
   const seat = all.some((l) => seatOf(l) === asked) ? asked : (all.map(seatOf).find(onlineSeat) || (all[0] ? seatOf(all[0]) : 1));
   let row = rows.find((r) => seatOf(r) === seat) || null;
   const watch = new Date(now + WATCH_MS).toISOString();
-  if (row) await E.BotRemote.update(row.id, { watch_until: watch }); else row = await E.BotRemote.create({ member_id: me.id, seat, watch_until: watch });
+  // 6.43: written only when less than 12 s of the watch is left (not on every look)
+  if (!row) row = await E.BotRemote.create({ member_id: me.id, seat, watch_until: watch });
+  else if (!(Date.parse(row.watch_until || '') > now + WATCH_MS - 8_000)) await E.BotRemote.update(row.id, { watch_until: watch });
   const lic = all.find((l) => seatOf(l) === seat) || null;
   const st = licenseState(lic);
   let state = null; try { state = row.state ? JSON.parse(row.state) : null; } catch { state = null; }
   const online = Date.parse(row.updated_at || '') > now - ONLINE_MS;
   const picData = row.parts ? PART_KEYS.slice(0, row.parts).map((k) => row[k] || '').join('') : (row.picture || '');
   const picFresh = !!(picData || row.picture_url) && Date.parse(row.picture_at || '') > now - 60_000;
-  const { items: cmds } = await E.BotCommand.filter({ member_id: me.id }, { sort: '-created_date', limit: 40 });
+  const cmds = await memo('bcmdv:' + me.id, CMD_VIEW_MS, async () => (await E.BotCommand.filter({ member_id: me.id }, { sort: '-created_date', limit: 40 })).items);
   const items = cmds.filter((c) => seatOf(c) === seat).slice(0, 8);
   return Response.json({
     seat, devices: all.map((l) => ({ seat: seatOf(l), label: seatName(l), device_tag: l.hwid_hash ? deviceTag(l.hwid_hash) : '', active: licenseState(l).active, online: onlineSeat(seatOf(l)) })),
@@ -482,6 +494,7 @@ async function remoteCommand(b, me, p) {
       member_id: me.id, seat, cmd, args: JSON.stringify(cleanArgs(cmd, p.args)), status: 'pending',
       created_at: new Date(now).toISOString(), expires_at: new Date(now + CMD_TTL_MS).toISOString()
     });
+    bust('bcmdv:' + me.id);
     return Response.json({ ok: true, id: c.id });
   });
 }
@@ -492,7 +505,7 @@ async function status(b, me) {
   const all = await getLicenses(b, me.id);
   const { items: sess } = await b.asServiceRole.entities.BotSession.filter({ member_id: me.id }, { limit: 20 });
   const onlineHw = new Set(sess.filter((x) => minutesAgo(x.last_seen_at, 5)).map((x) => x.hwid_hash));
-  const { items: shop } = await b.asServiceRole.entities.ShopItem.filter({ active: true }, { sort: 'sort', limit: 300 });
+  const shop = await memo('bshop', 30_000, async () => (await b.asServiceRole.entities.ShopItem.filter({ active: true }, { sort: 'sort', limit: 300 })).items);
   const now = Date.now();
   const devices = all.map((l) => {
     const nextReset = l.hwid_reset_at ? Date.parse(l.hwid_reset_at) + RESET_COOLDOWN_DAYS * DAY_MS : 0;

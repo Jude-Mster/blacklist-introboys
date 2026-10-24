@@ -21,7 +21,7 @@ import { getVapid, validSubscription, sendPush } from '../../shared/webpush.ts';
 // sign-in, no access to anything else on the site.
 
 const DAY = 24 * 60 * 60 * 1000;
-const PAGE_MS = 1000;   // screens watching the same page share one read for this long
+const PAGE_MS = 2500;   // screens watching the same page share one read for this long (6.43: was 1 s - the site's database budget is shared)
 const nowIso = () => new Date(Date.now()).toISOString();
 const COMMAND = ['leader', 'officer'];
 
@@ -143,8 +143,8 @@ async function chatSince(b, after, trSince) {
   return { messages: fresh.map(chatView), updates: updates.map(chatView), now: nowIso() };
 }
 
-// Every screen asks for the same newest messages: one database read a second, however many are watching.
-const chatWindow = (b) => memo('war:chat', 1000, async () => {
+// Every screen asks for the same newest messages: one database read every 2.5 s, however many are watching.
+const chatWindow = (b) => memo('war:chat', 2500, async () => {      // 6.43: was 1 s
   const { items } = await b.asServiceRole.entities.WarChat.filter({}, { sort: '-created_date', limit: CHAT_WINDOW });
   return items.reverse();
 });

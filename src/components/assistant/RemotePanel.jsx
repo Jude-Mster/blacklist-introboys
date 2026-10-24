@@ -5,7 +5,8 @@ import Panel from "@/components/Panel";
 import { errorText } from "@/lib/GuildContext";
 import { cn } from "@/lib/utils";
 
-const POLL_MS = 3000;
+const POLL_MS = 3000;            // while the app is online: the live view
+const IDLE_POLL_MS = 20000;      // 6.43: while it is offline (every look costs the site's shared database budget)
 const CMD_LABEL = { start: "Start", stop: "Stop", return_town: "Return to town", upgrade: "Upgrade", enhance: "Enhance" };   // the last two: old commands, shown in the history only
 const STATUS_LABEL = { pending: "sent", taken: "received", done: "done", failed: "failed", expired: "not picked up" };
 
@@ -22,23 +23,27 @@ export default function RemotePanel({ licensed }) {
   const [seat, setSeat] = useState(0);              // 6.41: which device (0 = the one online, picked by the site)
   const seatRef = useRef(0); seatRef.current = seat;
   const timer = useRef(null);
+  const onlineRef = useRef(false);
 
   const load = useCallback(async () => {
     try {
       const res = await base44.functions.invoke("botAuth", { action: "remoteView", ...(seatRef.current ? { seat: seatRef.current } : {}) });
       setView(res.data); setError("");
+      onlineRef.current = !!(res.data && (res.data.online || (res.data.devices || []).some((d) => d.online)));
     } catch (e) { setError(errorText(e, "Couldn't reach your Assistant.")); }
   }, []);
 
-  // poll only while the page is visible (the app sends pictures only while someone watches)
+  // poll only while the page is visible (the app sends pictures only while someone watches);
+  // 6.43: every 3 s while an app is online, every 20 s while none is
   useEffect(() => {
     if (!licensed) return undefined;
-    const tick = () => { if (document.visibilityState === "visible") load(); };
+    let stop = false;
+    const next = () => { if (!stop) timer.current = setTimeout(tick, onlineRef.current ? POLL_MS : IDLE_POLL_MS); };
+    const tick = async () => { if (document.visibilityState === "visible") await load(); next(); };
     tick();
-    timer.current = setInterval(tick, POLL_MS);
     const vis = () => { if (document.visibilityState === "visible") load(); };
     document.addEventListener("visibilitychange", vis);
-    return () => { clearInterval(timer.current); document.removeEventListener("visibilitychange", vis); };
+    return () => { stop = true; clearTimeout(timer.current); document.removeEventListener("visibilitychange", vis); };
   }, [licensed, load]);
 
   const send = async (cmd, args) => {
