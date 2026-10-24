@@ -26,13 +26,21 @@ export default function Assistant() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
 
+  // 6.43: a busy moment (the site's shared database budget) is waited out: up to 4 more tries over ~15 s before an error shows
   const load = useCallback(async () => {
-    try {
-      const res = await base44.functions.invoke("botAuth", { action: "status" });
-      setData(res.data);
-      setError("");
-    } catch (e) {
-      setError(errorText(e, "Couldn't load your Assistant license."));
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const res = await base44.functions.invoke("botAuth", { action: "status" });
+        setData(res.data);
+        setError("");
+        return;
+      } catch (e) {
+        const text = errorText(e, "Couldn't load your Assistant license.");
+        const status = e && e.response && e.response.status;
+        const busy = status === 429 || status === 500 || /rate limit|busy/i.test(text);
+        if (!busy || attempt >= 4) { setError(text); return; }
+        await new Promise((r) => setTimeout(r, [1500, 2500, 4000, 6000][attempt]));
+      }
     }
   }, []);
   useEffect(() => { if (linked) load(); }, [linked, load]);
