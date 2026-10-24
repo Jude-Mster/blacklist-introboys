@@ -17,7 +17,7 @@ import { rankedMembers } from '../../shared/points.ts';
 // The IntroBoys Assistant license service. One function, three kinds of caller:
 //
 //   the app, not signed in   start  poll              (device sign-in: the app shows a code, the member approves it on the site)
-//   the app, signed in       check  logout  update  remotePush            (header X-Bot-Token; `check` returns the signed ticket the app needs to run)
+//   the app, signed in       check  logout  update  remotePush  lootPush            (header X-Bot-Token; `check` returns the signed ticket the app needs to run)
 //   the site (Discord login) status describe approve resetDevice  remoteView remoteCommand
 //   the Guild Leader         adminList adminGrant adminRevoke adminRestore adminReset adminRelease adminReleases adminReleaseToggle
 //
@@ -46,12 +46,13 @@ export default async function(req) {
     }
 
     // ---------- the app, signed in ----------
-    if (action === 'check' || action === 'logout' || action === 'update' || action === 'remotePush') {
+    if (action === 'check' || action === 'logout' || action === 'update' || action === 'remotePush' || action === 'lootPush') {
       const s = await botSession(b, req);
       if (!s) return fail('session', 'Sign in again.', 401);
       if (action === 'logout') { await b.asServiceRole.entities.BotSession.delete(s.id).catch(() => {}); return Response.json({ ok: true }); }
       if (action === 'update') return await update(b, p);
       if (action === 'remotePush') return await remotePush(b, s, p);
+      if (action === 'lootPush') return await lootPush(b, s, p);
       return await check(b, s, p);
     }
 
@@ -71,6 +72,7 @@ export default async function(req) {
     if (action === 'renameDevice') return await renameDevice(b, me, p);
     if (action === 'removeDevice') return await removeDevice(b, me, p);
     if (action === 'remoteView') return await remoteView(b, me, p);
+    if (action === 'lootView') return await lootView(b, me, p);
     if (action === 'remoteCommand') return await remoteCommand(b, me, p);
 
     if (action.startsWith('admin')) {
@@ -365,6 +367,71 @@ async function remotePush(b, s, p) {
     out.push({ id: c.id, cmd: c.cmd, args: cleanArgs(c.cmd, args), age_s: Math.max(0, Math.round((now - Date.parse(c.created_at)) / 1000)) });
   }
   return Response.json({ ok: true, allowed: true, watching: watching || out.length > 0, commands: out });
+}
+
+// ---------- 6.42: what the app looted ----------
+const LOOT_PER_PUSH = 40, LOOT_PUSH_PER_MIN = 20, LOOT_KEEP = 5000;
+const cleanItem = (v) => text(String(v ?? '').replace(/[\u0000-\u001f\u007f<>]/g, ''), 60) || 'Unknown item';
+
+// The app reports the items it picked up (after each boss). `batch` is the app's id for the report: sent again (a retry
+// after a lost answer), it is not counted twice.
+async function lootPush(b, s, p) {
+  const E = b.asServiceRole.entities;
+  if (!memLimit('loot:' + s.member_id, LOOT_PUSH_PER_MIN, 60000)) return fail('busy', 'Slow down: try again in a minute.', 429);
+  const lic = (await getLicenses(b, s.member_id)).find((l) => l.hwid_hash === s.hwid_hash) || null;
+  if (!lic || !licenseState(lic).active) return Response.json({ ok: true, saved: 0 });
+  const seat = seatOf(lic);
+  const batch = text(p.batch, 40);
+  if (batch) {
+    const { items: seen } = await E.BotLoot.filter({ member_id: s.member_id, batch }, { limit: 1 });
+    if (seen.length) return Response.json({ ok: true, saved: 0, duplicate: true });
+  }
+  const now = Date.now();
+  const list = Array.isArray(p.items) ? p.items.slice(0, LOOT_PER_PUSH) : [];
+  let saved = 0;
+  for (const x of list) {
+    if (!x || typeof x !== 'object') continue;
+    const at = Date.parse(x.at || '');
+    await E.BotLoot.create({
+      member_id: s.member_id, seat, name: cleanItem(x.name),
+      qty: Math.max(1, Math.min(999, Math.round(Number(x.qty) || 1))),
+      dungeon: x.dungeon === 'den' ? 'den' : 'labyrinth',
+      boss: Math.max(0, Math.min(6, Math.round(Number(x.boss) || 0))),
+      at: new Date(at > now - 3 * 86400_000 && at <= now + 60_000 ? at : now).toISOString(),
+      batch
+    });
+    saved++;
+  }
+  return Response.json({ ok: true, saved });
+}
+
+// The member's loot: totals per item, today / 7 days / ever, and the latest pick-ups (all devices, or one).
+async function lootView(b, me, p) {
+  const E = b.asServiceRole.entities;
+  const { items: all } = await E.BotLoot.filter({ member_id: me.id }, { sort: '-at', limit: LOOT_KEEP });
+  const seat = Math.round(Number(p && p.seat) || 0);
+  const rows = seat ? all.filter((r) => seatOf(r) === seat) : all;
+  const now = Date.now(), dayStart = new Date(now); dayStart.setUTCHours(0, 0, 0, 0);
+  const sum = (l) => l.reduce((a, r) => a + (Number(r.qty) || 1), 0);
+  const t = (r) => Date.parse(r.at || '') || 0;
+  const by = new Map();
+  for (const r of rows) {
+    const k = r.name || 'Unknown item';
+    const e = by.get(k) || { name: k, qty: 0, last_at: '' };
+    e.qty += Number(r.qty) || 1;
+    if (!e.last_at || t(r) > Date.parse(e.last_at)) e.last_at = r.at;
+    by.set(k, e);
+  }
+  return Response.json({
+    ok: true,
+    total: sum(rows),
+    today: sum(rows.filter((r) => t(r) >= dayStart.getTime())),
+    week: sum(rows.filter((r) => t(r) >= now - 7 * 86400_000)),
+    kinds: by.size,
+    items: [...by.values()].sort((a, c) => c.qty - a.qty || a.name.localeCompare(c.name)).slice(0, 50),
+    recent: rows.slice(0, 25).map((r) => ({ name: r.name, qty: Number(r.qty) || 1, at: r.at, dungeon: r.dungeon, boss: Number(r.boss) || 0, seat: seatOf(r) })),
+    seats: [...new Set(all.map(seatOf))].sort((a, c) => a - c)
+  });
 }
 
 async function remoteView(b, me, p) {
