@@ -121,3 +121,10 @@ another PC the app is told `other_device`.
 * Shop: buying Assistant days asks which device gets them, or a new device (`botSeat`).
 * Leader: one line per device; give days / free a PC per device; switching off stops every device of the member.
 * Remote control: per device (`BotRemote.seat`, `BotCommand.seat`); the page shows a device picker when there are several.
+
+## 6.42: Loot
+
+- App 4.10.0 reads the name of every item it picks up (Windows text recognition) and sends it with `lootPush` (signed-in app call;
+  `batch` id so a resent report is not counted twice; at most 40 items per call, 20 calls a minute; only while the device has days).
+- Stored in the `BotLoot` entity (member, device, name, qty, dungeon, boss, time). The Assistant page shows the Loot box (`lootView`):
+  today / 7 days / all time, kinds of items, most looted, latest pick-ups, per device.

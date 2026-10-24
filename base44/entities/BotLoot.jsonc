@@ -1,0 +1,42 @@
+{
+  "name": "BotLoot",
+  "type": "object",
+  "properties": {
+    "member_id": {
+      "type": "string"
+    },
+    "seat": {
+      "type": "number",
+      "description": "the device that picked it up (6.41 devices; none = 1)"
+    },
+    "name": {
+      "type": "string",
+      "description": "the item name the app read from the label on the ground"
+    },
+    "qty": {
+      "type": "number"
+    },
+    "dungeon": {
+      "type": "string",
+      "description": "labyrinth or den"
+    },
+    "boss": {
+      "type": "number",
+      "description": "1-5 = Labyrinth boss, 6 = the LOD boss, 0 = not known"
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "batch": {
+      "type": "string",
+      "description": "the app's id for one report: a report sent twice is only counted once"
+    }
+  },
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

@@ -8,6 +8,7 @@ import { useGuild, errorText } from "@/lib/GuildContext";
 import { peekPendingLink, clearPendingLink } from "@/lib/assistantLink";
 import { cn } from "@/lib/utils";
 import RemotePanel from "@/components/assistant/RemotePanel";
+import LootPanel from "@/components/assistant/LootPanel";
 
 const fmt = (n) => Number(n || 0).toLocaleString();
 const WHY = {
@@ -57,6 +58,7 @@ export default function Assistant() {
           <LinkApp code={code} onDone={load} license={lic} />
           <Devices data={data} onChange={load} />
           <RemotePanel licensed={!!(lic && lic.active)} />
+          <LootPanel licensed={!!(data.devices && data.devices.length)} />
         </>
       )}
 
