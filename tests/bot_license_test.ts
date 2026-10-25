@@ -171,14 +171,12 @@ const deadOld = await check(r3.token, PC1);
 ok(deadOld.status === 401, 'moving it signs the old PC out');
 const now2 = await check(r4.token, PC2);
 ok(now2.licensed && now2.device === 1, 'the other PC takes the freed device and works');
+// 6.46: moving a device is not held back by a waiting period - she can move it again straight away
 const reset2 = await call(bot, A, { action: 'resetDevice' });
-ok(reset2.status === 429, `a second move within a week is refused (${reset2.status})`);
+ok(reset2.status === 200, `she can move it again straight away (${reset2.status} ${reset2.error || ''})`);
 const r6 = await signIn(A, PC1);
 const back = await check(r6.token, PC1);
-ok(back.licensed === false && back.reason === 'other_device', 'so the old PC stays locked out');
-advance(8 * 86400000);
-const reset3 = await call(bot, A, { action: 'resetDevice' });
-ok(reset3.status === 200, 'after a week she can move it again');
+ok(back.licensed && back.device === 1, 'and the old PC takes the device back');
 
 // ---------- Bob, no license at first ----------
 const cLic = await member('NoLicense', START);

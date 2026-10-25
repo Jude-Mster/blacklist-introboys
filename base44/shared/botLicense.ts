@@ -21,7 +21,6 @@ export const CHECK_EVERY_S = 120;              // the app asks again this often
 export const BOT_SESSION_DAYS = 14;            // the app's sign-in; every check-in keeps it alive
 export const CODE_TTL_MS = 10 * 60 * 1000;     // how long a sign-in code can be approved
 export const MAX_DAYS_AHEAD = 730;             // nobody can hold more than 2 years at once
-export const RESET_COOLDOWN_DAYS = 7;          // a member may move the license to another computer once a week
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
 const HW_RE = /^[a-f0-9]{64}$/;

@@ -7,7 +7,7 @@ import { refreshAccess } from '../../shared/access.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
 import { memo, bust } from '../../shared/memo.ts';
 import {
-  TICKET_TTL_S, CHECK_EVERY_S, BOT_SESSION_DAYS, CODE_TTL_MS, RESET_COOLDOWN_DAYS, DAY_MS,
+  TICKET_TTL_S, CHECK_EVERY_S, BOT_SESSION_DAYS, CODE_TTL_MS, DAY_MS,
   cleanHwid, cleanNonce, hwHash, deviceTag, newUserCode, normCode, text, siteUrl,
   getLicense, getLicenses, licenseState, licenseSummary, memberSummary, grantDays, moveDays, seatOf, seatName, MAX_SEATS,
   logEvent, botSession, killBotSessions, signTicket, signText, signingConfigured,
@@ -512,11 +512,11 @@ async function status(b, me) {
   const shop = await memo('bshop', 30_000, async () => (await b.asServiceRole.entities.ShopItem.filter({ active: true }, { sort: 'sort', limit: 300 })).items);
   const now = Date.now();
   const devices = all.map((l) => {
-    const nextReset = l.hwid_reset_at ? Date.parse(l.hwid_reset_at) + RESET_COOLDOWN_DAYS * DAY_MS : 0;
     return {
       ...licenseSummary(l), online: !!(l.hwid_hash && onlineHw.has(l.hwid_hash)),
       whole_days: Math.max(0, Math.floor((Date.parse(l.expires_at || '') - now) / DAY_MS)),
-      can_reset: !!l.hwid_hash && !(nextReset > now), next_reset_at: nextReset > now ? new Date(nextReset).toISOString() : null
+      // 6.46: no waiting period - a device locked to a PC can be moved whenever the member wants
+      can_reset: !!l.hwid_hash, next_reset_at: null
     };
   });
   const sum = memberSummary(all);
@@ -583,8 +583,8 @@ async function resetDevice(b, me, p) {
   return await withMemberLock(b, me.id, async () => {
     const lic = await getLicense(b, me.id, seat);
     if (!lic || !lic.hwid_hash) throw new UserError('That device is not locked to a computer yet.');
-    const next = lic.hwid_reset_at ? Date.parse(lic.hwid_reset_at) + RESET_COOLDOWN_DAYS * DAY_MS : 0;
-    if (next > Date.now()) throw new UserError(`A device can move to another computer once every ${RESET_COOLDOWN_DAYS} days. Next time: ${new Date(next).toLocaleDateString('en-US')}.`, 429);
+    // 6.46: a device may move to another computer at any time - there is no waiting period. Moving it still
+    // signs the old PC out and frees the device for the next PC that signs in.
     await b.asServiceRole.entities.BotLicense.update(lic.id, { hwid_hash: '', hwid_resets: (lic.hwid_resets || 0) + 1, hwid_reset_at: nowIso() });
     await killBotSessions(b, me.id, lic.hwid_hash);
     await logEvent(b, me, 'reset', `device ${seat} · was PC ${deviceTag(lic.hwid_hash)}`);

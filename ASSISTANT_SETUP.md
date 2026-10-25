@@ -59,7 +59,7 @@ the app says "No Assistant time" → buy days in the shop → *Check again* → 
 | Days exist only if paid for or given by the leader | Site: `shopAction` buy (points taken and days added together, refunded together if anything fails, under the member lock) and the leader's `adminGrant`. Nothing the app sends can add days. |
 | A forged "yes" | Tickets are ECDSA-signed by the site. The app holds only the public key. A ticket names the PC, repeats the app's random number (no replays) and is good ≤ 10 min and never past the license end. |
 | Clock tricks | The app counts ticket time with a stopwatch, not the PC clock. |
-| Sharing one license | The license locks to the first PC that uses it; only one sign-in per member works at a time (a new sign-in cancels the old one); a stolen sign-in token used on another PC is cancelled; the member can move PCs once a week; the leader can free a PC any time. |
+| Sharing one license | The license locks to the first PC that uses it; only one sign-in per member works at a time (a new sign-in cancels the old one); a stolen sign-in token used on another PC is cancelled; the member can move PCs at any time; the leader can free a PC any time. |
 | Guessing sign-in codes | 8 characters, 10-minute life, 8 wrong tries per member then a 10-minute stop. The approve page shows a device ID that must match the one in the app (phishing check). |
 | Banned / revoked | Leader's *Switch off* signs the app out at the next check-in (≤ 2 min) and blocks buying. |
 | App without a license | Key presses, mouse input, screen capture and waiting all refuse to work without a valid ticket, and a full-window sign-in screen covers the program. |
@@ -79,7 +79,7 @@ the app says "No Assistant time" → buy days in the shop → *Check again* → 
 ## Day to day
 
 * **Give or take days, switch off, free a PC:** Admin hall → *IntroBoys Assistant licenses*.
-* **Member moved to a new PC:** they use *Move to another PC* on the Assistant page (once a week), or you free it.
+* **Member moved to a new PC:** they use *Move to another PC* on the Assistant page (any time), or you free it.
 * **Tests:** `npm run test:backend` runs the site's tests, including the new `tests/bot_license_test.ts` (shop, sign-in, tickets, device lock, expiry, role loss, guessing, tampering).
 
 ## Added when installing (6.31)
@@ -116,7 +116,7 @@ A member can run the app on up to 5 PCs. Each PC uses its own **device**: one `B
 `label`; rows from before have no seat and are device 1), with its own days and its own locked PC. Signing in on one PC no longer signs
 the others out. A PC that signs in takes the device locked to it, or a free device with days; if every device with days is locked to
 another PC the app is told `other_device`.
-* Assistant page: the list of devices (days, PC, running, rename, move to another PC once a week each, remove an empty one) and
+* Assistant page: the list of devices (days, PC, running, rename, move to another PC any time each, remove an empty one) and
   **Divide your days**: move whole days from one device to another or to a new device (`moveDays`).
 * Shop: buying Assistant days asks which device gets them, or a new device (`botSeat`).
 * Leader: one line per device; give days / free a PC per device; switching off stops every device of the member.

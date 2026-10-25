@@ -148,11 +148,10 @@ function Devices({ data, onChange }) {
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {d.device_bound && (
-                  <button onClick={() => reset(d)} disabled={!!busy || !d.can_reset} className="btn-bronze h-8 px-2.5 text-xs" title={d.next_reset_at ? `You can move it again after ${new Date(d.next_reset_at).toLocaleDateString()}` : ""}>
+                  <button onClick={() => reset(d)} disabled={!!busy} className="btn-bronze h-8 px-2.5 text-xs">
                     {busy === `reset${d.seat}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Move to another PC"}
                   </button>
                 )}
-                {d.next_reset_at && <span className="self-center text-xs text-mist/80">Can move again after {new Date(d.next_reset_at).toLocaleDateString()}</span>}
                 {d.seat > 1 && d.whole_days < 1 && (
                   <button onClick={() => run(`rm${d.seat}`, { action: "removeDevice", seat: d.seat }, `${d.label} removed.`)} disabled={!!busy} className="btn-bronze h-8 px-2.5 text-xs !text-ember">
                     <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> Remove
