@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-import { sessionUser } from '../../shared/session.ts';
+import { sessionUser, POLL_REUSE_MS } from '../../shared/session.ts';
 import {
   getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, UserError, errorResponse, nullSafe
 } from '../../shared/points.ts';
@@ -131,13 +131,14 @@ function needsTick(row) {
 export default async function(req) {
   try {
     const b = resilient(createClientFromRequest(req));
-    const user = await sessionUser(b, req);
+    let p; try { p = await req.json(); } catch { p = {}; }
+    const { action, tableId } = p;
+    // 6.44: the table is asked for every couple of seconds, so a look (list or state) reuses the member
+    // row this copy read a moment ago instead of reading it again. Every move reads fresh.
+    const user = await sessionUser(b, req, action === 'list' || action === 'state' ? POLL_REUSE_MS : 0);
     if (!user) throw new UserError('Link your Discord first.', 401);
     const me = await getMemberByUserId(b, user.id);
     if (!me) throw new UserError('Link your Discord first.');
-
-    let p; try { p = await req.json(); } catch { p = {}; }
-    const { action, tableId } = p;
     const settings = await getSettings(b);
     if (!(settings.games_enabled || []).includes('poker') && action !== 'leave') {
       throw new UserError('The poker room is closed right now.');

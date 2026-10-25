@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-import { sessionUser, sha256Hex, randomHex } from '../../shared/session.ts';
+import { sessionUser, sha256Hex, randomHex, POLL_REUSE_MS } from '../../shared/session.ts';
 import {
   getSettings, getMemberByUserId, getMemberByDiscordId, withMemberLock, withRecordLock, UserError, errorResponse, resilient
 } from '../../shared/points.ts';
@@ -59,7 +59,11 @@ export default async function(req) {
     }
 
     // ---------- the site ----------
-    const user = await sessionUser(b, req);
+    // 6.44: the live view and the device list are asked for every few seconds and each look used to read
+    // the member row again. A look reuses the row this copy read a moment ago (the same rule the table
+    // games and chat use); anything that changes a license still reads fresh.
+    const LOOK = action === 'status' || action === 'describe' || action === 'remoteView' || action === 'lootView';
+    const user = await sessionUser(b, req, LOOK ? POLL_REUSE_MS : 0);
     if (!user) throw new UserError('Link your Discord first.', 401);
     const me = await getMemberByUserId(b, user.id);
     if (!me) throw new UserError('Link your Discord first.', 401);

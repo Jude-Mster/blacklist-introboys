@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-import { sessionUser } from '../../shared/session.ts';
+import { sessionUser, POLL_REUSE_MS } from '../../shared/session.ts';
 import { addReaction, liveReactions } from '../../shared/reactions.ts';
 import { getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, UserError, errorResponse, nullSafe } from '../../shared/points.ts';
 import { postFeed } from '../../shared/feed.ts';
@@ -36,11 +36,13 @@ export const stakeLimits = (settings) => {
 export default async function(req) {
   try {
     const b = resilient(createClientFromRequest(req));
-    const user = await sessionUser(b, req);
-    if (!user) throw new UserError('Link your Discord first.', 401);
     let p; try { p = await req.json(); } catch { p = {}; }
     const action = String(p.action || '');
     if (action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION });
+    // 6.44: the table is asked for every couple of seconds, so a look (list or state) reuses the member
+    // row this copy read a moment ago instead of reading it again. Every move reads fresh.
+    const user = await sessionUser(b, req, action === 'list' || action === 'state' ? POLL_REUSE_MS : 0);
+    if (!user) throw new UserError('Link your Discord first.', 401);
     const me = await getMemberByUserId(b, user.id);
     if (!me) throw new UserError('Link your Discord first.', 401);
     const settings = await getSettings(b);

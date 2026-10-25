@@ -137,18 +137,30 @@ const RETRY_BASE_MS = Number((globalThis as any).__retryBaseMs ?? 250); // tests
 // 6.15: 3 tries after the first (was 5). At the limit, more retries only add calls and make
 // the member wait 10-20 s; 3 rides out a busy second and gives up within about 2 s.
 const RETRIES = 3;
+// 6.44: retries are coordinated. Every call in this running copy now waits for the SAME moment to try
+// again (one shared gate, set a short way ahead) instead of each sleeping and waking on its own timer.
+// A spell of refusals used to become a small wave of retries for every call - a dozen waves an instant,
+// which is what kept the store busy. Now the whole copy retries in one wave. The tries per call are
+// unchanged, so anything that came through before still does; the store simply receives far fewer
+// requests while it is over its limit, and a call gives up rather than keeping a member waiting.
+const GATE_MS = Number((globalThis as any).__gateMs ?? Math.max(2, RETRY_BASE_MS * 2));
+const BUSY_MAX_MS = Number((globalThis as any).__busyMaxMs ?? 2500);
+let gateUntil = 0;
 const isRateLimit = (e) => {
   const status = e && (e.status || (e.response && e.response.status));
   const text = `${(e && e.message) || ""} ${(e && e.response && e.response.data && e.response.data.error) || ""}`;
   return status === 429 || /rate limit|too many requests/i.test(text);
 };
 async function withRetry(fn: () => Promise<any>) {
+  const started = Date.now();
   for (let attempt = 0; ; attempt++) {
     try {
       return await fn();
     } catch (e) {
-      if (attempt >= RETRIES || !isRateLimit(e)) throw e;
-      await sleep(RETRY_BASE_MS * 2 ** attempt + randInt(Math.max(1, RETRY_BASE_MS)));
+      if (attempt >= RETRIES || !isRateLimit(e) || Date.now() - started > BUSY_MAX_MS) throw e;
+      const now = Date.now();
+      if (gateUntil <= now) gateUntil = now + GATE_MS + randInt(GATE_MS);   // one moment for the whole copy
+      await sleep(gateUntil - now + randInt(Math.max(1, GATE_MS >> 2)));
     }
   }
 }

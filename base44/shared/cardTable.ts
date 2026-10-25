@@ -16,7 +16,7 @@
 // happens under that member's lock.
 
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-import { sessionUser } from './session.ts';
+import { sessionUser, POLL_REUSE_MS } from './session.ts';
 import {
   getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, todayStr, randInt, GAME_NAMES,
   UserError, errorResponse, nullSafe
@@ -79,11 +79,13 @@ export function cardTableHandler(game: CardGame) {
       // however long the checks and the lock take afterwards.
       const arrived = Date.now();
       const b = resilient(createClientFromRequest(req));
-      const user = await sessionUser(b, req);
-      if (!user) throw new UserError('Link your Discord first.', 401);
       let p; try { p = await req.json(); } catch { p = {}; }
       const action = p.action;
       if (action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION });
+      // 6.44: the table is asked for every couple of seconds, so a look (state or an emoji) reuses the
+      // member row this copy read a moment ago instead of reading it again. Every move reads fresh.
+      const user = await sessionUser(b, req, action === 'state' || action === 'react' ? POLL_REUSE_MS : 0);
+      if (!user) throw new UserError('Link your Discord first.', 401);
 
       const me = await getMemberByUserId(b, user.id);
       if (!me) throw new UserError('Link your Discord first.', 401);

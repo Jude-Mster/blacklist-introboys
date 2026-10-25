@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-import { sessionUser } from '../../shared/session.ts';
+import { sessionUser, POLL_REUSE_MS } from '../../shared/session.ts';
 import {
   getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, randInt, GAME_NAMES, UserError, errorResponse
 } from '../../shared/points.ts';
@@ -31,10 +31,12 @@ async function expireOld(b) {
 export default async function(req) {
   try {
     const b = resilient(createClientFromRequest(req));
-    const user = await sessionUser(b, req);
-    if (!user) throw new UserError('Link your Discord first.', 401);
     let p; try { p = await req.json(); } catch { p = {}; }
     if (p.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION });
+    // 6.44: the duels board is refreshed on a timer, so a look reuses the member row this copy read a
+    // moment ago instead of reading it again. Creating, accepting and cancelling always read fresh.
+    const user = await sessionUser(b, req, p.action === 'list' ? POLL_REUSE_MS : 0);
+    if (!user) throw new UserError('Link your Discord first.', 401);
 
     const me = await getMemberByUserId(b, user.id);
     if (!me) throw new UserError('Link your Discord first.');

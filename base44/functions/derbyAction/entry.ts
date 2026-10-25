@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
-import { sessionUser } from '../../shared/session.ts';
+import { sessionUser, POLL_REUSE_MS } from '../../shared/session.ts';
 import {
   getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, todayStr, houseEdge, UserError, errorResponse, resilient
 } from '../../shared/points.ts';
@@ -226,7 +226,9 @@ export default async function(req) {
       return Response.json({ ok: true, paid });
     }
 
-    const user = await sessionUser(b, req);
+    // 6.44: watching the track (state) happens every few seconds, so it reuses the member row this copy
+    // read a moment ago. Betting, settling and the race itself always read fresh.
+    const user = await sessionUser(b, req, p.action === 'state' ? POLL_REUSE_MS : 0);
     if (!user) throw new UserError('Link your Discord first.', 401);
     if (p.action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION });
     const me = await getMemberByUserId(b, user.id);
