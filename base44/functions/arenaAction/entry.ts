@@ -191,8 +191,12 @@ function publicTable(t, now: number, settings) {
 export default async function(req) {
   try {
     const arrived = Date.now();
-    const b = resilient(createClientFromRequest(req));
     let p; try { p = await req.clone().json(); } catch { p = {}; }
+    // 6.45: a look on a timer (the fight table, the crowd) is not sent again when the store refuses
+    // it: the page asks again by itself in a moment. A bet, an emoji and everything else keeps the
+    // retries, because those calls must go through.
+    const LOOK = p.action === 'state' || p.action === 'pulse';
+    const b = resilient(createClientFromRequest(req), { retries: LOOK ? 0 : undefined });
 
     // The "Arena Payouts" schedule: pays finished bets even if nobody is on the site.
     if (p.action === 'sweep') {

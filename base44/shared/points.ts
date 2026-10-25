@@ -1,4 +1,5 @@
 import { recentMember } from './session.ts';
+import { memo } from './memo.ts';
 // Shared points + game logic for BLACKLIST INTROBOYS.
 // Every points change goes through changePoints so balances never go below 0
 // and a PointLog row is written together with the balance update.
@@ -64,23 +65,51 @@ export async function getSettings(b, fresh = false) {
   return await run;
 }
 
+// ---------- The one-row tables ----------
+// The settings and each live game table are a single row that nearly every screen looks at every
+// couple of seconds. Two things keep that cheap:
+//   * the row is read by an id this running copy remembers, so a look is a get (the store allows
+//     far more of those than of a filtered list, which is the tightest limit it sets);
+//   * lookers share one answer for a few seconds (liveTable), and that answer is dropped the moment
+//     the row is due to move on, so no screen is ever shown a table that should have advanced.
+const rowIds = new Map<string, string>();
+
+export function singletonRow(E: any, key: string, defaults: any, query: any = {}) {
+  return async () => {
+    const known = rowIds.get(key);
+    if (known) {
+      try { const row = await E.get(known); if (row) return row; } catch { /* the row is gone: look it up again */ }
+      rowIds.delete(key);
+    }
+    const { items } = await E.filter(query, { sort: 'created_date', limit: 1 });
+    const row = items[0] || await E.create(defaults);
+    if (row && row.id) rowIds.set(key, row.id);
+    return row;
+  };
+}
+
+// How long one look at a live table may be shared. Long enough that a table nobody is changing
+// costs the store almost nothing, short enough that a change is seen within a couple of polls.
+const LIVE_MS = Number((globalThis as any).__liveMs ?? 6000);
+// `due(t)` says this table is ready to move on: the shared answer is never used for it, so the
+// round can't be held up by a snapshot that was taken a moment before its clock ran out.
+export async function liveTable(E: any, key: string, defaults: any, due: (t: any) => boolean, query: any = {}) {
+  return await memo(`live:${key}`, LIVE_MS, singletonRow(E, key, defaults, query), (t: any) => !due(t));
+}
+
 async function readSettings(b) {
-  const { items } = await b.asServiceRole.entities.Settings.filter({}, { limit: 1 });
-  if (items.length === 0) {
-    return await b.asServiceRole.entities.Settings.create({
-      guild_id: "",
-      officer_role_id: "",
-      discord_invite_url: "",
-      min_bet: 10,
-      max_bet: 5000,
-      daily_bet_cap: 50000,
-      house_edge_pct: 3,
-      daily_wheel_prizes: [50, 100, 150, 250, 500, 1000],
-      award_cap_per_day: 10000,
-      games_enabled: ALL_GAMES
-    });
-  }
-  return items[0];
+  return await singletonRow(b.asServiceRole.entities.Settings, 'Settings', {
+    guild_id: "",
+    officer_role_id: "",
+    discord_invite_url: "",
+    min_bet: 10,
+    max_bet: 5000,
+    daily_bet_cap: 50000,
+    house_edge_pct: 3,
+    daily_wheel_prizes: [50, 100, 150, 250, 500, 1000],
+    award_cap_per_day: 10000,
+    games_enabled: ALL_GAMES
+  })();
 }
 
 export function houseEdge(settings) {
@@ -151,20 +180,20 @@ const isRateLimit = (e) => {
   const text = `${(e && e.message) || ""} ${(e && e.response && e.response.data && e.response.data.error) || ""}`;
   return status === 429 || /rate limit|too many requests/i.test(text);
 };
-async function withRetry(fn: () => Promise<any>) {
+async function withRetry(fn: () => Promise<any>, retries = RETRIES) {
   const started = Date.now();
   for (let attempt = 0; ; attempt++) {
     try {
       return await fn();
     } catch (e) {
-      if (attempt >= RETRIES || !isRateLimit(e) || Date.now() - started > BUSY_MAX_MS) throw e;
+      if (attempt >= retries || !isRateLimit(e) || Date.now() - started > BUSY_MAX_MS) throw e;
       const now = Date.now();
       if (gateUntil <= now) gateUntil = now + GATE_MS + randInt(GATE_MS);   // one moment for the whole copy
       await sleep(gateUntil - now + randInt(Math.max(1, GATE_MS >> 2)));
     }
   }
 }
-const wrapEntities = (entities) => {
+const wrapEntities = (entities, retries) => {
   const cache = new Map();
   return new Proxy({}, {
     get(_, name) {
@@ -174,7 +203,7 @@ const wrapEntities = (entities) => {
         cache.set(name, new Proxy({}, {
           get(__, method) {
             const f = E[method];
-            return typeof f === "function" ? (...args) => withRetry(() => f.apply(E, args)) : f;
+            return typeof f === "function" ? (...args) => withRetry(() => f.apply(E, args), retries) : f;
           }
         }));
       }
@@ -182,14 +211,19 @@ const wrapEntities = (entities) => {
     }
   });
 };
-export function resilient(b) {
+// opts.retries: how many times a refused call is sent again. A screen that only LOOKS passes 0
+// (6.45): the page asks again on its own schedule a moment later, so sending every viewer's look
+// again while the store is over its limit is exactly what kept it over its limit. A move (a bet,
+// a card, a purchase) keeps the retries, because that call must go through.
+export function resilient(b, opts: { retries?: number } = {}) {
+  const retries = opts.retries ?? RETRIES;
   let service = null;
   return new Proxy(b, {
     get(target, key) {
       if (key === "asServiceRole") {
         if (!service) {
           const real = target.asServiceRole;
-          const entities = wrapEntities(real.entities);
+          const entities = wrapEntities(real.entities, retries);
           service = new Proxy(real, {
             get(t, k) {
               if (k === "entities") return entities;

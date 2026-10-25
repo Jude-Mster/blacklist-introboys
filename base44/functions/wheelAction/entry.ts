@@ -2,7 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { sessionUser, POLL_REUSE_MS } from '../../shared/session.ts';
 import {
   getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, todayStr, randInt,
-  houseEdge, wheelMultiplier, payoutOf, WHEEL_SEGMENTS, GAME_NAMES, UserError, errorResponse
+  houseEdge, wheelMultiplier, payoutOf, WHEEL_SEGMENTS, GAME_NAMES, UserError, errorResponse, liveTable
 } from '../../shared/points.ts';
 import { postFeed } from '../../shared/feed.ts';
 import { BACKEND_VERSION } from '../../shared/version.ts';
@@ -24,6 +24,8 @@ const NAME = GAME_NAMES.skywheel;
 
 const iso = (ms: number) => new Date(ms).toISOString();
 
+const TABLE_DEFAULTS = { round_no: 0, status: 'settled', next_at: iso(Date.now() - 1), recent: [], total_bet: 0, players: 0 };
+
 async function getTable(b) {
   const { items } = await b.asServiceRole.entities.WheelTable.filter({}, { sort: 'created_date', limit: 1 });
   if (items[0]) return items[0];
@@ -36,9 +38,14 @@ function due(t, now: number) {
 }
 
 async function advance(b, settings, shared = false) {
-  const first = shared ? await memo('wheel:table', 1000, () => getTable(b)) : await getTable(b);
+  // 6.45: a look shares one read of the table with everyone watching this copy (see liveTable in
+  // points.ts); the shared answer is dropped the moment the round is due to move on.
+  const first = shared
+    ? await liveTable(b.asServiceRole.entities.WheelTable, 'WheelTable', TABLE_DEFAULTS, (t) => due(t, Date.now()))
+    : await getTable(b);
   if (!due(first, Date.now())) return first;
   bust('wheel:'); // the round is moving on: the next look must read it fresh
+  bust('live:WheelTable');
   // 6.16: requests in this copy that notice together share one attempt at the lock
   return memo(`wheelwork:${first.id}:${first.round_no}:${first.status}`, 1500, () => withRecordLock(b, 'WheelTable', first.id, async () => {
     let t = await b.asServiceRole.entities.WheelTable.get(first.id);
@@ -104,13 +111,15 @@ export default async function(req) {
   try {
     return await handle(req, action);
   } finally {
-    if (action !== 'state' && action !== 'ping') bust('wheel:');
+    if (action !== 'state' && action !== 'ping') { bust('wheel:'); bust('live:WheelTable'); }
   }
 }
 
 async function handle(req, action: string) {
   try {
-    const b = resilient(createClientFromRequest(req));
+    // 6.45: a look on a timer is not sent again when the store refuses it (the page asks again by
+    // itself in a moment); anything that moves points keeps the retries.
+    const b = resilient(createClientFromRequest(req), { retries: action === 'state' ? 0 : undefined });
     // 6.16: a screen's poll ('state') may reuse a member row read in the last 20 s
     const user = await sessionUser(b, req, action === 'state' ? POLL_REUSE_MS : 0);
     if (!user) throw new UserError('Link your Discord first.', 401);
@@ -124,7 +133,7 @@ async function handle(req, action: string) {
 
     if (p.action === 'state') {
       const t = await advance(b, settings, true);
-      const { items: bets } = await memo('wheel:bets:' + t.round_no, 1500, () => b.asServiceRole.entities.WheelBet.filter({ round_no: t.round_no }, { limit: 200 }));
+      const { items: bets } = await memo('wheel:bets:' + t.round_no, 2500, () => b.asServiceRole.entities.WheelBet.filter({ round_no: t.round_no }, { limit: 200 }));
       const mine = bets.find((x) => x.member_id === me.id) || null;
       return Response.json({
         table: publicTable(t),

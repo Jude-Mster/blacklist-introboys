@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { sessionUser, POLL_REUSE_MS } from '../../shared/session.ts';
 import {
-  getSettings, getMemberByUserId, changePoints, withMemberLock, todayStr, randInt, UserError, errorResponse
+  getSettings, getMemberByUserId, changePoints, withMemberLock, todayStr, randInt, UserError, errorResponse, singletonRow
 } from '../../shared/points.ts';
 import { SICBO_NAME, validSicboBet, validDice, sicboPayout, describeRoll } from '../../shared/sicbo.ts';
 import { postFeed } from '../../shared/feed.ts';
@@ -42,13 +42,12 @@ const E = (b) => b.asServiceRole.entities;
 
 // ----- the table and its clock -----
 async function getTable(b) {
-  const { items } = await E(b).SicBoTable.filter({}, { sort: 'created_date', limit: 1 });
-  if (items[0]) return items[0];
-  const now = Date.now();
-  return await E(b).SicBoTable.create({
-    clock: 'v2', round_no: 1, status: 'betting', result_dice: rollDice(), bets_close_at: iso(now + BET_SECONDS * 1000),
-    next_at: iso(now + (BET_SECONDS + RESULT_SECONDS) * 1000), recent: []
-  });
+  // 6.45: the row is read by an id this running copy remembers (a get) instead of by a filtered list:
+  // list calls are the tightest limit the store sets, and every screen watching reads this table.
+  return await singletonRow(E(b).SicBoTable, 'SicBoTable', {
+    clock: 'v2', round_no: 1, status: 'betting', result_dice: rollDice(), bets_close_at: iso(Date.now() + BET_SECONDS * 1000),
+    next_at: iso(Date.now() + (BET_SECONDS + RESULT_SECONDS) * 1000), recent: []
+  })();
 }
 const closeMs = (t) => Date.parse(t.bets_close_at) || 0;
 const nextMs = (t) => closeMs(t) + RESULT_SECONDS * 1000;
@@ -158,7 +157,9 @@ async function handle(req, action: string) {
     // When this request reached the server. A chip counts if it ARRIVED before bets closed,
     // however long the checks and the lock take afterwards.
     const arrived = Date.now();
-    const b = resilient(createClientFromRequest(req));
+    // 6.45: a look on a timer is not sent again when the store refuses it (the page asks again by
+    // itself in a moment); anything that moves points keeps the retries.
+    const b = resilient(createClientFromRequest(req), { retries: action === 'state' ? 0 : undefined });
     // 6.16: a screen's poll ('state') may reuse a member row read in the last 20 s
     const user = await sessionUser(b, req, action === 'state' ? POLL_REUSE_MS : 0);
     if (!user) throw new UserError('Link your Discord first.', 401);
@@ -175,11 +176,13 @@ async function handle(req, action: string) {
     // ---------- look at the table (no locks; at most one write, to open a round) ----------
     if (p.action === 'state') {
       // 6.16: screens share one look at the table (1 s) and at the round's bets (1.5 s)
-      let t = await memo('sicbo:table', 1000, () => current(b));
-      if (!(usable(t) && Date.now() < nextMs(t))) { bust('sicbo:'); t = await memo('sicbo:table', 1000, () => current(b)); }
+      // 6.45: screens share one look at the table (2.5 s) and at the round's bets (2.5 s) - the window
+      // the page itself polls on - and a look that is already due to move on is read again at once.
+      let t = await memo('sicbo:table', 2500, () => current(b));
+      if (!(usable(t) && Date.now() < nextMs(t))) { bust('sicbo:'); t = await memo('sicbo:table', 2500, () => current(b)); }
       const now = Date.now();
       const closed = closedAt(t, now);
-      const { items: rows } = await memo('sicbo:bets:' + t.round_no, 1500, () => E(b).SicBoBet.filter({ round_no: t.round_no }, { limit: 200 }));
+      const { items: rows } = await memo('sicbo:bets:' + t.round_no, 2500, () => E(b).SicBoBet.filter({ round_no: t.round_no }, { limit: 200 }));
       // One line per member (a member normally has one row; add them up if there are more).
       const byMember = new Map();
       for (const x of rows) {

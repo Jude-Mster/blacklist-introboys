@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { sessionUser, POLL_REUSE_MS } from '../../shared/session.ts';
 import {
-  getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, todayStr, houseEdge, UserError, errorResponse, resilient
+  getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, todayStr, houseEdge, UserError, errorResponse, liveTable, resilient
 } from '../../shared/points.ts';
 import {
   DERBY_NAME, DIST, PLAY, FIELD_SIZE, STABLE, makeField, makeOdds, simulate, timelineOf, raceLength,
@@ -92,8 +92,14 @@ async function getTable(b, settings) {
 // Open the next round when the last result has been on show long enough. One write, no
 // lock: two requests doing it together write the same horses and prices; whichever race
 // lands last stands, and nothing about the race is shown before betting closes.
-async function current(b, settings) {
-  const t0 = await getTable(b, settings);
+async function current(b, settings, shared = false) {
+  // 6.45: a look (the track refreshing itself) shares one read of the table with everyone watching
+  // this copy of the function (see liveTable in points.ts). The shared answer is dropped the moment
+  // the race is due to move on, so the next round is never held up by a snapshot taken a moment
+  // before its clock ran out.
+  const t0 = shared
+    ? await liveTable(E(b).DerbyTable, 'DerbyTable', newRound(1, [], settings, Date.now()), (t) => !usable(t) || Date.now() >= nextMs(t))
+    : await getTable(b, settings);
   const stale = (t) => !usable(t) || Date.now() >= nextMs(t);
   if (!stale(t0)) return t0;
   // Only one request works out the new round (pricing takes about a second); the others
@@ -212,9 +218,11 @@ export default async function(req) {
   try {
     // When this request reached the server. A bet counts if it ARRIVED before betting closed.
     const arrived = Date.now();
-    const b = resilient(createClientFromRequest(req));
     // clone(): the sign-in check reads the body again for the session token.
     let p; try { p = await req.clone().json(); } catch { p = {}; }
+    // 6.45: a look on a timer is not sent again when the store refuses it (the page asks again by
+    // itself in a moment); anything that moves points keeps the retries.
+    const b = resilient(createClientFromRequest(req), { retries: p.action === 'state' ? 0 : undefined });
 
     // The "Derby Payouts" schedule: pays finished bets even if nobody is on the site.
     if (p.action === 'sweep') {
@@ -240,7 +248,7 @@ export default async function(req) {
     // ---------- look at the track (no locks; at most one write, to open a round) ----------
     if (p.action === 'state') {
       if (!open) throw new UserError('The Derby is closed right now.');
-      const t = await current(b, settings);
+      const t = await current(b, settings, true);
       const now = Date.now();
       const status = statusAt(t, now);
       const { items: rows } = await E(b).DerbyBet.filter({ round_no: t.round_no }, { limit: 300 });

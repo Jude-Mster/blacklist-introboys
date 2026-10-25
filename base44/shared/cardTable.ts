@@ -19,14 +19,18 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { sessionUser, POLL_REUSE_MS } from './session.ts';
 import {
   getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, todayStr, randInt, GAME_NAMES,
-  UserError, errorResponse, nullSafe
+  UserError, errorResponse, nullSafe, liveTable
 } from './points.ts';
+import { memo, bust } from './memo.ts';
 import { postFeed } from './feed.ts';
 import { BACKEND_VERSION } from './version.ts';
 import { resilient } from './points.ts';
 
 export const BET_SECONDS = 10;      // countdown after the first bet
 export const RESULT_SECONDS = 8;    // how long results stay up
+// 6.45: how long one look at the round's hands may be shared between everyone watching this running
+// copy of the function. The table itself is shared for longer (see liveTable in points.ts).
+const SEATS_MS = 2500;
 const ARRIVE_MARGIN_MS = 200;        // a chip must reach the server this long before the close
 const CLOSE_MARGIN_MS = 1500;       // bets stop a moment before the deadline
 // Added to the lock helper's built-in 20 seconds: a table lock left behind by a request that
@@ -72,16 +76,22 @@ export type CardGame = {
 
 export function cardTableHandler(game: CardGame) {
   const NAME = GAME_NAMES[game.id];
+  const LIVE_KEY = `CardTable:${game.id}`;
+  const SEAT_KEY = `seats:${game.id}`;
 
   return async function(req) {
+    let action = '';
     try {
       // When this request reached the server. A chip counts if it ARRIVED before bets closed,
       // however long the checks and the lock take afterwards.
       const arrived = Date.now();
-      const b = resilient(createClientFromRequest(req));
       let p; try { p = await req.json(); } catch { p = {}; }
-      const action = p.action;
+      action = p.action;
       if (action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION });
+      // 6.45: a look on a timer (the table refreshing itself) is not sent again when the store refuses
+      // it: the page asks again on its own schedule in a moment. Sending every viewer's look again is
+      // what kept the store over its limit. A move (a bet, a card, sitting down) keeps the retries.
+      const b = resilient(createClientFromRequest(req), { retries: action === 'state' ? 0 : undefined });
       // 6.44: the table is asked for every couple of seconds, so a look (state or an emoji) reuses the
       // member row this copy read a moment ago instead of reading it again. Every move reads fresh.
       const user = await sessionUser(b, req, action === 'state' || action === 'react' ? POLL_REUSE_MS : 0);
@@ -94,11 +104,17 @@ export function cardTableHandler(game: CardGame) {
       const T = nullSafe(b.asServiceRole.entities.CardTable, ['bets_close_at', 'act_close_at', 'next_at']);
       const S = b.asServiceRole.entities.CardSeat;
 
+      const NEW_TABLE = { game: game.id, round_no: 1, status: 'betting', dealer: [], seats: Array(SEAT_COUNT).fill({}) };
       const getTable = async () => {
         const { items } = await T.filter({ game: game.id }, { sort: 'created_date', limit: 1 });
         if (items[0]) return items[0];
-        return await T.create({ game: game.id, round_no: 1, status: 'betting', dealer: [], seats: Array(SEAT_COUNT).fill({}) });
+        return await T.create(NEW_TABLE);
       };
+      // 6.45: what a shared look at the table must never hide - a round whose clock has run out.
+      const dueNow = (t) =>
+        (t.status === 'betting' && (!t.bets_close_at || Date.parse(t.bets_close_at) <= Date.now())) ||
+        (t.status === 'playing' && (!t.act_close_at || Date.parse(t.act_close_at) <= Date.now())) ||
+        (t.status === 'settled' && (!t.next_at || Date.parse(t.next_at) <= Date.now()));
       // The six chairs. Empty chairs are stored as {} (entity arrays can't hold null).
       const chairsOf = (t) => Array.from({ length: SEAT_COUNT }, (_, i) => { const c = (t.seats || [])[i]; return c && c.member_id ? c : null; });
       const chairIndex = (t, memberId) => chairsOf(t).findIndex((c) => c && c.member_id === memberId);
@@ -113,7 +129,12 @@ export function cardTableHandler(game: CardGame) {
         }
         return changed;
       };
-      const seatsOf = async (round: number) => (await S.filter({ game: game.id, round_no: round }, { limit: 100 })).items || [];
+      // 6.45: the hands of the round are read once for everyone watching this copy (a couple of seconds),
+      // not once per viewer per refresh.
+      const seatsOf = async (round: number, shared = false) => {
+        const read = async () => (await S.filter({ game: game.id, round_no: round }, { limit: 100 })).items || [];
+        return shared ? await memo(`${SEAT_KEY}:${round}`, SEATS_MS, read) : await read();
+      };
       const allDone = (seats) => seats.length > 0 && seats.every((s) => s.status === 'done' || s.settled);
 
       // ---------- moving the table forward ----------
@@ -203,8 +224,12 @@ export function cardTableHandler(game: CardGame) {
         return await T.update(t.id, { status: 'settled', busy_at: iso(0), next_at: iso(Date.now() + RESULT_SECONDS * 1000) });
       };
 
-      const advance = async (early = false) => {
-        const first = await getTable();
+      const advance = async (early = false, shared = false) => {
+        // A look shares one read of the table with everyone watching (see liveTable in points.ts);
+        // a move always reads it fresh.
+        const first = shared
+          ? await liveTable(T, LIVE_KEY, NEW_TABLE, dueNow)
+          : await getTable();
         const now0 = Date.now();
         const due =
           (first.status === 'betting' && first.bets_close_at && Date.parse(first.bets_close_at) <= now0) ||
@@ -212,6 +237,7 @@ export function cardTableHandler(game: CardGame) {
           (first.status === 'settled' && (!first.next_at || Date.parse(first.next_at) <= now0));
         if (!due) return first;
         if (first.busy_at && Date.now() - Date.parse(first.busy_at) < BUSY_MS) return first; // someone is already on it
+        bust(`live:${LIVE_KEY}`); // the round is moving on: the next look must read it fresh
         return withRecordLock(b, 'CardTable', first.id, async () => {
           let t = await T.get(first.id);
           const now = Date.now();
@@ -256,8 +282,10 @@ export function cardTableHandler(game: CardGame) {
           mine: s.member_id === me.id
         };
       };
-      const stateOf = async (t, extra = {}) => {
-        const seats = await seatsOf(t.round_no);
+      const stateOf = async (t, extra = {}, shared = false) => {
+        // An empty table has no hands at all, so the seats are not read: the chairs say everything.
+        const empty = !chairsOf(t).some((c) => c && c.member_id);
+        const seats = empty ? [] : await seatsOf(t.round_no, shared);
         const revealed = t.status === 'settled';
         const mine = seats.find((s) => s.member_id === me.id);
         return {
@@ -302,12 +330,13 @@ export function cardTableHandler(game: CardGame) {
             console.error('legacy refund skipped', e);
           }
         }
-        let t = await advance();
+        let t = await advance(false, true);
         // Safety net: a round with bets but no countdown gets one.
-        if (t.status === 'betting' && !t.bets_close_at && (await seatsOf(t.round_no)).length > 0) {
+        if (t.status === 'betting' && !t.bets_close_at && (await seatsOf(t.round_no, true)).length > 0) {
           t = await T.update(t.id, { bets_close_at: iso(Date.now() + BET_SECONDS * 1000) });
+          bust(`live:${LIVE_KEY}`);
         }
-        return Response.json(await stateOf(t));
+        return Response.json(await stateOf(t, {}, true));
       }
 
       if (action === 'react') {
@@ -541,6 +570,9 @@ export function cardTableHandler(game: CardGame) {
       throw new UserError('Unknown action.');
     } catch (e) {
       return errorResponse(e);
+    } finally {
+      // A move has changed the table or a hand: the shared answers are out of date at once.
+      if (action && action !== 'state' && action !== 'ping') { bust(`live:${LIVE_KEY}`); bust(SEAT_KEY); }
     }
   };
 }

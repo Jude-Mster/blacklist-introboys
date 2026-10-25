@@ -2,7 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.52';
 import { sessionUser, POLL_REUSE_MS } from '../../shared/session.ts';
 import {
   getSettings, getMemberByUserId, changePoints, withMemberLock, withRecordLock, todayStr, randInt,
-  validRouletteBet, roulettePayout, ROULETTE_POCKETS, GAME_NAMES, UserError, errorResponse
+  validRouletteBet, roulettePayout, ROULETTE_POCKETS, GAME_NAMES, UserError, errorResponse, liveTable
 } from '../../shared/points.ts';
 import { postFeed } from '../../shared/feed.ts';
 import { announceBigWin, announceLoss, lossWorthTelling } from '../../shared/chat.ts';
@@ -37,6 +37,8 @@ const NAME = GAME_NAMES.roulette;
 
 const iso = (ms: number) => new Date(ms).toISOString();
 
+const TABLE_DEFAULTS = { round_no: 0, status: 'settled', next_at: iso(Date.now() - 1), recent: [], total_bet: 0, players: 0 };
+
 async function getTable(b) {
   const { items } = await b.asServiceRole.entities.RouletteTable.filter({}, { sort: 'created_date', limit: 1 });
   if (items[0]) return items[0];
@@ -50,10 +52,16 @@ function due(t, now: number) {
 
 // Settle the current round and/or open the next one. Safe to call often.
 async function advance(b, settings, shared = false) {
-  const first = shared ? await memo('roulette:table', 1000, () => getTable(b)) : await getTable(b);
+  // 6.45: a look shares one read of the table with everyone watching this copy (see liveTable in
+  // points.ts). The shared answer is dropped the moment the round is due to move on, so the table can
+  // never be held up by a snapshot taken a moment before its clock ran out.
+  const first = shared
+    ? await liveTable(b.asServiceRole.entities.RouletteTable, 'RouletteTable', TABLE_DEFAULTS, (t) => due(t, Date.now()))
+    : await getTable(b);
   if (!due(first, Date.now())) return first;
   if (first.settling_at && Date.now() - Date.parse(first.settling_at) < BUSY_MS) return first; // someone is already on it
   bust('roulette:'); // the round is moving on: the next look must read it fresh
+  bust('live:RouletteTable');
   // 6.16: requests in this copy that notice together share one attempt at the lock
   return memo(`roulettework:${first.id}:${first.round_no}:${first.status}`, 1500, () => withRecordLock(b, 'RouletteTable', first.id, async () => {
     let t = await b.asServiceRole.entities.RouletteTable.get(first.id);
@@ -157,7 +165,7 @@ export default async function(req) {
   try {
     return await handle(req, action);
   } finally {
-    if (action !== 'state' && action !== 'ping') bust('roulette:');
+    if (action !== 'state' && action !== 'ping') { bust('roulette:'); bust('live:RouletteTable'); }
   }
 }
 
@@ -166,7 +174,9 @@ async function handle(req, action: string) {
     // When this request reached the server. A chip counts if it ARRIVED before bets closed,
     // however long the checks and the lock take afterwards.
     const arrived = Date.now();
-    const b = resilient(createClientFromRequest(req));
+    // 6.45: a look on a timer is not sent again when the store refuses it (the page asks again by
+    // itself in a moment); anything that moves points keeps the retries.
+    const b = resilient(createClientFromRequest(req), { retries: action === 'state' ? 0 : undefined });
     // 6.16: a screen's poll ('state') may reuse a member row read in the last 20 s
     const user = await sessionUser(b, req, action === 'state' ? POLL_REUSE_MS : 0);
     if (!user) throw new UserError('Link your Discord first.', 401);
@@ -181,7 +191,7 @@ async function handle(req, action: string) {
 
     if (p.action === 'state') {
       const t = await advance(b, settings, true);
-      const { items: bets } = await memo('roulette:bets:' + t.round_no, 1500, () => b.asServiceRole.entities.RouletteBet.filter({ round_no: t.round_no }, { limit: 200 }));
+      const { items: bets } = await memo('roulette:bets:' + t.round_no, 2500, () => b.asServiceRole.entities.RouletteBet.filter({ round_no: t.round_no }, { limit: 200 }));
       const mine = bets.find((x) => x.member_id === me.id) || null;
       return Response.json({
         // Totals are counted from the bets themselves, so they can never disagree with the chips shown.
