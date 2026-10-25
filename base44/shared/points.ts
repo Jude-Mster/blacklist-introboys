@@ -78,7 +78,12 @@ export function singletonRow(E: any, key: string, defaults: any, query: any = {}
   return async () => {
     const known = rowIds.get(key);
     if (known) {
-      try { const row = await E.get(known); if (row) return row; } catch { /* the row is gone: look it up again */ }
+      try { const row = await E.get(known); if (row) return row; }
+      catch (e) {
+        // A refused read belongs to the request that made it: it is never answered with a second read,
+        // which would only add to the load that caused the refusal. Anything else means the row is gone.
+        if (isRateLimit(e)) throw e;
+      }
       rowIds.delete(key);
     }
     const { items } = await E.filter(query, { sort: 'created_date', limit: 1 });
