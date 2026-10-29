@@ -1,8 +1,8 @@
 {
-  "versionCode": 31,
-  "versionName": "1.4.3",
+  "versionCode": 32,
+  "versionName": "1.4.4",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "7c53bcbd97f1b0ce59488fa19823d6e4a5ba39c61af29b52dc7ff2609bb60930",
-  "size": 24918371,
-  "notes": "Cloud and slow phones: the direction is measured from settled positions with longer stick pushes, so the camera no longer circles at the gate. Small screens read the mini-map numbers at 3x."
+  "sha256": "b97c9e3f85e72852b3449c491d4f25c6206c802976804c7bf48989696e123b21",
+  "size": 24922467,
+  "notes": "Cloud / small phones: the camera turns to the gate with long slow drags, learns this phone's turn once and replays it every run. No false 'in town' from a misread number."
 }
