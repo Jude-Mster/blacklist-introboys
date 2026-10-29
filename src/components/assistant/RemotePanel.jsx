@@ -48,11 +48,11 @@ export default function RemotePanel({ licensed }) {
 
   const send = async (cmd, args) => {
     if (cmd === "stop" || cmd === "return_town") { /* no confirmation: these are the safe ones */ }
-    else if (!window.confirm(`Send "${CMD_LABEL[cmd]}" to the Assistant on your PC? The game must be open and in front on that PC.`)) return;
+    else if (!window.confirm(`Send "${CMD_LABEL[cmd]}" to the Assistant on your ${view && view.platform === "android" ? "phone? The game must be open on the phone." : "PC? The game must be open and in front on that PC."}`)) return;
     setBusy(cmd); setError(""); setMsg("");
     try {
       await base44.functions.invoke("botAuth", { action: "remoteCommand", cmd, args, seat: (view && view.seat) || 1 });
-      setMsg(`"${CMD_LABEL[cmd]}" sent - your PC picks it up within a few seconds.`);
+      setMsg(`"${CMD_LABEL[cmd]}" sent - your ${view && view.platform === "android" ? "phone" : "PC"} picks it up within a few seconds.`);
       await load();
     } catch (e) { setError(errorText(e, "Couldn't send that.")); }
     finally { setBusy(""); }
@@ -60,6 +60,9 @@ export default function RemotePanel({ licensed }) {
 
   if (!licensed) return null;
   const st = (view && view.state) || {};
+  // 6.47: the device being watched is a phone (the Android app) or a PC
+  const phone = !!(view && view.platform === "android");
+  const where = phone ? "phone" : "PC";
   const online = !!(view && view.online);
   const running = !!st.running;
   return (
@@ -70,6 +73,7 @@ export default function RemotePanel({ licensed }) {
             <button key={d.seat} type="button" role="tab" aria-selected={view.seat === d.seat} onClick={() => { setSeat(d.seat); seatRef.current = d.seat; setView(null); load(); }}
               className={cn("flex h-9 items-center gap-1.5 rounded-md border px-3 text-sm", view.seat === d.seat ? "border-gold text-gold" : "border-bronze/50 text-mist hover:text-white")}>
               <span className={cn("h-2 w-2 rounded-full", d.online ? "bg-emerald-400" : "bg-white/20")} aria-hidden="true" />{d.label}
+              {d.platform && <span className={cn("rounded-[3px] border px-1 text-[10px] font-bold uppercase", d.platform === "android" ? "border-gold/70 text-gold" : "border-white/40 text-mist")}>{d.platform === "android" ? "Mobile" : "PC"}</span>}
             </button>
           ))}
         </div>
@@ -79,6 +83,7 @@ export default function RemotePanel({ licensed }) {
           <span className={cn("h-2 w-2 rounded-full", online ? "bg-emerald-400" : "bg-ember")} aria-hidden="true" />
           {online ? "Online" : "Offline"}
         </span>
+        {view && <span className={cn("rounded-[3px] border px-2 py-0.5 text-xs font-bold uppercase", phone ? "border-gold/70 text-gold" : "border-white/40 text-mist")}>{phone ? "Mobile" : "PC"}</span>}
         {online && <span className="font-heading text-lg font-extrabold text-gold">{st.state || "-"}</span>}
         {online && st.boss ? <span className="text-mist">{st.boss}{st.hp >= 0 ? ` · ${Math.round(st.hp * 100)}% HP` : ""}</span> : null}
         {online && st.version && <span className="ml-auto text-xs text-mist">app {st.version}</span>}
@@ -86,7 +91,9 @@ export default function RemotePanel({ licensed }) {
       {!view && !error && <p className="mt-2 flex items-center gap-2 text-sm text-mist"><Loader2 className="h-4 w-4 animate-spin" /> Looking for your Assistant…</p>}
       {view && !online && (
         <p className="mt-2 text-sm text-mist">
-          Your Assistant is not reporting. Open IntroBoys Assistant on your PC (signed in, on the PC your license is locked to) and keep "Allow control from the guild website" ticked.
+          {phone
+            ? <>Your phone Assistant is not reporting. Open IntroBoys Assistant on the phone (signed in, with days on this device). For the picture, tap Allow on &quot;See the game&quot; in the app.</>
+            : <>Your Assistant is not reporting. Open IntroBoys Assistant on your PC (signed in, on the PC your license is locked to) and keep &quot;Allow control from the guild website&quot; ticked.</>}
           {view.updated_at && <> Last seen {new Date(view.updated_at).toLocaleString()}.</>}
         </p>
       )}
@@ -94,9 +101,11 @@ export default function RemotePanel({ licensed }) {
       {online && (
         <>
           <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
-            <div><dt className="text-xs text-mist">Game</dt><dd className={st.game ? "text-white" : "text-ember"}>{st.game ? "found" : "not found"}</dd></div>
-            <div><dt className="text-xs text-mist">Dungeon</dt><dd className="text-white">{st.dungeon === "den" ? "Den (LOD)" : "Labyrinth"}</dd></div>
-            <div><dt className="text-xs text-mist">This session</dt><dd className="text-white">{st.cycles || 0} cycles · {st.kills || 0} kills</dd></div>
+            <div><dt className="text-xs text-mist">{phone ? "Screen sharing" : "Game"}</dt><dd className={st.game ? "text-white" : "text-ember"}>{phone ? (st.game ? "on" : "off") : st.game ? "found" : "not found"}</dd></div>
+            <div><dt className="text-xs text-mist">{phone ? "Mode" : "Dungeon"}</dt><dd className="text-white">{st.dungeon === "den" ? "Den (LOD)" : st.dungeon === "attack" ? "Auto attack" : "Labyrinth"}</dd></div>
+            {phone
+              ? <div><dt className="text-xs text-mist">Runs done</dt><dd className="text-white">Labyrinth {st.total_labyrinth || 0} · Den {st.total_den || 0}{st.running ? ` · ${st.presses || 0} presses` : ""}</dd></div>
+              : <div><dt className="text-xs text-mist">This session</dt><dd className="text-white">{st.cycles || 0} cycles · {st.kills || 0} kills</dd></div>}
             <div><dt className="text-xs text-mist">Time left</dt><dd className="text-white">{st.time_left || "-"}</dd></div>
           </dl>
           {st.locked && <p className="mt-2 rounded-md border border-ember/40 bg-ember/10 px-3 py-2 text-sm text-ember">Your PC looks locked or asleep: the Assistant cannot see the game or press keys until it is unlocked.</p>}
@@ -116,6 +125,7 @@ export default function RemotePanel({ licensed }) {
               <div>
                 <label htmlFor="rc-dungeon" className="label">Dungeon</label>
                 <select id="rc-dungeon" value={dungeon} onChange={(e) => setDungeon(e.target.value)} className="field h-10">
+                  {phone && <option value="attack">Auto attack</option>}
                   <option value="labyrinth">Labyrinth</option>
                   <option value="den">Den (LOD)</option>
                 </select>

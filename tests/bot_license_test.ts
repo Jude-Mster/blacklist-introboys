@@ -568,6 +568,13 @@ await ledger('end');
   const st1 = await call(bot, Ph, { action: 'status' });
   const ph = st1.devices.find((d) => d.platform === 'android'), pc = st1.devices.find((d) => d.platform === 'pc');
   ok(st1.mobile_allowed && ph && pc && ph.seat !== pc.seat, `the page shows one phone and one PC (${st1.devices.map((d) => d.platform).join(',')})`);
+  // the live view knows the phone
+  await app({ action: 'remotePush', state: { platform: 'android', state: 'READY' } }, tok);
+  const rvp = await call(bot, Ph, { action: 'remoteView', seat: ph.seat });
+  ok(rvp.platform === 'android' && rvp.devices.some((d) => d.platform === 'android') && rvp.devices.some((d) => d.platform === 'pc'), `the live view says which device is the phone (${rvp.platform})`);
+  await call(bot, Ph, { action: 'remoteCommand', cmd: 'start', seat: ph.seat, args: { dungeon: 'attack' } });
+  const pullP = await app({ action: 'remotePush', state: {} }, tok);
+  ok(pullP.commands.length === 1 && pullP.commands[0].args.dungeon === 'attack', 'the website can start auto attack on the phone');
   const adm = await call(bot, L, { action: 'adminList' });
   ok(adm.licenses.filter((l) => l.member_id === Ph.id).every((l) => l.mobile), 'the leader sees the switch on every device');
   // a device made later carries the switch

@@ -294,7 +294,7 @@ async function remoteRow(b, memberId: string, seat = 1) {
 function cleanArgs(cmd: string, a) {
   a = a && typeof a === 'object' ? a : {};
   if (cmd === 'start') {
-    const dungeon = a.dungeon === 'den' ? 'den' : 'labyrinth';
+    const dungeon = a.dungeon === 'den' ? 'den' : a.dungeon === 'attack' ? 'attack' : 'labyrinth';     // 6.47: attack = auto attack (phone)
     const runs = Number.isInteger(Number(a.runs)) ? Math.max(0, Math.min(999, Number(a.runs))) : 1;
     const startBoss = Number.isInteger(Number(a.start_boss)) ? Math.max(1, Math.min(5, Number(a.start_boss))) : 1;
     return { dungeon, runs, start_boss: startBoss };
@@ -477,7 +477,9 @@ async function remoteView(b, me, p) {
   const cmds = await memo('bcmdv:' + me.id, CMD_VIEW_MS, async () => (await E.BotCommand.filter({ member_id: me.id }, { sort: '-created_date', limit: 40 })).items);
   const items = cmds.filter((c) => seatOf(c) === seat).slice(0, 8);
   return Response.json({
-    seat, devices: all.map((l) => ({ seat: seatOf(l), label: seatName(l), device_tag: l.hwid_hash ? deviceTag(l.hwid_hash) : '', active: licenseState(l).active, online: onlineSeat(seatOf(l)) })),
+    // 6.47: platform: what the device is locked to (pc or android); a phone also says so in its reports
+    seat, platform: (state && state.platform === 'android') || (lic && lic.platform === 'android') ? 'android' : 'pc',
+    devices: all.map((l) => ({ seat: seatOf(l), label: seatName(l), device_tag: l.hwid_hash ? deviceTag(l.hwid_hash) : '', active: licenseState(l).active, online: onlineSeat(seatOf(l)), platform: l.hwid_hash ? (l.platform === 'android' ? 'android' : 'pc') : '' })),
     licensed: st.active, device_bound: !!(lic && lic.hwid_hash), online, updated_at: row.updated_at || null,
     state: online ? state : null, log: online ? (row.log || '') : '', picture: online && picFresh && picData ? picData : null, picture_url: online && picFresh && !picData ? row.picture_url || null : null, picture_at: picFresh ? row.picture_at : null,
     picture_type: picFresh ? (row.picture_type || 'jpeg') : null, picture_note: online && !picFresh ? (row.picture_note || 'waiting for the first picture') : '',

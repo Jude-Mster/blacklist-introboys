@@ -145,6 +145,7 @@ function Devices({ data, onChange }) {
                 <span className={cn("rounded-[3px] border px-1.5 py-px text-[11px] font-bold uppercase", d.active ? "border-white/70 text-white" : "border-ember/60 text-ember")}>
                   {d.active ? `${fmt(d.days_left)} day${d.days_left === 1 ? "" : "s"}` : d.revoked ? "Switched off" : "No days"}
                 </span>
+                {d.device_bound && <span className={cn("rounded-[3px] border px-1.5 py-px text-[11px] font-bold uppercase", isPhone(d) ? "border-gold/70 text-gold" : "border-white/40 text-mist")}>{isPhone(d) ? "Mobile" : "PC"}</span>}
                 {d.online && <span className="ml-auto flex items-center gap-1.5 text-xs text-mist"><span className="h-2 w-2 rounded-full bg-emerald-400" aria-hidden="true" /> App running</span>}
               </div>
               <p className="mt-1 text-mist">

@@ -1,8 +1,8 @@
 {
-  "versionCode": 9,
-  "versionName": "1.1.2",
+  "versionCode": 11,
+  "versionName": "1.2.0",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "28986f7c8b9a538668cb3a6688be756f79c452dee497656cdb6752ebbb6257f1",
-  "size": 12391604,
-  "notes": "The bubble panel stays folded while you move bubbles. The floating S needs an active license."
+  "sha256": "5cbe97b9a1dd2715d9058e87dba68b6368fd2fe4bace228d95184bfe7ad7ebda",
+  "size": 12600500,
+  "notes": "New floating panel: boss HP, position, live log, Attack / Labyrinth / Den, runs, totals. Camera area, move pad and the camera fix after a teleport. Screen sharing for the website's live view."
 }
