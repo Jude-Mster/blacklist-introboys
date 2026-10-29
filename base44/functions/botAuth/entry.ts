@@ -9,7 +9,7 @@ import { memo, bust } from '../../shared/memo.ts';
 import {
   TICKET_TTL_S, CHECK_EVERY_S, BOT_SESSION_DAYS, CODE_TTL_MS, DAY_MS,
   cleanHwid, cleanNonce, hwHash, deviceTag, newUserCode, normCode, text, siteUrl,
-  getLicense, getLicenses, licenseState, licenseSummary, memberSummary, grantDays, moveDays, seatOf, seatName, MAX_SEATS,
+  getLicense, getLicenses, licenseState, licenseSummary, mobileOn, memberSummary, grantDays, moveDays, seatOf, seatName, MAX_SEATS,
   logEvent, botSession, killBotSessions, signTicket, signText, signingConfigured,
   START_PER_IP, START_WINDOW_MS, POLL_PER_IP_PER_MIN, clientIp, ipHash, memLimit
 } from '../../shared/botLicense.ts';
@@ -193,7 +193,7 @@ async function check(b, s, p) {
   // 6.47: the phone app says so. The Guild Leader switches the phone Assistant on per member (Admin Hall); the member still needs days.
   const phone = p.platform === 'android';
   const platform = phone ? 'android' : 'pc';
-  if (phone && all.length && !all.some((l) => l.mobile)) {
+  if (phone && all.length && !mobileOn(member, all)) {
     return Response.json({ licensed: false, reason: 'mobile_off', error: 'The phone Assistant is not switched on for you yet. Ask the Guild Leader to turn it on in the Admin Hall.', days_left: 0, expires_at: null, ...who, check_every: CHECK_EVERY_S });
   }
   let lic = all.find((l) => l.hwid_hash === s.hwid_hash) || null;
@@ -529,7 +529,7 @@ async function status(b, me) {
   return Response.json({
     // 6.41: `license` is the member as a whole (best device); `devices` lists each device with its own days
     license: sum, devices, max_devices: MAX_SEATS, app_online: devices.some((d) => d.online),
-    mobile_allowed: all.some((l) => l.mobile),       // 6.47: the Guild Leader switched the phone Assistant on for this member
+    mobile_allowed: mobileOn(me, all),       // 6.47: the Guild Leader switched the phone Assistant on for this member
     can_reset: devices.some((d) => d.can_reset), next_reset_at: null,
     shop_items: shop.filter((it) => (it.bot_days || 0) > 0).map((it) => ({ id: it.id, name: it.name, days: it.bot_days }))
   });
@@ -561,7 +561,7 @@ async function describe(b, me, p) {
     code: row.user_code, device_tag: deviceTag(row.hwid_hash), app_version: row.app_version || '',
     platform: row.platform === 'android' ? 'android' : 'pc',
     // 6.47: a phone asking while the Guild Leader hasn't switched the phone Assistant on for this member
-    mobile_off: row.platform === 'android' && all.length > 0 && !all.some((l) => l.mobile),
+    mobile_off: row.platform === 'android' && all.length > 0 && !mobileOn(me, all),
     // 6.41: this PC already has its device, or will take a free one; otherwise every device with days is locked elsewhere
     device: mine ? seatName(mine) : free ? seatName(free) : '',
     other_device: !mine && !free && all.some((l) => licenseState(l).active),
@@ -640,7 +640,12 @@ async function admin(b, me, action: string, p) {
     const { items: sess } = await E.BotSession.filter({}, { limit: 500 });
     const online = new Set(sess.filter((x) => minutesAgo(x.last_seen_at, 5)).map((x) => `${x.member_id}|${x.hwid_hash}`));
     const { items: events } = await E.BotEvent.filter({}, { sort: '-created_date', limit: 40 });
+    // 6.47: everyone the phone Assistant is switched on for (with or without a license yet)
+    const { items: phones } = await E.Member.filter({ assistant_mobile: true }, { limit: 500 });
+    const phoneIds = new Set([...phones.map((m) => String(m.discord_id || '')), ...items.filter((l) => l.mobile).map((l) => String(l.discord_id || ''))]);
     return Response.json({
+      phone_members: phones.map((m) => ({ member_id: m.id, discord_id: String(m.discord_id || ''), name: m.discord_name || '' })),
+      phone_ids: [...phoneIds].filter(Boolean),
       // 6.41: one line per device
       licenses: items.map((l) => ({ member_id: l.member_id, discord_id: l.discord_id, member_name: l.member_name, online: !!l.hwid_hash && online.has(`${l.member_id}|${l.hwid_hash}`), hwid_resets: l.hwid_resets || 0, ...licenseSummary(l) }))
         .sort((a, c) => String(a.member_name).localeCompare(String(c.member_name)) || a.seat - c.seat),
@@ -713,6 +718,18 @@ async function admin(b, me, action: string, p) {
   const target = p.discordId ? await getMemberByDiscordId(b, String(p.discordId)) : null;
   if (!target) throw new UserError('No member with that Discord ID.', 404);
 
+  // 6.47: the phone Assistant, on or off for this member (no license needed yet: they still buy days). Off signs their phones out.
+  if (action === 'adminMobile') {
+    const on = p.on === true;
+    await withMemberLock(b, target.id, async () => {
+      await E.Member.update(target.id, { assistant_mobile: on });
+      const all = await getLicenses(b, target.id);
+      for (const l of all) await E.BotLicense.update(l.id, { mobile: on });
+      if (!on) for (const l of all) if (l.hwid_hash && l.platform === 'android') await killBotSessions(b, target.id, l.hwid_hash);
+      await logEvent(b, target, 'mobile', `phone Assistant ${on ? 'on' : 'off'} · by ${me.id}`);
+    });
+    return Response.json({ ok: true, mobile: on });
+  }
   if (action === 'adminGrant') {
     const days = Number(p.days);
     if (!Number.isInteger(days) || days === 0 || Math.abs(days) > 3650) throw new UserError('Days must be a whole number between -3650 and 3650 (not 0).');
@@ -730,16 +747,6 @@ async function admin(b, me, action: string, p) {
       await logEvent(b, target, 'revoke', `${text(p.reason, 100)} · by ${me.id}`);
     });
     return Response.json({ ok: true });
-  }
-  // 6.47: the phone Assistant, on or off for this member (all their devices). Off signs their phones out.
-  if (action === 'adminMobile') {
-    const on = p.on === true;
-    await withMemberLock(b, target.id, async () => {
-      for (const l of all) await E.BotLicense.update(l.id, { mobile: on });
-      if (!on) for (const l of all) if (l.hwid_hash && l.platform === 'android') await killBotSessions(b, target.id, l.hwid_hash);
-      await logEvent(b, target, 'mobile', `phone Assistant ${on ? 'on' : 'off'} · by ${me.id}`);
-    });
-    return Response.json({ ok: true, mobile: on });
   }
   if (action === 'adminRestore') {
     for (const l of all) await E.BotLicense.update(l.id, { revoked: false, revoked_reason: '' });

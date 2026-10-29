@@ -86,6 +86,9 @@ export function licenseState(lic, now = Date.now()) {
   return { active: true, days_left: Math.ceil((exp - now) / DAY_MS), reason: '' };
 }
 
+// 6.47: the phone Assistant is switched on for the member (on the member; devices made before carry it too)
+export const mobileOn = (member, all) => !!(member && member.assistant_mobile) || (all || []).some((l) => l.mobile);
+
 export function licenseSummary(lic) {
   const st = licenseState(lic);
   return {

@@ -68,6 +68,11 @@
     "access_checked_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "assistant_mobile": {
+      "type": "boolean",
+      "default": false,
+      "description": "6.47: the Guild Leader allowed the phone Assistant (Android app) for this member"
     }
   },
   "rls": {

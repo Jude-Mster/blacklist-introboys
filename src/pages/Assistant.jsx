@@ -286,17 +286,15 @@ function LinkApp({ code: initial, onDone, license }) {
 // 6.47: the phone Assistant (the BLACKLIST Android app). The Guild Leader switches it on per member; it runs on a device's days like a PC.
 function PhonePanel({ allowed }) {
   const { settings } = useGuild();
-  const url = settings && settings.app_download_url;
+  // only members the Guild Leader allowed see the phone app and its download
+  const url = (settings && settings.app_download_url) || "/app/introboys.apk";
+  if (!allowed) return null;
   return (
     <Panel title="On your phone">
       <div className="flex items-start gap-3 text-sm">
         <Smartphone className="mt-0.5 h-5 w-5 shrink-0 text-gold" aria-hidden="true" />
         <div className="min-w-0 space-y-2 text-mist">
-          {allowed ? (
-            <p><b className="text-white">The phone Assistant is on for you.</b> It presses the game buttons you put bubbles on (attack, skills, buffs, auto loot), on your phone, while you have days.</p>
-          ) : (
-            <p><b className="text-white">The phone Assistant is not switched on for you yet.</b> The Guild Leader turns it on for members in the Admin Hall. You still need days on a device for it to run.</p>
-          )}
+          <p><b className="text-white">The phone Assistant is on for you.</b> It presses the game buttons you put bubbles on (attack, skills, buffs, auto loot), on your phone, while you have days.</p>
           <ol className="list-decimal space-y-1.5 pl-5">
             <li>Install the BLACKLIST app on your Android phone (Android 10 or newer). You get two icons: BLACKLIST (the guild hall) and <b className="text-white">IntroBoys Assistant</b>.</li>
             <li>Open IntroBoys Assistant and tap <b className="text-white">Sign in with the guild</b>: this page opens with the code to approve.</li>
@@ -307,7 +305,7 @@ function PhonePanel({ allowed }) {
           <p className="text-xs">You set it up once per phone. New versions install from inside the app (an Update button appears) and keep your permission and bubbles. Don&apos;t uninstall to update.</p>
           <p className="text-xs">A phone takes one of your devices, like a PC. To run it next to your PC, move some days to a new device above.</p>
           <div className="flex flex-wrap gap-2 pt-1">
-            {url && <a href={url} className="btn-seal inline-flex h-9 items-center gap-1.5 px-3 text-sm"><Download className="h-4 w-4" aria-hidden="true" /> Download the app</a>}
+            <a href={url} className="btn-seal inline-flex h-9 items-center gap-1.5 px-3 text-sm"><Download className="h-4 w-4" aria-hidden="true" /> Download the app</a>
             {onAndroid() && <a href={OPEN_APP} className="btn-bronze inline-flex h-9 items-center px-3 text-sm">Open the Assistant</a>}
           </div>
         </div>

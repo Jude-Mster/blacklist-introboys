@@ -36,10 +36,23 @@ export default function BotSection() {
   const name = target ? target.discord_name || target.discord_id : "";
   const theirs = data && target ? data.licenses.filter((l) => l.discord_id === target.discord_id).sort((a, c) => a.seat - c.seat) : [];
   const mine = theirs.find((l) => String(l.seat) === seat) || theirs[0] || null;
+  // 6.47: who the phone Assistant is switched on for (with or without a license yet)
+  const phoneIds = new Set((data && data.phone_ids) || []);
+  const phoneOn = !!(target && phoneIds.has(String(target.discord_id)));
+  const togglePhone = async (who, on) => {
+    setBusy(true); setError(""); setMsg("");
+    const nm = who.discord_name || who.member_name || who.discord_id;
+    try {
+      await base44.functions.invoke("botAuth", { action: "adminMobile", discordId: who.discord_id, on });
+      setMsg(on ? `The phone Assistant is on for ${nm}.` : `The phone Assistant is off for ${nm} (their phone is signed out).`);
+      await load();
+    } catch (e) { setError(errorText(e, "That didn't work.")); }
+    finally { setBusy(false); }
+  };
 
   return (
     <Panel title="IntroBoys Assistant licenses">
-      <p className="mb-3 text-sm text-mist">Members buy days in the shop (add an item there with "Assistant days"). Here you can give or take days, switch a license off, free its locked PC or phone, and allow the phone Assistant (Android app) for a member.</p>
+      <p className="mb-3 text-sm text-mist">Members buy days in the shop (add an item there with "Assistant days"). Here you can give or take days, switch a license off, free its locked PC or phone, and allow the phone Assistant (Android app) for any member: search them above, or use Phone on/off in the list below.</p>
       {target ? <SelectedMember m={target} onClear={() => { setTarget(null); setMsg(""); setError(""); }} /> : <MemberSearch onSelect={(m) => { setTarget(m); setSeat("1"); }} />}
       {target && (
         <div className="mt-3 space-y-3 text-sm">
@@ -50,19 +63,17 @@ export default function BotSection() {
               ))}
             </ul>
           )}
-          {theirs.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 rounded-md border border-bronze/40 bg-black/30 p-2.5">
-              <span className="min-w-0 flex-1 text-mist">
-                <b className="text-white">Phone Assistant:</b> {theirs.some((l) => l.mobile) ? <span className="font-bold text-gold">on</span> : "off"}
-                <span className="block text-xs">The Android app. {name} still needs days on a device for it to run.</span>
-              </span>
-              {theirs.some((l) => l.mobile) ? (
-                <button disabled={busy} onClick={() => act("adminMobile", { on: false }, `The phone Assistant is off for ${name} (their phone is signed out).`)} className="btn-bronze h-10 px-4 text-sm !text-ember">Switch phone off</button>
-              ) : (
-                <button disabled={busy} onClick={() => act("adminMobile", { on: true }, `The phone Assistant is on for ${name}.`)} className="btn-seal h-10 px-4 text-sm">Allow on phone</button>
-              )}
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-bronze/40 bg-black/30 p-2.5">
+            <span className="min-w-0 flex-1 text-mist">
+              <b className="text-white">Phone Assistant:</b> {phoneOn ? <span className="font-bold text-gold">on</span> : "off"}
+              <span className="block text-xs">The Android app. {name} sees the download on their Assistant page, and still needs days on a device for it to run.</span>
+            </span>
+            {phoneOn ? (
+              <button disabled={busy || !data} onClick={() => togglePhone(target, false)} className="btn-bronze h-10 px-4 text-sm !text-ember">Switch phone off</button>
+            ) : (
+              <button disabled={busy || !data} onClick={() => togglePhone(target, true)} className="btn-seal h-10 px-4 text-sm">Allow on phone</button>
+            )}
+          </div>
           {theirs.length > 0 && (
             <div>
               <label htmlFor="bot-seat" className="label">Device</label>
@@ -111,10 +122,18 @@ export default function BotSection() {
                 <span className={cn("rounded-[3px] border px-1.5 py-px text-[11px] font-bold uppercase", l.active ? "border-white/70 text-white" : "border-ember/60 text-ember")}>
                   {l.active ? `${l.days_left} d` : l.revoked ? "off" : "expired"}
                 </span>
-                <span className="text-xs text-mist">{l.device_bound ? where(l) : "no device"}{l.mobile ? " · phone allowed" : ""}{l.online ? " · running" : ""}</span>
+                <span className="text-xs text-mist">{l.device_bound ? where(l) : "no device"}{l.online ? " · running" : ""}</span>
+                <button disabled={busy} onClick={() => togglePhone(l, !phoneIds.has(String(l.discord_id)))}
+                  title={phoneIds.has(String(l.discord_id)) ? "Switch the phone Assistant off" : "Allow the phone Assistant"}
+                  className={cn("rounded-[3px] border px-1.5 py-px text-[11px] font-bold uppercase", phoneIds.has(String(l.discord_id)) ? "border-gold/70 text-gold" : "border-bronze/50 text-mist hover:text-gold")}>
+                  {phoneIds.has(String(l.discord_id)) ? "Phone on" : "Phone off"}
+                </button>
               </li>
             ))}
           </ul>
+          {(data.phone_members || []).some((m) => !data.licenses.some((l) => l.discord_id === m.discord_id)) && (
+            <p className="mt-2 text-xs text-mist">Phone allowed, no license yet: {data.phone_members.filter((m) => !data.licenses.some((l) => l.discord_id === m.discord_id)).map((m) => m.name || m.discord_id).join(", ")}</p>
+          )}
           {data.events.length > 0 && (
             <details className="mt-2">
               <summary className="cursor-pointer text-mist hover:text-gold">Recent activity</summary>

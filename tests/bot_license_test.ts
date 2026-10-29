@@ -538,6 +538,9 @@ await ledger('end');
 
 // ---------- 6.47: the phone Assistant ----------
 {
+  const Nl = await member('NoLic', START);
+  const onNl = await call(bot, L, { action: 'adminMobile', discordId: Nl.discord_id, on: true });
+  ok(onNl.ok && (await call(bot, Nl, { action: 'status' })).mobile_allowed === true, 'the phone Assistant can be switched on before the member has a license');
   const Ph = await member('Phoebe', START);
   const PC = hex(32), PHONE = hex(32);
   const phoneCheck = (token, hwid, nonce = hex(16)) => app({ action: 'check', hwid, nonce, platform: 'android' }, token).then((r) => ({ ...r, nonce }));
@@ -556,6 +559,8 @@ await ledger('end');
   ok((await call(bot, Ph, { action: 'adminMobile', discordId: Ph.discord_id, on: true })).status === 403, 'only the Guild Leader can switch it on');
   const on = await call(bot, L, { action: 'adminMobile', discordId: Ph.discord_id, on: true });
   ok(on.ok && on.mobile === true, 'the Guild Leader switches it on');
+  const al = await call(bot, L, { action: 'adminList' });
+  ok(al.phone_ids.includes(Ph.discord_id), 'the leader list shows who has the phone Assistant');
   const run = await phoneCheck(tok, PHONE);
   ok(run.licensed && !!(await verifyTicket(run.ticket, PHONE, run.nonce)), 'now the phone runs with a signed ticket');
   const pcIn = await signIn(Ph, PC);
