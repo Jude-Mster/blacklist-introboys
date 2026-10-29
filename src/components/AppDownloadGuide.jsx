@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/compone
 // The same install steps shown by the app prompt card (src/components/AppPrompt.jsx),
 // reused here so the "Download app" item in the More menu shows them too.
 const STEPS = [
-  { icon: FileDown, title: "Open the downloaded file", detail: "It's small (about 1 MB). Tap it in the notification bar, or tap Open. If Chrome asks, tap Download anyway." },
+  { icon: FileDown, title: "Open the downloaded file", detail: "It's about 12 MB. Tap it in the notification bar, or tap Open. If Chrome asks, tap Download anyway." },
   { icon: ShieldCheck, title: "If asked, allow your browser to install apps", detail: "First time only: tap Settings, turn on 'Allow from this source', then go back." },
   { icon: PackageCheck, title: "Tap Install, then Open", detail: "If Play Protect warns about an unknown app, tap More details, then Install anyway. The app icon appears on your home screen." }
 ];

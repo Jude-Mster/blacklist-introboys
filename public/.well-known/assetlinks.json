@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.blacklistintroboys.guild",
+      "sha256_cert_fingerprints": [
+        "00:14:12:F3:99:A4:E2:DB:33:41:1A:50:C7:C1:DE:2C:3E:39:5E:CB:8A:C0:E9:7E:53:55:DD:0B:45:06:24:48"
+      ]
+    }
+  }
+]

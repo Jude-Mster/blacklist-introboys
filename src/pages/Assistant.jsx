@@ -297,11 +297,14 @@ function PhonePanel({ allowed }) {
           ) : (
             <p><b className="text-white">The phone Assistant is not switched on for you yet.</b> The Guild Leader turns it on for members in the Admin Hall. You still need days on a device for it to run.</p>
           )}
-          <ol className="list-decimal space-y-1 pl-5">
-            <li>Install the BLACKLIST app on your Android phone (Android 10 or newer).</li>
-            <li>Open <b className="text-white">IntroBoys Assistant</b> (its own icon) and sign in: this page opens with the code to approve.</li>
-            <li>Switch on the tap permission, place your bubbles over the game, and start.</li>
+          <ol className="list-decimal space-y-1.5 pl-5">
+            <li>Install the BLACKLIST app on your Android phone (Android 10 or newer). You get two icons: BLACKLIST (the guild hall) and <b className="text-white">IntroBoys Assistant</b>.</li>
+            <li>Open IntroBoys Assistant and tap <b className="text-white">Sign in with the guild</b>: this page opens with the code to approve.</li>
+            <li><b className="text-white">Allow restricted settings</b> (Android 13 and newer): Android blocks the tap permission for apps installed from a file. Tap <b className="text-white">App info</b> in the app, then the <b className="text-white">⋮</b> at the top right, then <b className="text-white">Allow restricted settings</b>. If there&apos;s no such option yet, do step 4 once (Android says it was denied) and come back.</li>
+            <li>Tap <b className="text-white">Accessibility</b> in the app, then Installed apps, then <b className="text-white">IntroBoys Assistant taps</b>, and switch it on.</li>
+            <li>Tap <b className="text-white">Show the floating S</b>, open the game, tap the S, then Bubbles: drag a bubble onto each game button and Save. Then tap the S and Start.</li>
           </ol>
+          <p className="text-xs">You set it up once per phone. New versions install from inside the app (an Update button appears) and keep your permission and bubbles. Don&apos;t uninstall to update.</p>
           <p className="text-xs">A phone takes one of your devices, like a PC. To run it next to your PC, move some days to a new device above.</p>
           <div className="flex flex-wrap gap-2 pt-1">
             {url && <a href={url} className="btn-seal inline-flex h-9 items-center gap-1.5 px-3 text-sm"><Download className="h-4 w-4" aria-hidden="true" /> Download the app</a>}
