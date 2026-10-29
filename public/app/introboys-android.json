@@ -1,8 +1,8 @@
 {
-  "versionCode": 28,
-  "versionName": "1.4.0",
+  "versionCode": 29,
+  "versionName": "1.4.1",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "5781983c2b0d071c40cd864725e77a3451879ea36255371bee903f985bb50e5c",
-  "size": 24889699,
-  "notes": "After a kill: loots and goes straight on to the next boss (no more 'Object reference' stop). Finds the mini-map numbers on any phone screen. Walks round walls instead of giving up. Never taps its own floating panel. A dead boss is no longer fought for minutes."
+  "sha256": "034e6dd3c0ce64d0a0e1671e141bcfd5cf31d04688fc99ca4167a255573f3ae9",
+  "size": 24901987,
+  "notes": "Boss 4 to boss 5: walks down the middle of the Labyrinth first, no more walls. The return scroll presses its confirm box and checks you are in town. Long boss fights (up to 8 minutes) are no longer cut off."
 }
