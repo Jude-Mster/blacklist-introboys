@@ -1,8 +1,8 @@
 {
-  "versionCode": 32,
-  "versionName": "1.4.4",
+  "versionCode": 33,
+  "versionName": "1.4.5",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "b97c9e3f85e72852b3449c491d4f25c6206c802976804c7bf48989696e123b21",
-  "size": 24922467,
-  "notes": "Cloud / small phones: the camera turns to the gate with long slow drags, learns this phone's turn once and replays it every run. No false 'in town' from a misread number."
+  "sha256": "63dc15a0cc2ce1f77b11f40dfecdb221f0bf969f67105fcf88f7eb9a31737afd",
+  "size": 24930659,
+  "notes": "Cloud / slow phones run without stopping, zoom out fully and tilt the view up. The teleport no longer picks a chat line that mentions the Labyrinth."
 }
