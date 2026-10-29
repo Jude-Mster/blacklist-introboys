@@ -1,8 +1,8 @@
 {
-  "versionCode": 33,
-  "versionName": "1.4.5",
+  "versionCode": 34,
+  "versionName": "1.4.6",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "63dc15a0cc2ce1f77b11f40dfecdb221f0bf969f67105fcf88f7eb9a31737afd",
+  "sha256": "7676667d30944a6245068e6bfb2e9e8d1a57a677a5806cacc984c576d151a7f5",
   "size": 24930659,
-  "notes": "Cloud / slow phones run without stopping, zoom out fully and tilt the view up. The teleport no longer picks a chat line that mentions the Labyrinth."
+  "notes": "Cloud / small phones: the view now tilts up (it tilted to the ground in 1.4.5). Runs without stopping, zooms out fully, teleport ignores chat lines."
 }
