@@ -1,8 +1,8 @@
 {
-  "versionCode": 7,
-  "versionName": "1.1.0",
+  "versionCode": 8,
+  "versionName": "1.1.1",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "1c2edc936134620e52c3bedd760c383ec3a51fad6ee897e7f064774f9c1c5715",
-  "size": 12375142,
-  "notes": "Updates from inside the app, and a step-by-step first-time set-up."
+  "sha256": "feabdeed1bfc756563fb50d143a0456e22785582fec1162dcbda5f5d8dc157f4",
+  "size": 12387508,
+  "notes": "Bubble screen: close and save buttons always on top, remove one or all bubbles. The floating S never shows by itself and goes away when the screen turns off."
 }
