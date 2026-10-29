@@ -1,8 +1,8 @@
 {
-  "versionCode": 29,
-  "versionName": "1.4.1",
+  "versionCode": 30,
+  "versionName": "1.4.2",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "034e6dd3c0ce64d0a0e1671e141bcfd5cf31d04688fc99ca4167a255573f3ae9",
-  "size": 24901987,
-  "notes": "Boss 4 to boss 5: walks down the middle of the Labyrinth first, no more walls. The return scroll presses its confirm box and checks you are in town. Long boss fights (up to 8 minutes) are no longer cut off."
+  "sha256": "3057fa694595e37ac8432e93ff7016e4d6bef96061fc85fd75233e773757c6e1",
+  "size": 24910179,
+  "notes": "Finding the gate after the teleport works on small and cloud phones: the camera turn learns how far a drag turns the view on each screen and corrects itself. Plus 1.4.1: boss 4 to 5 down the middle, return scroll confirm, long fights."
 }
