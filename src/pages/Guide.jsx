@@ -10,7 +10,7 @@ import { WAR, warStatus, localTime } from "@/lib/war";
 import { cn } from "@/lib/utils";
 
 const WIKI = "https://wiki.wuxen2.com/";
-// Sections of the official Wuxen2 wiki, in the wiki's own menu order (checked 20 Oct 2026: the Holy Stone
+// Sections of the official Wuxen2 wiki, in the wiki's own menu order (checked again 29 Oct 2026: same menu, no NEW marks; checked 20 Oct 2026: the Holy Stone
 // Battle page is back; 16 Oct: Event Mall and Life or Death added).
 const PAGES = [
   { id: "outpost-war", label: "Regular Battle" },
@@ -20,7 +20,7 @@ const PAGES = [
   { id: "wing-enhance", label: "Wing Enhance" },
   { id: "upgrade", label: "Upgrade / Downgrade" },
   { id: "combine", label: "Combine" },
-  { id: "event-mall", label: "Event Mall", isNew: true },
+  { id: "event-mall", label: "Event Mall" },
   { id: "premium", label: "Premium" },
   { id: "battle-pass", label: "Battle Pass" },
   { id: "daily-quest", label: "Daily Quest" },
@@ -28,7 +28,7 @@ const PAGES = [
   { id: "mount", label: "Mount" },
   { id: "pet", label: "Pets" },
   { id: "labyrinth", label: "Labyrinth" },
-  { id: "life-or-death", label: "Life or Death", isNew: true },
+  { id: "life-or-death", label: "Life or Death" },
   { id: "golden-charm", label: "Gold Plate Scroll" },
   { id: "holy-stone", label: "Holy Stone Battle" },
   { id: "rank-buff", label: "Rank Buff" },
@@ -81,7 +81,7 @@ export default function Guide() {
             <Time label="Battle" value={`${localTime(gate + (WAR.battleMin - WAR.gateMin) * min)} to ${localTime(gate + (WAR.endMin - WAR.gateMin) * min)}`} />
           </dl>
         </div>
-        <p className="mt-2 text-xs text-mist/80">Regular Battle runs every hour. Times are for the next war, shown in your own time zone.</p>
+        <p className="mt-2 text-xs text-mist/80">Regular Battle runs every 2 hours (10-minute countdown, 3 minutes to get in, then 15 minutes of battle). Times are for the next war, shown in your own time zone.</p>
       </section>
 
       <section className="gw p-4" aria-label="Holy Stone Battle schedule">

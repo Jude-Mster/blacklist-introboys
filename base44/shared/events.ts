@@ -1,8 +1,9 @@
 // The guild's timed events, worked out on the server for push alerts. These must match the
 // website's own schedules in src/lib/war.js and src/lib/hsb.js.
-//   War (Regular Battle): the entrance opens at :30 of every hour, UTC.
+//   War (Regular Battle): the entrance opens at :30 of every EVEN hour (every 2 hours: 00:30, 02:30 ... 22:30), UTC.
 //   HSB: Wednesday 16:00-19:00 and Saturday 10:00-13:00, UTC.
 export const WAR_GATE_MIN = 30;
+export const WAR_EVERY_HOURS = 2;
 export const HSB_WINDOWS = [
   { day: 3, start: 16 },
   { day: 6, start: 10 }
@@ -14,7 +15,8 @@ export type GuildEvent = { kind: 'war' | 'hsb'; at: number; id: string };
 // Every event starting between `fromMs` and `toMs`.
 export function eventsBetween(fromMs: number, toMs: number): GuildEvent[] {
   const out: GuildEvent[] = [];
-  for (let h = Math.floor(fromMs / HOUR) - 1; h <= Math.floor(toMs / HOUR) + 1; h++) {
+  for (let h = Math.floor(fromMs / HOUR) - 2; h <= Math.floor(toMs / HOUR) + 1; h++) {
+    if (((h % WAR_EVERY_HOURS) + WAR_EVERY_HOURS) % WAR_EVERY_HOURS !== 0) continue;
     const at = h * HOUR + WAR_GATE_MIN * MIN;
     if (at >= fromMs && at <= toMs) out.push({ kind: 'war', at, id: `war:${at}` });
   }

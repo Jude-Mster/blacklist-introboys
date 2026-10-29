@@ -107,7 +107,7 @@ export default function NotificationSettings() {
 
   return (
     <Panel title="Notifications" data-notification-settings>
-      <Row icon={Swords} title="War alert" hint="Before the entrance opens, every hour.">
+      <Row icon={Swords} title="War alert" hint="Before the entrance opens, every 2 hours.">
         {prefs.war && <Minutes label="War alert time" value={prefs.warMin} choices={WAR_MIN_CHOICES} onChange={(warMin) => save({ warMin })} />}
         <Toggle label="War alert" on={prefs.war} onChange={(war) => save({ war })} />
       </Row>
