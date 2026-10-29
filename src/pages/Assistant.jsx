@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
-import { ArrowRight, CheckCircle2, Loader2, MonitorSmartphone, Pencil, ShieldCheck, Trash2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, Download, Loader2, MonitorSmartphone, Pencil, ShieldCheck, Smartphone, Trash2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import LanternSpinner from "@/components/LanternSpinner";
@@ -11,6 +11,10 @@ import RemotePanel from "@/components/assistant/RemotePanel";
 import LootPanel from "@/components/assistant/LootPanel";
 
 const fmt = (n) => Number(n || 0).toLocaleString();
+const isPhone = (d) => d && d.platform === "android";
+const onAndroid = () => typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent || "");
+// 6.47: opens the Assistant in the BLACKLIST Android app (or does nothing when it isn't installed)
+const OPEN_APP = "intent://assistant#Intent;scheme=introboys;package=com.blacklistintroboys.guild;end";
 const WHY = {
   no_license: "No license yet. Buy days in the guild shop.",
   expired: "Your Assistant time has run out. Buy more days in the guild shop.",
@@ -57,7 +61,7 @@ export default function Assistant() {
     <div className="mx-auto max-w-[44rem] space-y-5">
       <header className="text-center">
         <h1 className="font-heading text-3xl font-extrabold gilt-text">IntroBoys Assistant</h1>
-        <p className="mt-1 text-sm text-mist">The Labyrinth helper for your PC. Buy days in the guild shop, sign the app in with a code, and it runs for as long as your days last.</p>
+        <p className="mt-1 text-sm text-mist">The Labyrinth helper for your PC, and auto attack on your phone. Buy days in the guild shop, sign the app in with a code, and it runs for as long as your days last.</p>
       </header>
 
       {error && <p role="alert" className="rounded-md border border-ember/40 bg-ember/10 px-4 py-3 text-sm text-ember">{error}</p>}
@@ -65,6 +69,7 @@ export default function Assistant() {
         <>
           <LinkApp code={code} onDone={load} license={lic} />
           <Devices data={data} onChange={load} />
+          <PhonePanel allowed={!!data.mobile_allowed} />
           <RemotePanel licensed={!!(lic && lic.active)} />
           <LootPanel licensed={!!(data.devices && data.devices.length)} />
         </>
@@ -143,13 +148,13 @@ function Devices({ data, onChange }) {
                 {d.online && <span className="ml-auto flex items-center gap-1.5 text-xs text-mist"><span className="h-2 w-2 rounded-full bg-emerald-400" aria-hidden="true" /> App running</span>}
               </div>
               <p className="mt-1 text-mist">
-                {d.device_bound ? <>Locked to the PC with device ID <b className="font-mono text-gold">{d.device_tag}</b>.</> : "Not locked yet: the next PC that signs in without a device takes it."}
+                {d.device_bound ? <>Locked to the {isPhone(d) ? "phone" : "PC"} with device ID <b className="font-mono text-gold">{d.device_tag}</b>.</> : "Not locked yet: the next PC or phone that signs in without a device takes it."}
                 {d.active && <> Runs until {new Date(d.expires_at).toLocaleDateString()}.</>}
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {d.device_bound && (
                   <button onClick={() => reset(d)} disabled={!!busy} className="btn-bronze h-8 px-2.5 text-xs">
-                    {busy === `reset${d.seat}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Move to another PC"}
+                    {busy === `reset${d.seat}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : isPhone(d) ? "Move to another phone or PC" : "Move to another PC"}
                   </button>
                 )}
                 {d.seat > 1 && d.whole_days < 1 && (
@@ -247,7 +252,8 @@ function LinkApp({ code: initial, onDone, license }) {
     <Panel title="Sign in the app">
       {found ? (
         <div className="space-y-3 text-sm">
-          <p className="text-mist">An app on a PC is asking to sign in as you.</p>
+          <p className="text-mist">{found.platform === "android" ? "The Assistant on a phone" : "An app on a PC"} is asking to sign in as you.</p>
+          {found.mobile_off && <p className="text-ember">The phone Assistant isn&apos;t switched on for you yet, so it will sign in but not run. Ask the Guild Leader to allow it.</p>}
           <p className="rounded-md border border-bronze/50 bg-black/30 px-3 py-2 text-white">
             Device ID <b className="font-mono text-lg text-gold">{found.device_tag}</b>
             {found.app_version && <span className="ml-2 text-xs text-mist">app {found.app_version}</span>}
@@ -273,6 +279,36 @@ function LinkApp({ code: initial, onDone, license }) {
           {error && <p role="alert" className="text-sm text-ember">{error}</p>}
         </form>
       )}
+    </Panel>
+  );
+}
+
+// 6.47: the phone Assistant (the BLACKLIST Android app). The Guild Leader switches it on per member; it runs on a device's days like a PC.
+function PhonePanel({ allowed }) {
+  const { settings } = useGuild();
+  const url = settings && settings.app_download_url;
+  return (
+    <Panel title="On your phone">
+      <div className="flex items-start gap-3 text-sm">
+        <Smartphone className="mt-0.5 h-5 w-5 shrink-0 text-gold" aria-hidden="true" />
+        <div className="min-w-0 space-y-2 text-mist">
+          {allowed ? (
+            <p><b className="text-white">The phone Assistant is on for you.</b> It presses the game buttons you put bubbles on (attack, skills, buffs, auto loot), on your phone, while you have days.</p>
+          ) : (
+            <p><b className="text-white">The phone Assistant is not switched on for you yet.</b> The Guild Leader turns it on for members in the Admin Hall. You still need days on a device for it to run.</p>
+          )}
+          <ol className="list-decimal space-y-1 pl-5">
+            <li>Install the BLACKLIST app on your Android phone (Android 10 or newer).</li>
+            <li>Open <b className="text-white">IntroBoys Assistant</b> (its own icon) and sign in: this page opens with the code to approve.</li>
+            <li>Switch on the tap permission, place your bubbles over the game, and start.</li>
+          </ol>
+          <p className="text-xs">A phone takes one of your devices, like a PC. To run it next to your PC, move some days to a new device above.</p>
+          <div className="flex flex-wrap gap-2 pt-1">
+            {url && <a href={url} className="btn-seal inline-flex h-9 items-center gap-1.5 px-3 text-sm"><Download className="h-4 w-4" aria-hidden="true" /> Download the app</a>}
+            {onAndroid() && <a href={OPEN_APP} className="btn-bronze inline-flex h-9 items-center px-3 text-sm">Open the Assistant</a>}
+          </div>
+        </div>
+      </div>
     </Panel>
   );
 }

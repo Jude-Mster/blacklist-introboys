@@ -6,7 +6,9 @@ import MemberSearch, { SelectedMember } from "./MemberSearch";
 import { errorText } from "@/lib/GuildContext";
 import { cn } from "@/lib/utils";
 
-// Guild Leader: who holds an IntroBoys Assistant license, add or take away days, switch one off, move a PC.
+// Guild Leader: who holds an IntroBoys Assistant license, add or take away days, switch one off, move a PC,
+// and (6.47) switch the phone Assistant on for a member.
+const where = (l) => (l.device_bound ? `${l.platform === "android" ? "Phone" : "PC"} ${l.device_tag}` : "");
 export default function BotSection() {
   const [data, setData] = useState(null);
   const [target, setTarget] = useState(null);
@@ -37,16 +39,29 @@ export default function BotSection() {
 
   return (
     <Panel title="IntroBoys Assistant licenses">
-      <p className="mb-3 text-sm text-mist">Members buy days in the shop (add an item there with "Assistant days"). Here you can give or take days, switch a license off, or free its locked PC.</p>
+      <p className="mb-3 text-sm text-mist">Members buy days in the shop (add an item there with "Assistant days"). Here you can give or take days, switch a license off, free its locked PC or phone, and allow the phone Assistant (Android app) for a member.</p>
       {target ? <SelectedMember m={target} onClear={() => { setTarget(null); setMsg(""); setError(""); }} /> : <MemberSearch onSelect={(m) => { setTarget(m); setSeat("1"); }} />}
       {target && (
         <div className="mt-3 space-y-3 text-sm">
           {theirs.length === 0 ? <p className="text-mist">No license yet.</p> : (
             <ul className="space-y-0.5 text-mist">
               {theirs.map((l) => (
-                <li key={l.seat}><b className="text-white">{l.label}</b>: {l.active ? `${l.days_left} days left` : l.revoked ? "Switched off" : "No active days"}{l.device_bound ? ` · PC ${l.device_tag}` : " · no PC locked yet"}{l.online ? " · running" : ""}</li>
+                <li key={l.seat}><b className="text-white">{l.label}</b>: {l.active ? `${l.days_left} days left` : l.revoked ? "Switched off" : "No active days"}{l.device_bound ? ` · ${where(l)}` : " · no device locked yet"}{l.online ? " · running" : ""}</li>
               ))}
             </ul>
+          )}
+          {theirs.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-bronze/40 bg-black/30 p-2.5">
+              <span className="min-w-0 flex-1 text-mist">
+                <b className="text-white">Phone Assistant:</b> {theirs.some((l) => l.mobile) ? <span className="font-bold text-gold">on</span> : "off"}
+                <span className="block text-xs">The Android app. {name} still needs days on a device for it to run.</span>
+              </span>
+              {theirs.some((l) => l.mobile) ? (
+                <button disabled={busy} onClick={() => act("adminMobile", { on: false }, `The phone Assistant is off for ${name} (their phone is signed out).`)} className="btn-bronze h-10 px-4 text-sm !text-ember">Switch phone off</button>
+              ) : (
+                <button disabled={busy} onClick={() => act("adminMobile", { on: true }, `The phone Assistant is on for ${name}.`)} className="btn-seal h-10 px-4 text-sm">Allow on phone</button>
+              )}
+            </div>
           )}
           {theirs.length > 0 && (
             <div>
@@ -74,7 +89,7 @@ export default function BotSection() {
                   <button disabled={busy} onClick={() => act("adminRevoke", { reason }, `${name}'s license is switched off and the app signed out.`)} className="btn-bronze h-10 px-4 text-sm !text-ember">Switch off</button>
                 </>
               )}
-              <button disabled={busy || !mine.device_bound} onClick={() => act("adminReset", { seat: mine.seat }, `${name}'s PC lock is cleared on ${mine.label}.`)} className="btn-bronze h-10 px-4 text-sm">Free the locked PC ({mine.label})</button>
+              <button disabled={busy || !mine.device_bound} onClick={() => act("adminReset", { seat: mine.seat }, `${name}'s device lock is cleared on ${mine.label}.`)} className="btn-bronze h-10 px-4 text-sm">Free the locked {mine.platform === "android" ? "phone" : "PC"} ({mine.label})</button>
             </div>
           )}
           {msg && <p role="status" className="text-gold">{msg}</p>}
@@ -96,7 +111,7 @@ export default function BotSection() {
                 <span className={cn("rounded-[3px] border px-1.5 py-px text-[11px] font-bold uppercase", l.active ? "border-white/70 text-white" : "border-ember/60 text-ember")}>
                   {l.active ? `${l.days_left} d` : l.revoked ? "off" : "expired"}
                 </span>
-                <span className="text-xs text-mist">{l.device_bound ? `PC ${l.device_tag}` : "no PC"}{l.online ? " · running" : ""}</span>
+                <span className="text-xs text-mist">{l.device_bound ? where(l) : "no device"}{l.mobile ? " · phone allowed" : ""}{l.online ? " · running" : ""}</span>
               </li>
             ))}
           </ul>

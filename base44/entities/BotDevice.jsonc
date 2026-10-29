@@ -37,6 +37,10 @@
     "ip_hash": {
       "type": "string",
       "description": "6.31: hash of the connection that asked for the code (spam guard: at most 5 codes per connection per 10 minutes)"
+    },
+    "platform": {
+      "type": "string",
+      "description": "6.47: pc or android (the phone app says so)"
     }
   },
   "rls": {

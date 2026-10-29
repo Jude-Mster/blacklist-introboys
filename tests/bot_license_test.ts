@@ -536,4 +536,45 @@ await ledger('end');
   ok(adm.licenses.filter((l) => l.member_id === Mx.id).length === 5, 'the leader sees one line per device');
 }
 
+// ---------- 6.47: the phone Assistant ----------
+{
+  const Ph = await member('Phoebe', START);
+  const PC = hex(32), PHONE = hex(32);
+  const phoneCheck = (token, hwid, nonce = hex(16)) => app({ action: 'check', hwid, nonce, platform: 'android' }, token).then((r) => ({ ...r, nonce }));
+  await call(bot, L, { action: 'adminGrant', discordId: Ph.discord_id, days: 20 });
+  await call(bot, Ph, { action: 'moveDays', from: 1, to: 'new', days: 10 });
+  // the phone signs in like a PC; the sign-in page says it is a phone and that it is not switched on yet
+  const st = await app({ action: 'start', hwid: PHONE, app_version: '1.0.0', platform: 'android' });
+  const desc = await call(bot, Ph, { action: 'describe', code: st.user_code });
+  ok(desc.platform === 'android' && desc.mobile_off === true, `the sign-in page knows it is a phone that is not allowed yet (${desc.platform}/${desc.mobile_off})`);
+  await call(bot, Ph, { action: 'approve', code: st.user_code, deviceTag: st.device_tag });
+  const tok = (await app({ action: 'poll', device_secret: st.device_secret })).token;
+  const off = await phoneCheck(tok, PHONE);
+  ok(off.status === 200 && off.licensed === false && off.reason === 'mobile_off' && !off.ticket, `without the leader's switch the phone does not run (${off.reason})`);
+  const st0 = await call(bot, Ph, { action: 'status' });
+  ok(st0.mobile_allowed === false && st0.devices.every((d) => !d.device_bound), 'and it locks no device while it is off');
+  ok((await call(bot, Ph, { action: 'adminMobile', discordId: Ph.discord_id, on: true })).status === 403, 'only the Guild Leader can switch it on');
+  const on = await call(bot, L, { action: 'adminMobile', discordId: Ph.discord_id, on: true });
+  ok(on.ok && on.mobile === true, 'the Guild Leader switches it on');
+  const run = await phoneCheck(tok, PHONE);
+  ok(run.licensed && !!(await verifyTicket(run.ticket, PHONE, run.nonce)), 'now the phone runs with a signed ticket');
+  const pcIn = await signIn(Ph, PC);
+  ok((await check(pcIn.token, PC)).licensed, 'and the PC runs on the other device');
+  const st1 = await call(bot, Ph, { action: 'status' });
+  const ph = st1.devices.find((d) => d.platform === 'android'), pc = st1.devices.find((d) => d.platform === 'pc');
+  ok(st1.mobile_allowed && ph && pc && ph.seat !== pc.seat, `the page shows one phone and one PC (${st1.devices.map((d) => d.platform).join(',')})`);
+  const adm = await call(bot, L, { action: 'adminList' });
+  ok(adm.licenses.filter((l) => l.member_id === Ph.id).every((l) => l.mobile), 'the leader sees the switch on every device');
+  // a device made later carries the switch
+  await call(bot, Ph, { action: 'moveDays', from: 1, to: 'new', days: 1 });
+  ok((await call(bot, L, { action: 'adminList' })).licenses.filter((l) => l.member_id === Ph.id).length === 3 &&
+     (await call(bot, L, { action: 'adminList' })).licenses.filter((l) => l.member_id === Ph.id).every((l) => l.mobile), 'a new device keeps the phone switch');
+  // off again: the phone is signed out, the PC keeps running
+  await call(bot, L, { action: 'adminMobile', discordId: Ph.discord_id, on: false });
+  ok((await phoneCheck(tok, PHONE)).status === 401, 'switching it off signs the phone out');
+  ok((await check(pcIn.token, PC)).licensed, 'the PC keeps running');
+  // the PC app (no platform) is never asked about the switch
+  ok((await check(pcIn.token, PC)).reason !== 'mobile_off', 'the PC app is not affected');
+}
+
 done();

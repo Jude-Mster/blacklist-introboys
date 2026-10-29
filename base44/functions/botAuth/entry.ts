@@ -20,7 +20,7 @@ import { rankedMembers } from '../../shared/points.ts';
 //   the app, not signed in   start  poll              (device sign-in: the app shows a code, the member approves it on the site)
 //   the app, signed in       check  logout  update  remotePush  lootPush            (header X-Bot-Token; `check` returns the signed ticket the app needs to run)
 //   the site (Discord login) status describe approve resetDevice  remoteView remoteCommand
-//   the Guild Leader         adminList adminGrant adminRevoke adminRestore adminReset adminRelease adminReleases adminReleaseToggle
+//   the Guild Leader         adminList adminGrant adminRevoke adminRestore adminReset adminMobile adminRelease adminReleases adminReleaseToggle
 //
 // The app can only ever be told "yes" in a ticket signed by this function. See shared/botLicense.ts.
 
@@ -130,7 +130,7 @@ async function start(b, p, req) {
   if (!code) return fail('busy', 'Try again in a moment.', 429);
   const secretRaw = randomHex(32);
   await E.create({
-    device_hash: await sha256Hex(secretRaw), user_code: code, hwid_hash: hh, ip_hash: ih, app_version: text(p.app_version, 24),
+    device_hash: await sha256Hex(secretRaw), user_code: code, hwid_hash: hh, ip_hash: ih, app_version: text(p.app_version, 24), platform: p.platform === 'android' ? 'android' : 'pc',
     status: 'pending', member_id: '', expires_at: new Date(Date.now() + CODE_TTL_MS).toISOString()
   });
   return Response.json({
@@ -190,6 +190,12 @@ async function check(b, s, p) {
   const who = { name: member.discord_name || '', avatar_url: member.avatar_url || '' };
   let all = await getLicenses(b, member.id);
   if (all.some((l) => l.revoked)) return Response.json({ licensed: false, reason: 'revoked', days_left: 0, expires_at: null, ...who, check_every: CHECK_EVERY_S });
+  // 6.47: the phone app says so. The Guild Leader switches the phone Assistant on per member (Admin Hall); the member still needs days.
+  const phone = p.platform === 'android';
+  const platform = phone ? 'android' : 'pc';
+  if (phone && all.length && !all.some((l) => l.mobile)) {
+    return Response.json({ licensed: false, reason: 'mobile_off', error: 'The phone Assistant is not switched on for you yet. Ask the Guild Leader to turn it on in the Admin Hall.', days_left: 0, expires_at: null, ...who, check_every: CHECK_EVERY_S });
+  }
   let lic = all.find((l) => l.hwid_hash === s.hwid_hash) || null;
   if (!lic && all.some((l) => !l.hwid_hash && licenseState(l).active)) {
     await withMemberLock(b, member.id, async () => {
@@ -197,9 +203,9 @@ async function check(b, s, p) {
       lic = all.find((l) => l.hwid_hash === s.hwid_hash) || null;
       const free = lic ? null : all.find((l) => !l.hwid_hash && licenseState(l).active);
       if (free) {
-        await E.BotLicense.update(free.id, { hwid_hash: s.hwid_hash, hwid_bound_at: nowIso() });
-        await logEvent(b, member, 'bind', `device ${seatOf(free)} · PC ${deviceTag(s.hwid_hash)}`);
-        lic = { ...free, hwid_hash: s.hwid_hash };
+        await E.BotLicense.update(free.id, { hwid_hash: s.hwid_hash, hwid_bound_at: nowIso(), platform });
+        await logEvent(b, member, 'bind', `device ${seatOf(free)} · ${phone ? 'phone' : 'PC'} ${deviceTag(s.hwid_hash)}`);
+        lic = { ...free, hwid_hash: s.hwid_hash, platform };
       }
     });
   }
@@ -213,7 +219,7 @@ async function check(b, s, p) {
   }
   const st = licenseState(lic);
   if (!st.active) return Response.json({ licensed: false, reason: st.reason, days_left: 0, expires_at: lic.expires_at || null, device: seatOf(lic), ...who, check_every: CHECK_EVERY_S });
-  if (!minutesAgo(lic.last_seen_at, 5)) await E.BotLicense.update(lic.id, { last_seen_at: nowIso() }).catch(() => {});
+  if (!minutesAgo(lic.last_seen_at, 5) || (lic.platform || 'pc') !== platform) await E.BotLicense.update(lic.id, { last_seen_at: nowIso(), platform }).catch(() => {});
 
   const now = Math.floor(Date.now() / 1000);
   const exp = Math.floor(Date.parse(lic.expires_at) / 1000);
@@ -523,6 +529,7 @@ async function status(b, me) {
   return Response.json({
     // 6.41: `license` is the member as a whole (best device); `devices` lists each device with its own days
     license: sum, devices, max_devices: MAX_SEATS, app_online: devices.some((d) => d.online),
+    mobile_allowed: all.some((l) => l.mobile),       // 6.47: the Guild Leader switched the phone Assistant on for this member
     can_reset: devices.some((d) => d.can_reset), next_reset_at: null,
     shop_items: shop.filter((it) => (it.bot_days || 0) > 0).map((it) => ({ id: it.id, name: it.name, days: it.bot_days }))
   });
@@ -552,6 +559,9 @@ async function describe(b, me, p) {
   const free = all.find((l) => !l.hwid_hash && licenseState(l).active);
   return Response.json({
     code: row.user_code, device_tag: deviceTag(row.hwid_hash), app_version: row.app_version || '',
+    platform: row.platform === 'android' ? 'android' : 'pc',
+    // 6.47: a phone asking while the Guild Leader hasn't switched the phone Assistant on for this member
+    mobile_off: row.platform === 'android' && all.length > 0 && !all.some((l) => l.mobile),
     // 6.41: this PC already has its device, or will take a free one; otherwise every device with days is locked elsewhere
     device: mine ? seatName(mine) : free ? seatName(free) : '',
     other_device: !mine && !free && all.some((l) => licenseState(l).active),
@@ -720,6 +730,16 @@ async function admin(b, me, action: string, p) {
       await logEvent(b, target, 'revoke', `${text(p.reason, 100)} · by ${me.id}`);
     });
     return Response.json({ ok: true });
+  }
+  // 6.47: the phone Assistant, on or off for this member (all their devices). Off signs their phones out.
+  if (action === 'adminMobile') {
+    const on = p.on === true;
+    await withMemberLock(b, target.id, async () => {
+      for (const l of all) await E.BotLicense.update(l.id, { mobile: on });
+      if (!on) for (const l of all) if (l.hwid_hash && l.platform === 'android') await killBotSessions(b, target.id, l.hwid_hash);
+      await logEvent(b, target, 'mobile', `phone Assistant ${on ? 'on' : 'off'} · by ${me.id}`);
+    });
+    return Response.json({ ok: true, mobile: on });
   }
   if (action === 'adminRestore') {
     for (const l of all) await E.BotLicense.update(l.id, { revoked: false, revoked_reason: '' });

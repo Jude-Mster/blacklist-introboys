@@ -95,6 +95,9 @@ export function licenseSummary(lic) {
     total_days: lic ? lic.total_days || 0 : 0,
     revoked: !!(lic && lic.revoked), revoked_reason: lic && lic.revoked ? lic.revoked_reason || '' : '',
     device_bound: !!(lic && lic.hwid_hash), device_tag: lic && lic.hwid_hash ? deviceTag(lic.hwid_hash) : '',
+    // 6.47: a device is locked to a PC or a phone; the phone Assistant is switched on per member by the Guild Leader
+    platform: lic && lic.hwid_hash ? (lic.platform === 'android' ? 'android' : 'pc') : '',
+    mobile: !!(lic && lic.mobile),
     last_seen_at: lic ? lic.last_seen_at || null : null
   };
 }
@@ -152,7 +155,7 @@ export async function grantDays(b, member, days: number, kind: string, byId: str
     undo = { id: lic.id, created: false, expires_at: lic.expires_at || '', total_days: lic.total_days || 0 };
     row = await E.update(lic.id, { expires_at: next, total_days: (lic.total_days || 0) + Math.max(0, days), member_name: name, discord_id: String(member.discord_id || '') });
   } else {
-    row = await E.create({ member_id: member.id, seat: pick.seat, label: '', discord_id: String(member.discord_id || ''), member_name: name, expires_at: next, total_days: Math.max(0, days), hwid_hash: '', hwid_resets: 0, revoked: false });
+    row = await E.create({ member_id: member.id, seat: pick.seat, label: '', discord_id: String(member.discord_id || ''), member_name: name, expires_at: next, total_days: Math.max(0, days), hwid_hash: '', hwid_resets: 0, revoked: false, mobile: all.some((l) => l.mobile) });
     undo = { id: row.id, created: true };
   }
   await logEvent(b, member, kind, `${days > 0 ? '+' : ''}${days} days · device ${pick.seat}${note ? ' · ' + note : ''} · until ${next}${byId ? ' · by ' + byId : ''}`);
@@ -223,7 +226,7 @@ export async function moveDays(b, member, from: number, to: number | 'new', days
   let row;
   try {
     row = dst ? await E.update(dst.id, { expires_at: dstExp })
-      : await E.create({ member_id: member.id, seat: pick.seat, label: '', discord_id: String(member.discord_id || ''), member_name: member.discord_name || '', expires_at: dstExp, total_days: 0, hwid_hash: '', hwid_resets: 0, revoked: false });
+      : await E.create({ member_id: member.id, seat: pick.seat, label: '', discord_id: String(member.discord_id || ''), member_name: member.discord_name || '', expires_at: dstExp, total_days: 0, hwid_hash: '', hwid_resets: 0, revoked: false, mobile: all.some((l) => l.mobile) });
   } catch (e) {
     await E.update(src.id, { expires_at: src.expires_at }).catch(() => {});      // put the days back
     throw e;

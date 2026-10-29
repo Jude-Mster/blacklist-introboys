@@ -58,6 +58,15 @@
     "label": {
       "type": "string",
       "description": "6.41: the member's own name for the device, e.g. Laptop"
+    },
+    "mobile": {
+      "type": "boolean",
+      "default": false,
+      "description": "6.47: the Guild Leader allowed the phone Assistant for this member (set on all the member's devices)"
+    },
+    "platform": {
+      "type": "string",
+      "description": "6.47: what the device is locked to: pc or android"
     }
   },
   "rls": {
