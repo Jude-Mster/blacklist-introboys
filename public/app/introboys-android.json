@@ -1,8 +1,8 @@
 {
-  "versionCode": 27,
-  "versionName": "1.3.9",
+  "versionCode": 28,
+  "versionName": "1.4.0",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "02bf1b8e3968d3da9b2d01a4acf6a72e5cd4ffce095d6ee090b9caa7048560b7",
-  "size": 24856931,
-  "notes": "Updates now also come from the app file the Guild Leader links on the site. Fights don't stop every few seconds, a boss is only left when three looks agree it is dead, cancelled taps don't stop the run, better HP reading, teleport tries twice, the log is shared as a file."
+  "sha256": "5781983c2b0d071c40cd864725e77a3451879ea36255371bee903f985bb50e5c",
+  "size": 24889699,
+  "notes": "After a kill: loots and goes straight on to the next boss (no more 'Object reference' stop). Finds the mini-map numbers on any phone screen. Walks round walls instead of giving up. Never taps its own floating panel. A dead boss is no longer fought for minutes."
 }
