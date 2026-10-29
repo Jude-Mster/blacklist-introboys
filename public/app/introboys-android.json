@@ -1,8 +1,8 @@
 {
-  "versionCode": 25,
-  "versionName": "1.3.7",
+  "versionCode": 26,
+  "versionName": "1.3.8",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "089d27928e03bcb7a2536db88ffa754b0ff000d91684eacdc715a584269797ad",
-  "size": 24803424,
-  "notes": "Knows where you are (town, Labyrinth, Den) and shows it on the panel. Kicked out or back in town: teleports again and starts at boss 1. When stuck, checks which way the camera looks before walking round. Den spot 1205,2383."
+  "sha256": "fa60c837d520bc9da466d0d1fdce3d090bc853903c0bc662bb9abb45a46ce176",
+  "size": 24848739,
+  "notes": "Fights no longer stop every few seconds to check the boss, and a boss is only left when three looks agree it is dead. Cancelled taps don't stop the run. Better HP bar reading on other phones. Teleport tries twice. Share the log sends the whole log as a file."
 }
