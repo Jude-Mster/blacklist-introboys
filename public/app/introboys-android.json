@@ -1,8 +1,8 @@
 {
-  "versionCode": 30,
-  "versionName": "1.4.2",
+  "versionCode": 31,
+  "versionName": "1.4.3",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "3057fa694595e37ac8432e93ff7016e4d6bef96061fc85fd75233e773757c6e1",
-  "size": 24910179,
-  "notes": "Finding the gate after the teleport works on small and cloud phones: the camera turn learns how far a drag turns the view on each screen and corrects itself. Plus 1.4.1: boss 4 to 5 down the middle, return scroll confirm, long fights."
+  "sha256": "7c53bcbd97f1b0ce59488fa19823d6e4a5ba39c61af29b52dc7ff2609bb60930",
+  "size": 24918371,
+  "notes": "Cloud and slow phones: the direction is measured from settled positions with longer stick pushes, so the camera no longer circles at the gate. Small screens read the mini-map numbers at 3x."
 }
