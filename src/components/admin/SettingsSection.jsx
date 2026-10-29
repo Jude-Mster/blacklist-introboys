@@ -34,9 +34,10 @@ export default function SettingsSection() {
   const save = (e) => {
     e.preventDefault();
     call(async () => {
-      await base44.functions.invoke("adminAction", {
+      const res = await base44.functions.invoke("adminAction", {
         action: "updateSettings",
         settings: {
+          app_recheck: true,
           guild_id: s.guild_id,
           officer_role_id: s.officer_role_id,
           discord_invite_url: s.discord_invite_url,
@@ -58,6 +59,8 @@ export default function SettingsSection() {
       });
       setForm(null);
       await Promise.all([loadSettings(), reload()]);
+      const note = res && res.data && res.data.app_note;
+      return note ? `Settings saved. ${note}` : "";
     }, "Settings saved.");
   };
 
@@ -111,11 +114,18 @@ export default function SettingsSection() {
           <Field
             id="app_download_url"
             label="App download link"
-            hint="Direct link to the Blacklist12Sky APK. Members on Android phones, and members still on the old app, are invited to download it. Leave empty to turn the prompt off."
+            hint="Direct download link to the app (APK), e.g. Dropbox with dl=1. When you save, the site reads the build number from the file and the phone app offers it as an update at once (a file replaced behind the same link is picked up within 20 minutes). Leave empty to turn the prompt off."
             value={s.app_download_url || ""}
             onChange={(v) => set("app_download_url", v.trim())}
             placeholder="https://blacklistintroboys.com/app/blacklist-introboys.apk"
           />
+          {s.app_download_url && s.app_download_url === s.app_meta_url && (
+            <p className="mt-2 text-xs text-mist">
+              {s.app_sha256 && s.app_version_code
+                ? `In the file: ${s.app_version_name || "?"} (build ${s.app_version_code})${s.app_package && s.app_package !== "com.blacklistintroboys.guild" ? ` - ${s.app_package}, not the IntroBoys app` : " - the phone app offers it as an update."}`
+                : `The file couldn't be read${s.app_meta_error ? ` (${s.app_meta_error})` : ""}: the phone app won't offer it.`}
+            </p>
+          )}
         </fieldset>
 
         <fieldset>

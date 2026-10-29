@@ -128,6 +128,17 @@
       "type": "string",
       "description": "https link to the Android app (APK). Empty = no download prompt."
     },
+    "app_meta_url": {
+      "type": "string",
+      "description": "6.49: the app_download_url the app_* facts below were read from (read from the file itself)"
+    },
+    "app_package": { "type": "string", "description": "6.49: package name inside the linked APK" },
+    "app_version_code": { "type": "integer", "description": "6.49: build number inside the linked APK" },
+    "app_version_name": { "type": "string", "description": "6.49: version inside the linked APK" },
+    "app_sha256": { "type": "string", "description": "6.49: SHA-256 of the linked APK" },
+    "app_size": { "type": "integer", "description": "6.49: size of the linked APK in bytes" },
+    "app_meta_error": { "type": "string", "description": "6.49: why the linked file could not be read (empty when it was)" },
+    "app_meta_at": { "type": "string", "description": "6.49: when the linked file was last read" },
     "member_role_id": {
       "type": "string",
       "description": "Discord role required to use the site. Empty = anyone in the server."

@@ -14,6 +14,7 @@ import {
   START_PER_IP, START_WINDOW_MS, POLL_PER_IP_PER_MIN, clientIp, ipHash, memLimit
 } from '../../shared/botLicense.ts';
 import { rankedMembers } from '../../shared/points.ts';
+import { readApkFromUrl } from '../../shared/apkInfo.ts';
 
 // The IntroBoys Assistant license service. One function, three kinds of caller:
 //
@@ -39,6 +40,7 @@ export default async function(req) {
     if (action === 'ping') return Response.json({ ok: true, version: BACKEND_VERSION, signing: await signingConfigured() });
 
     // ---------- the app, before it is signed in ----------
+    if (action === 'appUpdate') return await appUpdate(b);
     if (action === 'start') return await start(b, p, req);
     if (action === 'poll') {
       const pip = clientIp(req);   // no address known: no per-connection limit (never one shared bucket for everyone)
@@ -769,4 +771,37 @@ async function admin(b, me, action: string, p) {
     return Response.json({ ok: true });
   }
   throw new UserError('Unknown action.');
+}
+
+// ---------- 6.49: the phone app's updates ----------
+// The app asks which build the site offers: the file the leader linked in Admin (App download link), read from the file itself
+// (build number, version, checksum, size). A file replaced behind the same link is read again after 20 minutes. Nothing about a
+// member is needed or given. The app still also looks at /app/introboys-android.json and takes the newer of the two.
+const APP_PACKAGE = 'com.blacklistintroboys.guild';
+const APP_REREAD_MS = 20 * 60000;
+let appReading: Promise<void> | null = null;
+
+async function appUpdate(b) {
+  let s = await getSettings(b);
+  const url = String(s.app_download_url || '');
+  if (!url) return Response.json({ ok: true, offered: false });
+  const stale = s.app_meta_url !== url || !s.app_sha256 || Date.now() - Date.parse(s.app_meta_at || '') > APP_REREAD_MS;
+  if (stale && !(s.app_meta_url === url && s.app_meta_error && Date.now() - Date.parse(s.app_meta_at || '') < APP_REREAD_MS)) {
+    appReading ??= (async () => {
+      const at = new Date().toISOString();
+      try {
+        const a = await readApkFromUrl(url);
+        await b.asServiceRole.entities.Settings.update(s.id, { app_meta_url: url, app_package: a.package, app_version_code: a.versionCode,
+          app_version_name: a.versionName, app_sha256: a.sha256, app_size: a.size, app_meta_error: '', app_meta_at: at });
+      } catch (e) {
+        await b.asServiceRole.entities.Settings.update(s.id, { app_meta_url: url, app_meta_error: String((e as any)?.message || e).slice(0, 200), app_meta_at: at }).catch(() => {});
+      }
+    })().finally(() => { appReading = null; });
+    await appReading.catch(() => {});
+    s = await getSettings(b, true);
+  }
+  const ok = s.app_meta_url === url && /^[0-9a-f]{64}$/.test(String(s.app_sha256 || '')) && Number(s.app_version_code) > 0 && s.app_package === APP_PACKAGE;
+  if (!ok) return Response.json({ ok: true, offered: false, why: s.app_meta_error || (s.app_package && s.app_package !== APP_PACKAGE ? 'the linked file is another app' : '') });
+  return Response.json({ ok: true, offered: true, versionCode: Number(s.app_version_code), versionName: String(s.app_version_name || ''),
+    url, sha256: String(s.app_sha256), size: Number(s.app_size || 0), notes: '' });
 }

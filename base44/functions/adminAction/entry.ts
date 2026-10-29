@@ -8,6 +8,7 @@ import { pointsWebhookUrl, announceRankings } from '../../shared/discordPost.ts'
 import { BACKEND_VERSION } from '../../shared/version.ts';
 import { postSystem, GUILD_CHANNEL } from '../../shared/chat.ts';
 import { resilient, rankedMembers } from '../../shared/points.ts';
+import { readApkFromUrl } from '../../shared/apkInfo.ts';
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const isSnowflake = (s: string) => /^\d{15,21}$/.test(s);
@@ -36,6 +37,7 @@ export default async function(req) {
       const s = await getSettings(b);
       const p = payload.settings || {};
       const update: Record<string, unknown> = {};
+      let appNote = '';
       if ('guild_id' in p) {
         const g = String(p.guild_id ?? '').trim();
         if (g && !isSnowflake(g)) throw new UserError('Server ID should be the 17-20 digit number from "Copy Server ID".');
@@ -61,6 +63,19 @@ export default async function(req) {
         const url = String(p.app_download_url ?? '').trim();
         if (url && !/^https:\/\/[^\s]{4,500}$/.test(url)) throw new UserError('The app download link should start with https://');
         update.app_download_url = url;
+        // 6.49: read the build number and checksum from the file itself, so the phone app offers it as an update at once
+        if (url && url === s.app_meta_url && s.app_sha256 && !p.app_recheck) { /* the same file as before: already read */ }
+        else if (url) {
+          try {
+            const a = await readApkFromUrl(url);
+            Object.assign(update, { app_meta_url: url, app_package: a.package, app_version_code: a.versionCode, app_version_name: a.versionName,
+              app_sha256: a.sha256, app_size: a.size, app_meta_error: '', app_meta_at: new Date().toISOString() });
+            appNote = `App file read: ${a.versionName || '?'} (build ${a.versionCode})` + (a.package === 'com.blacklistintroboys.guild' ? ', offered in the app as an update now.' : ` - but it is ${a.package || 'another app'}, not the IntroBoys app, so the app won't offer it.`);
+          } catch (e) {
+            Object.assign(update, { app_meta_url: url, app_version_code: 0, app_sha256: '', app_size: 0, app_meta_error: String((e as any)?.message || e).slice(0, 200), app_meta_at: new Date().toISOString() });
+            appNote = `Saved, but the app file couldn't be read (${String((e as any)?.message || e).slice(0, 120)}), so the app won't offer it as an update. Use a direct download link.`;
+          }
+        } else Object.assign(update, { app_meta_url: '', app_version_code: 0, app_sha256: '', app_size: 0, app_meta_error: '' });
       }
       if ('min_bet' in p) update.min_bet = int(p.min_bet, { min: 1, name: 'Minimum wager' });
       if ('max_bet' in p) update.max_bet = int(p.max_bet, { min: 1, name: 'Maximum wager' });
@@ -87,7 +102,7 @@ export default async function(req) {
       if (((update.arena_min_bet ?? s.arena_min_bet ?? 1) as number) > ((update.arena_max_bet ?? s.arena_max_bet ?? 5000) as number)) throw new UserError("The Arena's smallest bet can't be above its limit.");
       await b.asServiceRole.entities.Settings.update(s.id, update);
       clearSettingsCache();
-      return Response.json({ ok: true });
+      return Response.json({ ok: true, app_note: appNote });
     }
 
     if (action === 'ban' || action === 'unban') {
