@@ -1,8 +1,8 @@
 {
-  "versionCode": 42,
-  "versionName": "1.5.3",
+  "versionCode": 43,
+  "versionName": "1.5.4",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "47bdb50d1fa67a5f116fb934104a6870fc5ae525ca04f285c541b15609bbdae6",
-  "size": 46158267,
-  "notes": "Steadier walking: no weaving from tiny steering changes, misread positions are skipped, slow phones learn the direction from longer stretches. Goes through the gate as soon as it opens. Plus 1.5.2: the PC routes, Check phone, war break."
+  "sha256": "7e9476a64c98117bd07ff3f99415ebf83f8f8747556568eb9aa9e03a7ca9cf5a",
+  "size": 46162363,
+  "notes": "Run 2 and later find the gate again (the camera is measured after every teleport) and wait at the gate until it opens. No more walking in town after a death. Steadier walking."
 }
