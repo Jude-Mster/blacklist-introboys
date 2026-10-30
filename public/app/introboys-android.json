@@ -1,8 +1,8 @@
 {
-  "versionCode": 44,
-  "versionName": "1.5.5",
+  "versionCode": 45,
+  "versionName": "1.5.6",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "c8292b993326857efa7b309ec6dde40d56ca3b8a8f103944e77b793ab5d21a47",
-  "size": 46162299,
-  "notes": "Reads the position right on every phone again (the clock at the top was taken for it), so the camera turns to the gate and the move pad check passes. The PC routes are out again: straight walking, down the middle to boss 5."
+  "sha256": "8021507a12b12f79de58752a2c0da3f1fad2be3421e96257f43b22fad4939cb3",
+  "size": 46174587,
+  "notes": "A tap on the screen no longer stops the run: when the character stands still the move pad is touched again. The floating panel folds by itself during runs and never catches the run's touches. Plus 1.5.5: the position is read right on every phone."
 }
