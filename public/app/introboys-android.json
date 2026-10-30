@@ -1,8 +1,8 @@
 {
-  "versionCode": 34,
-  "versionName": "1.4.6",
+  "versionCode": 36,
+  "versionName": "1.4.7",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "7676667d30944a6245068e6bfb2e9e8d1a57a677a5806cacc984c576d151a7f5",
-  "size": 24930659,
-  "notes": "Cloud / small phones: the view now tilts up (it tilted to the ground in 1.4.5). Runs without stopping, zooms out fully, teleport ignores chat lines."
+  "sha256": "48c3a6481cf292350da4457989daf6d6079ab3209ca1e2617d8d0e84b50f0265",
+  "size": 46014843,
+  "notes": "Runs on PC emulators (LDPlayer and others): the app now carries Intel/AMD code too. Plus 1.4.6: the view tilts up on small phones."
 }
