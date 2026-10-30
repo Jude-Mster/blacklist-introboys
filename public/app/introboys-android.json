@@ -1,8 +1,8 @@
 {
-  "versionCode": 38,
-  "versionName": "1.4.9",
+  "versionCode": 39,
+  "versionName": "1.5.0",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "2d8e3d8d28e042db33460cf9df79b447c6c2462c5ffcefeb304b8ff2d249800f",
+  "sha256": "10b7fdb1aa193e0bb7ec6cd2d23c8bfb6cf544dadf5b4f63221416b8125c2ff5",
   "size": 46018939,
-  "notes": "No need to tap Live record first: on Android 9 / 10 and emulators a run asks Android to share the screen by itself. Runs on Android 9 and LDPlayer."
+  "notes": "Camera after the teleport: zoomed all the way out and turned to the gate, with no extra tilt (the tilt put the view out of sight). No need to tap Live record first. Runs on Android 9 and LDPlayer."
 }
