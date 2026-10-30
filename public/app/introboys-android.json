@@ -1,8 +1,8 @@
 {
-  "versionCode": 46,
-  "versionName": "1.5.7",
+  "versionCode": 47,
+  "versionName": "1.5.8",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "58ff104db165b8f41122614565fff91a053e214793837cace1c9692bd1d2556a",
-  "size": 46195067,
-  "notes": "Runs straight to the boss without stopping and starting: the screen is read without holding up the move pad, and slow phones no longer think the character stands still. Plus 1.5.6: a tap on the screen no longer stops the run."
+  "sha256": "a5c51e4e890010511ff7bf96dd8615b381f6c0f480ee3da15717596a8bf2eac9",
+  "size": 46203259,
+  "notes": "Cloud and slow phones: if the phone drops the held move pad touch, it switches to one whole push at a time and keeps running. No more endless waiting when the screen picture doesn't change."
 }
