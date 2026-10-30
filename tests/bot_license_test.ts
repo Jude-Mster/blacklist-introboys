@@ -394,6 +394,14 @@ advance(61_000);
 await app({ action: 'remotePush', state: {} }, rc3.token);
 const late = await app({ action: 'remotePush', state: {} }, rc3.token);
 ok(late.commands.length === 0 && (await call(bot, C, { action: 'remoteView' })).commands.filter((c) => c.status === 'expired').length >= 3, 'commands older than a minute are never run');
+// 6.50: the remote options (war break, runs, mode) are queued with clean arguments
+await call(bot, C, { action: 'remoteCommand', cmd: 'war_break', args: { on: true, extra: 'x' } });
+await call(bot, C, { action: 'remoteCommand', cmd: 'set_runs', args: { runs: 7777 } });
+await call(bot, C, { action: 'remoteCommand', cmd: 'set_mode', args: { dungeon: 'den' } });
+const opt = await app({ action: 'remotePush', state: {} }, rc3.token);
+ok(opt.commands.length === 3 && JSON.stringify(opt.commands.map((c) => [c.cmd, c.args])) === JSON.stringify([['war_break', { on: true }], ['set_runs', { runs: 999 }], ['set_mode', { dungeon: 'den' }]]),
+  `the war break, runs and mode commands reach the app with clean arguments (${JSON.stringify(opt.commands.map((c) => [c.cmd, c.args]))})`);
+await app({ action: 'remotePush', results: opt.commands.map((c) => ({ id: c.id, ok: true, message: 'ok' })) }, rc3.token);
 advance(21_000);
 const unwatched = await app({ action: 'remotePush', state: {}, picture: '/9j/' + 'C'.repeat(50) }, rc3.token);
 ok(unwatched.watching === false, 'with the page closed the app is told nobody watches');

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Home, Loader2, Play, Square } from "lucide-react";
+import { Crosshair, Home, Loader2, Play, Shield, Square, Stethoscope, Swords } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import { errorText } from "@/lib/GuildContext";
@@ -7,7 +7,21 @@ import { cn } from "@/lib/utils";
 
 const POLL_MS = 3000;            // while the app is online: the live view
 const IDLE_POLL_MS = 20000;      // 6.43: while it is offline (every look costs the site's shared database budget)
-const CMD_LABEL = { start: "Start", stop: "Stop", return_town: "Return to town", upgrade: "Upgrade", enhance: "Enhance" };   // the last two: old commands, shown in the history only
+const CMD_LABEL = {
+  start: "Start", stop: "Stop", return_town: "Return to town", upgrade: "Upgrade", enhance: "Enhance",
+  set_mode: "Change mode", set_runs: "Change runs", war_break: "War break", auto_hunt: "Auto hunt", check_phone: "Check phone"
+};
+// 6.50: the war break: Regular Battle every 2 hours (even UTC hours); the Assistant leaves the dungeon at :27 and goes back at :49
+const HOUR = 3600000, MIN = 60000;
+function warBreakTimes(now = Date.now()) {
+  const block = now - (now % (2 * HOUR));
+  const start = block + 27 * MIN, back = block + 49 * MIN;
+  if (now < start) return { on: false, start, back };
+  if (now < back) return { on: true, start, back };
+  return { on: false, start: start + 2 * HOUR, back: back + 2 * HOUR };
+}
+const clock = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}` : `${m}:${String(s % 60).padStart(2, "0")}`; };
+const hhmm = (ms) => new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });   // the last two: old commands, shown in the history only
 const STATUS_LABEL = { pending: "sent", taken: "received", done: "done", failed: "failed", expired: "not picked up" };
 
 // Remote control of the member's own IntroBoys Assistant: what it is doing, a small picture of the game while this page is open,
@@ -20,6 +34,9 @@ export default function RemotePanel({ licensed }) {
   const [dungeon, setDungeon] = useState("labyrinth");
   const [runs, setRuns] = useState("1");
   const [startBoss, setStartBoss] = useState("1");
+  const [warOn, setWarOn] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
   const [seat, setSeat] = useState(0);              // 6.41: which device (0 = the one online, picked by the site)
   const seatRef = useRef(0); seatRef.current = seat;
   const timer = useRef(null);
@@ -47,7 +64,7 @@ export default function RemotePanel({ licensed }) {
   }, [licensed, load]);
 
   const send = async (cmd, args) => {
-    if (cmd === "stop" || cmd === "return_town") { /* no confirmation: these are the safe ones */ }
+    if (cmd === "stop" || cmd === "return_town" || cmd === "set_mode" || cmd === "set_runs" || cmd === "war_break" || cmd === "check_phone") { /* no confirmation: these are the safe ones */ }
     else if (!window.confirm(`Send "${CMD_LABEL[cmd]}" to the Assistant on your ${view && view.platform === "android" ? "phone? The game must be open on the phone." : "PC? The game must be open and in front on that PC."}`)) return;
     setBusy(cmd); setError(""); setMsg("");
     try {
@@ -134,6 +151,12 @@ export default function RemotePanel({ licensed }) {
                 <label htmlFor="rc-runs" className="label">Runs (0 = until stopped)</label>
                 <input id="rc-runs" type="number" min="0" max="999" value={runs} onChange={(e) => setRuns(e.target.value)} className="field h-10 w-28" />
               </div>
+              {dungeon !== "attack" && (
+                <label className="flex h-10 items-center gap-2 text-sm text-white">
+                  <input type="checkbox" checked={warOn} onChange={(e) => setWarOn(e.target.checked)} className="h-4 w-4 accent-[#c9a227]" />
+                  With war break
+                </label>
+              )}
               {dungeon === "labyrinth" && (
                 <div>
                   <label htmlFor="rc-boss" className="label">Start at boss</label>
@@ -143,7 +166,7 @@ export default function RemotePanel({ licensed }) {
                 </div>
               )}
             </div>
-            <button disabled={!!busy || running} onClick={() => send("start", { dungeon, runs: Number(runs) || 0, start_boss: Number(startBoss) || 1 })} className="btn-seal flex h-10 items-center justify-center gap-2 px-5 text-sm">
+            <button disabled={!!busy || running} onClick={() => send("start", { dungeon, runs: Number(runs) || 0, start_boss: Number(startBoss) || 1, war_break: dungeon !== "attack" ? warOn : undefined })} className="btn-seal flex h-10 items-center justify-center gap-2 px-5 text-sm">
               {busy === "start" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" aria-hidden="true" />} Start
             </button>
           </div>
@@ -156,6 +179,65 @@ export default function RemotePanel({ licensed }) {
             </button>
           </div>
           <p className="mt-2 text-xs text-mist">Stop works any time; Start and Return to town only when the Assistant is idle.</p>
+
+          {/* 6.50: the war break and its timer */}
+          {(() => {
+            const w = warBreakTimes(now);
+            const enabled = !!st.war_break;
+            const onBreak = !!st.on_war_break || (enabled && running && w.on);
+            return (
+              <div className={cn("mt-3 rounded-md border p-3", onBreak ? "border-crimson/70 bg-crimson/10" : "border-bronze/50")}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Shield className="h-4 w-4 text-gold" aria-hidden="true" />
+                  <span className="font-heading font-bold text-white">War break</span>
+                  <span className={cn("rounded-[3px] border px-1.5 text-[10px] font-bold uppercase", enabled ? "border-emerald-400/70 text-emerald-300" : "border-white/30 text-mist")}>{enabled ? "on" : "off"}</span>
+                  <span className="ml-auto font-heading text-lg font-extrabold tabular-nums text-gold">
+                    {onBreak ? `back in ${clock(w.back - now)}` : `${clock(w.start - now)}`}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-mist">
+                  {onBreak
+                    ? <>On the war: auto hunt is on and joins the battle. Back to the {st.dungeon === "den" ? "Den" : "Labyrinth"} at {hhmm(w.back)}, from boss 1.</>
+                    : <>Next war break at {hhmm(w.start)} (the entrance opens at {hhmm(w.start + 3 * MIN)}): return to town, auto hunt on through the war (the war pop-up is left alone), auto hunt off at {hhmm(w.back)} and back to the run from boss 1.</>}
+                </p>
+                <button disabled={!!busy} onClick={() => send("war_break", { on: !enabled })} className="btn-bronze mt-2 flex h-9 items-center gap-2 px-3 text-sm">
+                  {busy === "war_break" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Swords className="h-4 w-4" aria-hidden="true" />} {enabled ? "Turn the war break off" : "Turn the war break on"}
+                </button>
+              </div>
+            );
+          })()}
+
+          {/* 6.50: more remote options */}
+          <details className="mt-3 rounded-md border border-bronze/50 p-3 text-sm" open>
+            <summary className="cursor-pointer font-heading font-bold text-white">Remote options</summary>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs text-mist">Mode:</span>
+                {[...(phone ? [["attack", "Auto attack"]] : []), ["labyrinth", "Labyrinth"], ["den", "Den"]].map(([v, l]) => (
+                  <button key={v} disabled={!!busy || running} onClick={() => send("set_mode", { dungeon: v })}
+                    className={cn("h-8 rounded-md border px-2.5 text-xs", st.dungeon === v ? "border-gold text-gold" : "border-bronze/50 text-mist hover:text-white")}>{l}</button>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs text-mist">Runs in a row:</span>
+                {[1, 3, 5, 10, 0].map((n) => (
+                  <button key={n} disabled={!!busy} onClick={() => send("set_runs", { runs: n })}
+                    className={cn("h-8 min-w-8 rounded-md border px-2 text-xs", Number(st.runs) === n ? "border-gold text-gold" : "border-bronze/50 text-mist hover:text-white")}>{n === 0 ? "∞" : n}</button>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs text-mist">Auto hunt:</span>
+                <button disabled={!!busy || running} onClick={() => send("auto_hunt", { on: true })} className="h-8 rounded-md border border-bronze/50 px-2.5 text-xs text-mist hover:text-white"><Crosshair className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />Press once</button>
+              </div>
+              {phone && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs text-mist">Set-up:</span>
+                  <button disabled={!!busy || running} onClick={() => send("check_phone")} className="h-8 rounded-md border border-bronze/50 px-2.5 text-xs text-mist hover:text-white"><Stethoscope className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />Check phone</button>
+                </div>
+              )}
+            </div>
+            <p className="mt-2 text-xs text-mist">Mode, runs and the war break are remembered by the {where}; they apply to the next Start (runs and the war break also to a run that is going).</p>
+          </details>
 
           {view.log && (
             <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded-md border border-bronze/40 bg-black/50 p-2 font-mono text-[11px] leading-snug text-mist">{view.log}</pre>

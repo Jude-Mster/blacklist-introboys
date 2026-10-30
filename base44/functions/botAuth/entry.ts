@@ -262,7 +262,8 @@ async function update(b, p) {
 // member, on the PC the license is locked to, and only within a minute of the click. The site can never move the mouse or type.
 
 // 6.37: upgrade and enhance taken off the site (the app may still know them; the site never sends them).
-const REMOTE_CMDS = ['start', 'stop', 'return_town'];
+// 6.50: settings the leader / member can change from the live view (the PC and the phone apply them), the war break, and the phone check
+const REMOTE_CMDS = ['start', 'stop', 'return_town', 'set_mode', 'set_runs', 'war_break', 'check_phone', 'auto_hunt'];
 const CMD_TTL_MS = 60_000, WATCH_MS = 20_000, ONLINE_MS = 25_000, PIC_MAX = 400_000;
 
 // 6.43: the database allows the whole site ~210 list reads a minute (every function shares the service account). The live view and the
@@ -299,8 +300,11 @@ function cleanArgs(cmd: string, a) {
     const dungeon = a.dungeon === 'den' ? 'den' : a.dungeon === 'attack' ? 'attack' : 'labyrinth';     // 6.47: attack = auto attack (phone)
     const runs = Number.isInteger(Number(a.runs)) ? Math.max(0, Math.min(999, Number(a.runs))) : 1;
     const startBoss = Number.isInteger(Number(a.start_boss)) ? Math.max(1, Math.min(5, Number(a.start_boss))) : 1;
-    return { dungeon, runs, start_boss: startBoss };
+    return { dungeon, runs, start_boss: startBoss, war_break: a.war_break === true ? true : a.war_break === false ? false : undefined };
   }
+  if (cmd === 'set_mode') return { dungeon: a.dungeon === 'den' ? 'den' : a.dungeon === 'attack' ? 'attack' : 'labyrinth' };
+  if (cmd === 'set_runs') return { runs: Number.isInteger(Number(a.runs)) ? Math.max(0, Math.min(999, Number(a.runs))) : 0 };
+  if (cmd === 'war_break' || cmd === 'auto_hunt') return { on: a.on === true };
   return {};
 }
 

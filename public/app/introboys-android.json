@@ -1,8 +1,8 @@
 {
-  "versionCode": 40,
-  "versionName": "1.5.1",
+  "versionCode": 41,
+  "versionName": "1.5.2",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "158e9ab5caa921e94e325f0a78852bb0aebf5cf7897b882b33e7801ddbe75b32",
-  "size": 46039419,
-  "notes": "Stops attacking as soon as the boss is gone. Loots only when items lie on the ground, and stops once they are picked up. Camera: zoomed all the way out, no extra tilt."
+  "sha256": "6e2ccfe38c276237620d30fa9cd0e6f1e571fbc56a7de65772e62c9aea0d514a",
+  "size": 46154171,
+  "notes": "Walks the PC's recorded routes between the bosses. Check phone (one tap set-up check). War break: leaves at :27 of every war hour, auto hunt through the war, back to the run after. Den: watches for the respawn like the PC. More controls from the website."
 }
