@@ -1,8 +1,8 @@
 {
-  "versionCode": 43,
-  "versionName": "1.5.4",
+  "versionCode": 44,
+  "versionName": "1.5.5",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "7e9476a64c98117bd07ff3f99415ebf83f8f8747556568eb9aa9e03a7ca9cf5a",
-  "size": 46162363,
-  "notes": "Run 2 and later find the gate again (the camera is measured after every teleport) and wait at the gate until it opens. No more walking in town after a death. Steadier walking."
+  "sha256": "c8292b993326857efa7b309ec6dde40d56ca3b8a8f103944e77b793ab5d21a47",
+  "size": 46162299,
+  "notes": "Reads the position right on every phone again (the clock at the top was taken for it), so the camera turns to the gate and the move pad check passes. The PC routes are out again: straight walking, down the middle to boss 5."
 }
