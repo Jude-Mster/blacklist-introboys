@@ -1,8 +1,8 @@
 {
-  "versionCode": 37,
-  "versionName": "1.4.8",
+  "versionCode": 38,
+  "versionName": "1.4.9",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "0d117aa302e909cdb2770f55b786682b31e3ebc23570c4d56e46e30d02d48813",
+  "sha256": "2d8e3d8d28e042db33460cf9df79b447c6c2462c5ffcefeb304b8ff2d249800f",
   "size": 46018939,
-  "notes": "Runs on Android 9 and PC emulators like LDPlayer (screen reading there uses Live record). Plus 1.4.6: the view tilts up on small phones."
+  "notes": "No need to tap Live record first: on Android 9 / 10 and emulators a run asks Android to share the screen by itself. Runs on Android 9 and LDPlayer."
 }
