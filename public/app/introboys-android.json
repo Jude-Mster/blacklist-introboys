@@ -1,8 +1,8 @@
 {
-  "versionCode": 39,
-  "versionName": "1.5.0",
+  "versionCode": 40,
+  "versionName": "1.5.1",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "10b7fdb1aa193e0bb7ec6cd2d23c8bfb6cf544dadf5b4f63221416b8125c2ff5",
-  "size": 46018939,
-  "notes": "Camera after the teleport: zoomed all the way out and turned to the gate, with no extra tilt (the tilt put the view out of sight). No need to tap Live record first. Runs on Android 9 and LDPlayer."
+  "sha256": "158e9ab5caa921e94e325f0a78852bb0aebf5cf7897b882b33e7801ddbe75b32",
+  "size": 46039419,
+  "notes": "Stops attacking as soon as the boss is gone. Loots only when items lie on the ground, and stops once they are picked up. Camera: zoomed all the way out, no extra tilt."
 }
