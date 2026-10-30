@@ -1,8 +1,8 @@
 {
-  "versionCode": 36,
-  "versionName": "1.4.7",
+  "versionCode": 37,
+  "versionName": "1.4.8",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "48c3a6481cf292350da4457989daf6d6079ab3209ca1e2617d8d0e84b50f0265",
-  "size": 46014843,
-  "notes": "Runs on PC emulators (LDPlayer and others): the app now carries Intel/AMD code too. Plus 1.4.6: the view tilts up on small phones."
+  "sha256": "0d117aa302e909cdb2770f55b786682b31e3ebc23570c4d56e46e30d02d48813",
+  "size": 46018939,
+  "notes": "Runs on Android 9 and PC emulators like LDPlayer (screen reading there uses Live record). Plus 1.4.6: the view tilts up on small phones."
 }
