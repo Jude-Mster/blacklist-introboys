@@ -1,8 +1,8 @@
 {
-  "versionCode": 51,
-  "versionName": "1.6.2",
+  "versionCode": 52,
+  "versionName": "1.6.3",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "a69ffa5ae49093ce1a494f9f370f104aaea5b7dcfb55aadccc795eb5a6ff1317",
+  "sha256": "b8d3d5481e211ac18b1cb6a9795dfe6cc54a3d5727244b3ff406ba97ab9e920f",
   "size": 46231995,
-  "notes": "Waits the 30 s gate countdown on every run. A misread position (a dropped digit) no longer sends the character the wrong way. Slow phones hold the move pad with one long touch."
+  "notes": "Knows a boss is dead even when its name stays in the target box: stops attacking and walks to the next boss right away."
 }
