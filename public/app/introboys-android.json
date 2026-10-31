@@ -1,8 +1,8 @@
 {
-  "versionCode": 48,
-  "versionName": "1.5.9",
+  "versionCode": 49,
+  "versionName": "1.6.0",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "9844469e3140ee68e21f25913e4bd8475aacfb94d889c846fff0bc567f13e3f7",
+  "sha256": "ed379a3308fdd969238f38c389bfcf2ccb358174389d9c1c4090a3e68d97de85",
   "size": 46219707,
-  "notes": "Runs the recorded routes again (the smooth runs), no test step after the teleport, reads the position faster, and normal phones hold the move pad smoothly again."
+  "notes": "Runs the PC's recorded ways between the bosses in one held touch, without stopping (straight from the entrance to boss 1). Stays online on the website. Android 11 and newer never need Live record."
 }

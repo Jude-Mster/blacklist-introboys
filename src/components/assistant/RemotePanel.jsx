@@ -118,7 +118,7 @@ export default function RemotePanel({ licensed }) {
       {online && (
         <>
           <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
-            <div><dt className="text-xs text-mist">{phone ? "Screen sharing" : "Game"}</dt><dd className={st.game ? "text-white" : "text-ember"}>{phone ? (st.game ? "on" : "off") : st.game ? "found" : "not found"}</dd></div>
+            <div><dt className="text-xs text-mist">{phone ? "Sees the game" : "Game"}</dt><dd className={st.game ? "text-white" : "text-ember"}>{phone ? (st.game ? "yes" : "no (Android 9/10: needs Live record)") : st.game ? "found" : "not found"}</dd></div>
             <div><dt className="text-xs text-mist">{phone ? "Mode" : "Dungeon"}</dt><dd className="text-white">{st.dungeon === "den" ? "Den (LOD)" : st.dungeon === "attack" ? "Auto attack" : "Labyrinth"}</dd></div>
             {phone
               ? <div><dt className="text-xs text-mist">Runs done</dt><dd className="text-white">Labyrinth {st.total_labyrinth || 0} · Den {st.total_den || 0}{st.running ? ` · ${st.presses || 0} presses` : ""}</dd></div>

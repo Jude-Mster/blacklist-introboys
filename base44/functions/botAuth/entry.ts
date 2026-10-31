@@ -264,7 +264,7 @@ async function update(b, p) {
 // 6.37: upgrade and enhance taken off the site (the app may still know them; the site never sends them).
 // 6.50: settings the leader / member can change from the live view (the PC and the phone apply them), the war break, and the phone check
 const REMOTE_CMDS = ['start', 'stop', 'return_town', 'set_mode', 'set_runs', 'war_break', 'check_phone', 'auto_hunt'];
-const CMD_TTL_MS = 60_000, WATCH_MS = 20_000, ONLINE_MS = 25_000, PIC_MAX = 400_000;
+const CMD_TTL_MS = 60_000, WATCH_MS = 20_000, ONLINE_MS = 45_000, PIC_MAX = 400_000;
 
 // 6.43: the database allows the whole site ~210 list reads a minute (every function shares the service account). The live view and the
 // app's reports ask every few seconds, so their read-only lookups are shared for a few seconds: the member's licenses (10 s, dropped at
