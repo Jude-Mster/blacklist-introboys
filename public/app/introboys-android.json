@@ -1,8 +1,8 @@
 {
-  "versionCode": 50,
-  "versionName": "1.6.1",
+  "versionCode": 51,
+  "versionName": "1.6.2",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "316e1099ee43a827286402bf939518ab34e6848a5b059454850b7084f334fcd5",
-  "size": 46223803,
-  "notes": "Cloud and slow phones hold the move pad with one long touch, so the character runs without stopping. Plus 1.6.0: the PC's ways between the bosses, stays online on the website."
+  "sha256": "a69ffa5ae49093ce1a494f9f370f104aaea5b7dcfb55aadccc795eb5a6ff1317",
+  "size": 46231995,
+  "notes": "Waits the 30 s gate countdown on every run. A misread position (a dropped digit) no longer sends the character the wrong way. Slow phones hold the move pad with one long touch."
 }
