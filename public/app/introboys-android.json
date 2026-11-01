@@ -1,8 +1,8 @@
 {
-  "versionCode": 61,
-  "versionName": "1.6.11",
+  "versionCode": 62,
+  "versionName": "1.6.12",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "e954a541b20eb8ace4e2ea7e2585cd7716588085631fd3ca794486d34479a873",
-  "size": 46395966,
-  "notes": "Walks the way the PC learned (its navmap), presses CANCEL on the war pop-up, steadier running on emulators and slow phones."
+  "sha256": "e6b611ec426a26c84c06196587da15cf2ceeb680c3850466349ff87e390d1d6e",
+  "size": 46408254,
+  "notes": "Gets through the Labyrinth gate even when the camera starts turned differently. Walks the way the PC learned, presses CANCEL on the war pop-up."
 }
