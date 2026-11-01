@@ -1,8 +1,8 @@
 {
-  "versionCode": 69,
-  "versionName": "1.6.19",
+  "versionCode": 70,
+  "versionName": "1.6.20",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "b18760ca260be0e60ab2d6b6b340946dd0161f899aa9b5345fdf82dd1d667180",
+  "sha256": "fc2c7d6e0b8111ae64c7a84214745d30ed49f4cd842dd841c7096c8f95f01c6a",
   "size": 46420542,
-  "notes": "Knows how old each position reading is and steers from where the character is now; checks the camera standing still after each fight."
+  "notes": "No more stops every 10 s on slow phones and emulators (the held touch lasts 55 s). Steers from where the character is now; checks the camera after each fight."
 }
