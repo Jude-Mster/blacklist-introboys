@@ -1,8 +1,8 @@
 {
-  "versionCode": 65,
-  "versionName": "1.6.15",
+  "versionCode": 66,
+  "versionName": "1.6.16",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "1ea8430d0b7a7bc8812d7b867f36df257f17f37b70391b68701bd333110ea035",
-  "size": 46420542,
-  "notes": "Runs the Labyrinth the way members do: routes taken from real runs, steering like a player with the camera behind the character."
+  "sha256": "b05c7ada57203a497237623ceb10aff07b214bb640310b3ebd32fb63badd4fe9",
+  "size": 46416446,
+  "notes": "Follows the members' own runs to every boss, steering the way the videos show (camera stays put, stick turned to follow the corridor)."
 }
