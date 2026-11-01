@@ -1,8 +1,8 @@
 {
-  "versionCode": 74,
-  "versionName": "1.6.24",
+  "versionCode": 75,
+  "versionName": "1.6.25",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "478dd33bfd1215e44aaeac0e4d8a995aee63fac78f15c77b893d378f86291fc6",
+  "sha256": "fdad1d78eb20321912bc934f656057a3d7e055cf2981e835cb3964725bfcca11",
   "size": 46449214,
-  "notes": "Live record = precise steering: the position is read from the live picture, several times a second, on every phone, emulator and cloud phone."
+  "notes": "Follows the PC Assistant's own ways to every boss; Live record gives precise steering on every phone, emulator and cloud phone."
 }
