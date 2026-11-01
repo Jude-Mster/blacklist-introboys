@@ -1,8 +1,8 @@
 {
-  "versionCode": 59,
-  "versionName": "1.6.9",
+  "versionCode": 60,
+  "versionName": "1.6.10",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "de2e363e9cfaaa2f69bfadecae1a3661cf1ddb848be103a8b321e03fbb87572b",
-  "size": 46309886,
-  "notes": "Follows the PC's recorded ways to every boss (boss 1 too, from the gate). Never leaves a boss with a little HP left. Copy the log button."
+  "sha256": "032360c30a536ffa0b706701927360dd1ee7b0f5570340d425785cc3ed9ff7d7",
+  "size": 46313982,
+  "notes": "Smoother running on slow phones and emulators (fewer stops), follows the PC's recorded ways to every boss, never leaves a boss with a little HP left."
 }
