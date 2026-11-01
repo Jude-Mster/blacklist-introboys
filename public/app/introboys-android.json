@@ -1,8 +1,8 @@
 {
-  "versionCode": 52,
-  "versionName": "1.6.3",
+  "versionCode": 53,
+  "versionName": "1.6.4",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "b8d3d5481e211ac18b1cb6a9795dfe6cc54a3d5727244b3ff406ba97ab9e920f",
-  "size": 46231995,
-  "notes": "Knows a boss is dead even when its name stays in the target box: stops attacking and walks to the next boss right away."
+  "sha256": "05fbb33082793eeec9df3c1bd0525a1e6e03184ed5df36750a55a8eb77f8413e",
+  "size": 46236091,
+  "notes": "Slow and cloud phones: sees when the character is stuck against a wall and walks round it (it used to stand there). Knows a dead boss even when its name stays."
 }
