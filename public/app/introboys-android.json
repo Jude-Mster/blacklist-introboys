@@ -1,8 +1,8 @@
 {
-  "versionCode": 71,
-  "versionName": "1.6.21",
+  "versionCode": 72,
+  "versionName": "1.6.22",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "33aeacfe1d7e78c6c4903e89af397082ac300454f34e85bea9f1577616efc22f",
-  "size": 46424638,
-  "notes": "The move pad is pushed fully at once and held (no slow start, no stop every few seconds) on slow phones and emulators."
+  "sha256": "bf8cbe07ec3f20188a4b8d933e1ff108d42728550fff62b63dae0e1c8a390ef6",
+  "size": 46436926,
+  "notes": "The camera looks straight at the gate every run and straight down the way after every fight; the move pad is pushed fully at once."
 }
