@@ -1,8 +1,8 @@
 {
-  "versionCode": 56,
-  "versionName": "1.6.6",
+  "versionCode": 57,
+  "versionName": "1.6.7",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "bb3bd780d4e1857bd1e11e1f3da0a51cd942e4d64377959c1cc7a65d6dd8fc23",
-  "size": 46268859,
-  "notes": "Install updates from the guild website (Remote control \u2192 Install update). Den: loots the respawned boss's drops. Slow and cloud phones walk round walls."
+  "sha256": "f1872e8cc1f51b1fcf63b42dd5f3ddede38073f51d103e4e7a807b0ee2dff0e5",
+  "size": 46293502,
+  "notes": "Reads the boss HP numbers on the bar: never leaves a boss with a little HP left. Copy the log button. LDPlayer: long-press the BLACKLIST icon for the Assistant."
 }
