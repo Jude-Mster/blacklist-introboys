@@ -1,8 +1,8 @@
 {
-  "versionCode": 76,
-  "versionName": "1.6.26",
+  "versionCode": 77,
+  "versionName": "1.6.27",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "c7804a9ba0419a61b5943899b267f19200f4e84af42f68b61ed6e78c233725f2",
-  "size": 46449214,
-  "notes": "Presses, holds and drags the move pad without lifting (fixed for emulators); follows the PC's ways; Live record for precise steering."
+  "sha256": "d76b0b4d7d12f900945d9e016085a4c07d3389ea7adfad1d3902fb70c7fcc038",
+  "size": 46453310,
+  "notes": "Faster runs: no camera check before walks that don't need it, quicker end of a fight at the last sliver of HP, loot never missed."
 }
