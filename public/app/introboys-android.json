@@ -1,8 +1,8 @@
 {
-  "versionCode": 53,
-  "versionName": "1.6.4",
+  "versionCode": 54,
+  "versionName": "1.6.5",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "05fbb33082793eeec9df3c1bd0525a1e6e03184ed5df36750a55a8eb77f8413e",
+  "sha256": "999db015d194be7c81a951c28c7939ee543677a0f2f7f67574567c5109f4813f",
   "size": 46236091,
-  "notes": "Slow and cloud phones: sees when the character is stuck against a wall and walks round it (it used to stand there). Knows a dead boss even when its name stays."
+  "notes": "Den: loots the respawned boss's drops too. Slow and cloud phones walk round walls. Knows a dead boss even when its name stays."
 }
