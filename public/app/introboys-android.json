@@ -1,8 +1,8 @@
 {
-  "versionCode": 73,
-  "versionName": "1.6.23",
+  "versionCode": 74,
+  "versionName": "1.6.24",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "8e3ade21e2859ec3ed26a24f08bd83ed351064d89c9a64815876c81f946898b2",
-  "size": 46445118,
-  "notes": "Presses, holds and drags the move pad like a thumb (no stops to turn). Camera faces the gate and the way after each fight."
+  "sha256": "478dd33bfd1215e44aaeac0e4d8a995aee63fac78f15c77b893d378f86291fc6",
+  "size": 46449214,
+  "notes": "Live record = precise steering: the position is read from the live picture, several times a second, on every phone, emulator and cloud phone."
 }
