@@ -1,8 +1,8 @@
 {
-  "versionCode": 67,
-  "versionName": "1.6.17",
+  "versionCode": 68,
+  "versionName": "1.6.18",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "92d897f61c6a9c34720c4bd68d3c2f3a60c7155523a2f7f72ebf95636198c1fd",
-  "size": 46420542,
-  "notes": "Goes straight from boss to boss like the members' runs: the camera is set from the first steps of every walk (it ran off course after a fight)."
+  "sha256": "36063a05ca9b086298419b81d48f582f942dab5a916f17b3a925dba9b80fb698",
+  "size": 46424638,
+  "notes": "Steady steering on the members' routes; after a fight the camera is measured once on a straight stretch and put right."
 }
