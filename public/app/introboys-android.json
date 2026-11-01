@@ -1,8 +1,8 @@
 {
-  "versionCode": 66,
-  "versionName": "1.6.16",
+  "versionCode": 67,
+  "versionName": "1.6.17",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "b05c7ada57203a497237623ceb10aff07b214bb640310b3ebd32fb63badd4fe9",
-  "size": 46416446,
-  "notes": "Follows the members' own runs to every boss, steering the way the videos show (camera stays put, stick turned to follow the corridor)."
+  "sha256": "92d897f61c6a9c34720c4bd68d3c2f3a60c7155523a2f7f72ebf95636198c1fd",
+  "size": 46420542,
+  "notes": "Goes straight from boss to boss like the members' runs: the camera is set from the first steps of every walk (it ran off course after a fight)."
 }
