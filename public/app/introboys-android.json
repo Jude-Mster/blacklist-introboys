@@ -1,8 +1,8 @@
 {
-  "versionCode": 54,
-  "versionName": "1.6.5",
+  "versionCode": 56,
+  "versionName": "1.6.6",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "999db015d194be7c81a951c28c7939ee543677a0f2f7f67574567c5109f4813f",
-  "size": 46236091,
-  "notes": "Den: loots the respawned boss's drops too. Slow and cloud phones walk round walls. Knows a dead boss even when its name stays."
+  "sha256": "bb3bd780d4e1857bd1e11e1f3da0a51cd942e4d64377959c1cc7a65d6dd8fc23",
+  "size": 46268859,
+  "notes": "Install updates from the guild website (Remote control \u2192 Install update). Den: loots the respawned boss's drops. Slow and cloud phones walk round walls."
 }

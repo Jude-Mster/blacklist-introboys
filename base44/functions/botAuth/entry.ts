@@ -263,7 +263,9 @@ async function update(b, p) {
 
 // 6.37: upgrade and enhance taken off the site (the app may still know them; the site never sends them).
 // 6.50: settings the leader / member can change from the live view (the PC and the phone apply them), the war break, and the phone check
-const REMOTE_CMDS = ['start', 'stop', 'return_town', 'set_mode', 'set_runs', 'war_break', 'check_phone', 'auto_hunt'];
+// 6.52: install_update - the app looks for a newer build itself (the PC: the leader's signed release; the phone: the published APK),
+// stops a run, downloads, checks and installs it, and comes back online after its restart. The site sends no file and no address.
+const REMOTE_CMDS = ['start', 'stop', 'return_town', 'set_mode', 'set_runs', 'war_break', 'check_phone', 'auto_hunt', 'install_update'];
 const CMD_TTL_MS = 60_000, WATCH_MS = 20_000, ONLINE_MS = 45_000, PIC_MAX = 400_000;
 
 // 6.43: the database allows the whole site ~210 list reads a minute (every function shares the service account). The live view and the
@@ -482,7 +484,14 @@ async function remoteView(b, me, p) {
   const picFresh = !!(picData || row.picture_url) && Date.parse(row.picture_at || '') > now - 60_000;
   const cmds = await memo('bcmdv:' + me.id, CMD_VIEW_MS, async () => (await E.BotCommand.filter({ member_id: me.id }, { sort: '-created_date', limit: 40 })).items);
   const items = cmds.filter((c) => seatOf(c) === seat).slice(0, 8);
+  // 6.52: the newest PC build the leader published (the phone's newest build is read by the page from /app/introboys-android.json)
+  const latestPc = await memo('brel:latest', 60_000, async () => {
+    const { items: rel } = await E.BotRelease.filter({ active: true }, { limit: 200 });
+    const v = rel.filter((r) => VER.test(r.version)).sort((a, c) => verCmp(c.version, a.version))[0];
+    return v ? String(v.version) : '';
+  });
   return Response.json({
+    latest_pc: latestPc,
     // 6.47: platform: what the device is locked to (pc or android); a phone also says so in its reports
     seat, platform: (state && state.platform === 'android') || (lic && lic.platform === 'android') ? 'android' : 'pc',
     devices: all.map((l) => ({ seat: seatOf(l), label: seatName(l), device_tag: l.hwid_hash ? deviceTag(l.hwid_hash) : '', active: licenseState(l).active, online: onlineSeat(seatOf(l)), platform: l.hwid_hash ? (l.platform === 'android' ? 'android' : 'pc') : '' })),

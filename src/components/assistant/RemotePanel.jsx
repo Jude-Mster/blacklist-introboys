@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Crosshair, Home, Loader2, Play, Shield, Square, Stethoscope, Swords } from "lucide-react";
+import { Crosshair, Download, Home, Loader2, Play, Shield, Square, Stethoscope, Swords } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import Panel from "@/components/Panel";
 import { errorText } from "@/lib/GuildContext";
@@ -9,8 +9,11 @@ const POLL_MS = 3000;            // while the app is online: the live view
 const IDLE_POLL_MS = 20000;      // 6.43: while it is offline (every look costs the site's shared database budget)
 const CMD_LABEL = {
   start: "Start", stop: "Stop", return_town: "Return to town", upgrade: "Upgrade", enhance: "Enhance",
-  set_mode: "Change mode", set_runs: "Change runs", war_break: "War break", auto_hunt: "Auto hunt", check_phone: "Check phone"
+  set_mode: "Change mode", set_runs: "Change runs", war_break: "War break", auto_hunt: "Auto hunt", check_phone: "Check phone",
+  install_update: "Install update"
 };
+// 6.52: "1.6.10" > "1.6.9"
+const newerVer = (a, b) => { const x = String(a || "").split(".").map(Number), y = String(b || "").split(".").map(Number); if (x.length !== 3 || y.length !== 3 || [...x, ...y].some((n) => !Number.isFinite(n))) return false; for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i]; return false; };
 // 6.50: the war break: Regular Battle every 2 hours (even UTC hours); the Assistant leaves the dungeon at :27 and goes back at :49
 const HOUR = 3600000, MIN = 60000;
 function warBreakTimes(now = Date.now()) {
@@ -41,6 +44,12 @@ export default function RemotePanel({ licensed }) {
   const seatRef = useRef(0); seatRef.current = seat;
   const timer = useRef(null);
   const onlineRef = useRef(false);
+  // 6.52: the newest phone build (the published file's manifest; the PC's newest comes with the live view)
+  const [latestPhone, setLatestPhone] = useState("");
+  useEffect(() => {
+    if (!licensed) return;
+    fetch("/app/introboys-android.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((j) => { if (j && j.versionName) setLatestPhone(String(j.versionName)); }).catch(() => {});
+  }, [licensed]);
 
   const load = useCallback(async () => {
     try {
@@ -65,6 +74,10 @@ export default function RemotePanel({ licensed }) {
 
   const send = async (cmd, args) => {
     if (cmd === "stop" || cmd === "return_town" || cmd === "set_mode" || cmd === "set_runs" || cmd === "war_break" || cmd === "check_phone") { /* no confirmation: these are the safe ones */ }
+    else if (cmd === "install_update") {
+      const dev = view && view.platform === "android" ? "phone" : "PC";
+      if (!window.confirm(`Install the update on your ${dev}? ${view && view.state && view.state.running ? "The run is stopped first. " : ""}The app downloads it, checks it and restarts; it is back online here in about a minute.`)) return;
+    }
     else if (!window.confirm(`Send "${CMD_LABEL[cmd]}" to the Assistant on your ${view && view.platform === "android" ? "phone? The game must be open on the phone." : "PC? The game must be open and in front on that PC."}`)) return;
     setBusy(cmd); setError(""); setMsg("");
     try {
@@ -236,6 +249,30 @@ export default function RemotePanel({ licensed }) {
                 </div>
               )}
             </div>
+            {(() => {
+              // 6.52: install the newest build from here (for when you are not at home)
+              const latest = phone ? latestPhone : (view.latest_pc || "");
+              const have = st.version || "";
+              const behind = !!latest && !!have && newerVer(latest, have);
+              return (
+                <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-bronze/40 p-2">
+                  <span className="text-xs text-mist">Update:</span>
+                  <span className="text-xs text-white">on the {where} {have || "?"}{latest ? ` · newest ${latest}` : ""}</span>
+                  {behind
+                    ? <span className="rounded-[3px] border border-gold/70 px-1 text-[10px] font-bold uppercase text-gold">update ready</span>
+                    : latest && have ? <span className="rounded-[3px] border border-emerald-400/70 px-1 text-[10px] font-bold uppercase text-emerald-300">up to date</span> : null}
+                  <button disabled={!!busy} onClick={() => send("install_update")}
+                    className={cn("ml-auto flex h-8 items-center gap-1 rounded-md border px-2.5 text-xs", behind ? "border-gold text-gold" : "border-bronze/50 text-mist hover:text-white")}>
+                    {busy === "install_update" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" aria-hidden="true" />} Install update
+                  </button>
+                  <p className="w-full text-[11px] text-mist">
+                    {phone
+                      ? "The phone downloads the new version and installs it. Android 12 and newer install it by themselves once the app has updated itself one time; otherwise the app taps Update on Android's prompt. First time only: allow the app to install updates on the phone."
+                      : "The PC downloads the version the Guild Leader published, checks its signature, keeps your settings and routes, and restarts."}
+                  </p>
+                </div>
+              );
+            })()}
             <p className="mt-2 text-xs text-mist">Mode, runs and the war break are remembered by the {where}; they apply to the next Start (runs and the war break also to a run that is going).</p>
           </details>
 
