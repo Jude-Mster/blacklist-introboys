@@ -1,8 +1,8 @@
 {
-  "versionCode": 70,
-  "versionName": "1.6.20",
+  "versionCode": 71,
+  "versionName": "1.6.21",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "fc2c7d6e0b8111ae64c7a84214745d30ed49f4cd842dd841c7096c8f95f01c6a",
-  "size": 46420542,
-  "notes": "No more stops every 10 s on slow phones and emulators (the held touch lasts 55 s). Steers from where the character is now; checks the camera after each fight."
+  "sha256": "33aeacfe1d7e78c6c4903e89af397082ac300454f34e85bea9f1577616efc22f",
+  "size": 46424638,
+  "notes": "The move pad is pushed fully at once and held (no slow start, no stop every few seconds) on slow phones and emulators."
 }
