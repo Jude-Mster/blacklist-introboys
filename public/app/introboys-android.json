@@ -1,8 +1,8 @@
 {
-  "versionCode": 64,
-  "versionName": "1.6.14",
+  "versionCode": 65,
+  "versionName": "1.6.15",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "fd5bb5cb978e1e550d96f601b4bf8cdbd6198eef51be7c245baa81bbde85e46b",
-  "size": 46416446,
-  "notes": "Steadier steering on emulators and slow phones (steers from where the character is now), never turns round after a wall, gets through the gate even with a turned camera."
+  "sha256": "1ea8430d0b7a7bc8812d7b867f36df257f17f37b70391b68701bd333110ea035",
+  "size": 46420542,
+  "notes": "Runs the Labyrinth the way members do: routes taken from real runs, steering like a player with the camera behind the character."
 }
