@@ -1,8 +1,8 @@
 {
-  "versionCode": 58,
-  "versionName": "1.6.8",
+  "versionCode": 59,
+  "versionName": "1.6.9",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "89bcde6749ee3e5205c1e76ba1ddb7ca11f4c0b1389e198a5e78e9b5e8c160db",
+  "sha256": "de2e363e9cfaaa2f69bfadecae1a3661cf1ddb848be103a8b321e03fbb87572b",
   "size": 46309886,
-  "notes": "Never leaves a boss with a little HP left (its loot on the ground is the proof it died). Walks keep to the middle of the corridor. Copy the log button."
+  "notes": "Follows the PC's recorded ways to every boss (boss 1 too, from the gate). Never leaves a boss with a little HP left. Copy the log button."
 }
