@@ -1,8 +1,8 @@
 {
-  "versionCode": 72,
-  "versionName": "1.6.22",
+  "versionCode": 73,
+  "versionName": "1.6.23",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "bf8cbe07ec3f20188a4b8d933e1ff108d42728550fff62b63dae0e1c8a390ef6",
-  "size": 46436926,
-  "notes": "The camera looks straight at the gate every run and straight down the way after every fight; the move pad is pushed fully at once."
+  "sha256": "8e3ade21e2859ec3ed26a24f08bd83ed351064d89c9a64815876c81f946898b2",
+  "size": 46445118,
+  "notes": "Presses, holds and drags the move pad like a thumb (no stops to turn). Camera faces the gate and the way after each fight."
 }
