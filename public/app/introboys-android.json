@@ -1,8 +1,8 @@
 {
-  "versionCode": 57,
-  "versionName": "1.6.7",
+  "versionCode": 58,
+  "versionName": "1.6.8",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "f1872e8cc1f51b1fcf63b42dd5f3ddede38073f51d103e4e7a807b0ee2dff0e5",
-  "size": 46293502,
-  "notes": "Reads the boss HP numbers on the bar: never leaves a boss with a little HP left. Copy the log button. LDPlayer: long-press the BLACKLIST icon for the Assistant."
+  "sha256": "89bcde6749ee3e5205c1e76ba1ddb7ca11f4c0b1389e198a5e78e9b5e8c160db",
+  "size": 46309886,
+  "notes": "Never leaves a boss with a little HP left (its loot on the ground is the proof it died). Walks keep to the middle of the corridor. Copy the log button."
 }
