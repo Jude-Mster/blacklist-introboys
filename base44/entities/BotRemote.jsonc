@@ -114,6 +114,26 @@
     "seat": {
       "type": "number",
       "description": "6.41: which of the member's devices this is (none = 1)"
+    },
+    "run_id": {
+      "type": "string",
+      "description": "6.53: the app that reports now (a new random id each time the app starts)"
+    },
+    "run_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "run_prev": {
+      "type": "string",
+      "description": "6.53: the app that reported before run_id"
+    },
+    "run_prev_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "run_copy": {
+      "type": "string",
+      "description": "6.53: an app found to be a copy (a cloned emulator): told to become its own device"
     }
   },
   "rls": {

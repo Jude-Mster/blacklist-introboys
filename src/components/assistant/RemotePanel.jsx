@@ -134,7 +134,7 @@ export default function RemotePanel({ licensed }) {
             <div><dt className="text-xs text-mist">{phone ? "Sees the game" : "Game"}</dt><dd className={st.game ? "text-white" : "text-ember"}>{phone ? (st.game ? "yes" : "no (Android 9/10: needs Live record)") : st.game ? "found" : "not found"}</dd></div>
             <div><dt className="text-xs text-mist">{phone ? "Mode" : "Dungeon"}</dt><dd className="text-white">{st.dungeon === "den" ? "Den (LOD)" : st.dungeon === "attack" ? "Auto attack" : "Labyrinth"}</dd></div>
             {phone
-              ? <div><dt className="text-xs text-mist">Runs done</dt><dd className="text-white">Labyrinth {st.total_labyrinth || 0} · Den {st.total_den || 0}{st.running ? ` · ${st.presses || 0} presses` : ""}</dd></div>
+              ? <div><dt className="text-xs text-mist">Runs done</dt><dd className="text-white">Labyrinth {st.total_labyrinth || 0} · Den {st.total_den || 0}{st.running ? ` · ${st.cycles || 0} since start · ${st.presses || 0} presses` : ""}</dd></div>
               : <div><dt className="text-xs text-mist">This session</dt><dd className="text-white">{st.cycles || 0} cycles · {st.kills || 0} kills</dd></div>}
             <div><dt className="text-xs text-mist">Time left</dt><dd className="text-white">{st.time_left || "-"}</dd></div>
           </dl>

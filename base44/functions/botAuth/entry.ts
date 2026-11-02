@@ -362,6 +362,21 @@ async function remotePush(b, s, p) {
   const now = Date.now(), iso = new Date(now).toISOString();
   let row = await remoteRow(b, s.member_id, seat);
   const patch: any = { updated_at: iso };
+  // 6.53: a cloned emulator (LDPlayer copies the whole phone: its ID and the saved sign-in) reports as the same device, so the
+  // two apps took turns on this device's live view (the runs flipping between their counts). Each app start sends a new random
+  // `run`; two of them alternating while both are alive means a copy: the newer one is told to become a device of its own.
+  const run = /^[a-f0-9]{8,32}$/.test(String(p.run || '')) ? String(p.run) : '';
+  if (run && row) {
+    const alive = (t) => Date.parse(t || '') > now - 45_000;
+    if (row.run_copy === run) return Response.json({ ok: true, allowed: false, clone: true, watching: false, commands: [] });
+    if (row.run_id && row.run_id !== run) {
+      if (row.run_prev === run && alive(row.run_at) && alive(row.run_prev_at)) {
+        patch.run_copy = row.run_id; patch.run_prev = '';                   // both alive: the one that started later is the copy
+        await logEvent(b, { id: s.member_id }, 'clone', `device ${seat} · a copied phone was told to sign in as its own device`).catch(() => {});
+      } else { patch.run_prev = row.run_id; patch.run_prev_at = row.run_at || iso; }
+    }
+    patch.run_id = run; patch.run_at = iso;
+  } else if (run) { patch.run_id = run; patch.run_at = iso; }
   if (p.state && typeof p.state === 'object') { const js = JSON.stringify(p.state); if (js.length <= 4000) patch.state = js; }
   if (Array.isArray(p.log)) patch.log = p.log.slice(-20).map(cleanLine).join('\n');
   const watching = !!(row && Date.parse(row.watch_until || '') > now);

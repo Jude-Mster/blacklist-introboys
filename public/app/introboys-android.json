@@ -1,8 +1,8 @@
 {
-  "versionCode": 77,
-  "versionName": "1.6.27",
+  "versionCode": 78,
+  "versionName": "1.6.28",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "d76b0b4d7d12f900945d9e016085a4c07d3389ea7adfad1d3902fb70c7fcc038",
-  "size": 46453310,
-  "notes": "Faster runs: no camera check before walks that don't need it, quicker end of a fight at the last sliver of HP, loot never missed."
+  "sha256": "5976377b2755c1c1d793e732b59a96db6710abdfbf97ce54da0870808472c230",
+  "size": 46457406,
+  "notes": "A copied (cloned) emulator becomes its own device: it signs in again and needs its own days, and no longer mixes its runs into the other device on the website."
 }

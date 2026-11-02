@@ -377,6 +377,23 @@ ok(/the app could not take the picture: GDI\+ failed/.test((await call(bot, C, {
   const cleared = (await E.BotRemote.filter({ member_id: C.id }, {})).items[0];
   ok(!cleared.parts && !cleared.pic_0 && !cleared.picture_url, 'with the page closed nothing of the picture is kept');
 }
+{
+  // 6.53: a cloned emulator reports with the same sign-in; two apps taking turns are found, and the later one is told it is a copy
+  const a1 = await app({ action: 'remotePush', run: 'aaaa1111', state: { total_labyrinth: 13 } }, rc3.token);
+  ok(a1.status === 200 && a1.allowed && !a1.clone, 'the app reports with its run id');
+  const r2 = await app({ action: 'remotePush', run: 'bbbb2222', state: { total_labyrinth: 13 } }, rc3.token);
+  ok(r2.allowed && !r2.clone, 'a new run id alone is a restart, not a copy');
+  const a2 = await app({ action: 'remotePush', run: 'aaaa1111', state: { total_labyrinth: 14 } }, rc3.token);
+  ok(a2.allowed && !a2.clone, 'the first app reporting again is kept');
+  const c1 = await app({ action: 'remotePush', run: 'bbbb2222', state: { total_labyrinth: 0 } }, rc3.token);
+  ok(c1.clone === true && c1.allowed === false, 'the app that started later is told it is a copy');
+  ok((await call(bot, C, { action: 'remoteView' })).state.total_labyrinth === 14, 'the copy no longer overwrites the device\'s live view');
+  ok(!(await app({ action: 'remotePush', run: 'aaaa1111', state: {} }, rc3.token)).clone, 'the first app keeps working');
+  advance(60_000);
+  const r3 = await app({ action: 'remotePush', run: 'cccc3333', state: {} }, rc3.token);
+  advance(60_000);
+  ok(!r3.clone && !(await app({ action: 'remotePush', run: 'cccc3333', state: {} }, rc3.token)).clone, 'a restart long after is not a copy');
+}
 const st1 = await call(bot, C, { action: 'remoteCommand', cmd: 'start', args: { dungeon: 'den', runs: 5000, start_boss: 9, evil: 1 } });
 ok(st1.status === 200, 'the owner queues start');
 await call(bot, C, { action: 'remoteCommand', cmd: 'return_town' });
