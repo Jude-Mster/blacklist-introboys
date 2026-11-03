@@ -1,8 +1,8 @@
 {
-  "versionCode": 82,
-  "versionName": "1.6.32",
+  "versionCode": 83,
+  "versionName": "1.6.33",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "934b7457698ed8a08cfdbdc37359ebc4ca0769e515cb505f2e0059e80a3b98e3",
-  "size": 46486078,
-  "notes": "Den: fights the LOD boss until it is really dead, then loots until the ground is clear. Walks straight from the teleport to the boss."
+  "sha256": "1a8a1218d4d38144dd235193308c080c4337e5bd21575fcc576f2c69b5325a1c",
+  "size": 46490174,
+  "notes": "Den: loots everything after each boss before looking for the respawn, and after the second boss before going back to town. Fights the LOD boss until it is really dead."
 }
