@@ -221,6 +221,9 @@ export default async function(req) {
     const settings = await getSettings(b);
     const open = (settings.games_enabled || []).includes(GAME);
     const CLOSED_GAME = 'The Live Arena is closed right now.';
+    // 6.55: the Guild Leader can put the Live Arena on maintenance. Nothing is fought or bet while it is on,
+    // and the table is left as it is, so every fight and bet is still there when it is turned off.
+    const MAINTENANCE = settings.arena_maintenance === true;
 
     // The crowd (Live Arena and tournaments): who is watching, and the emojis thrown at the fighters.
     if (p.action === 'pulse') return Response.json(await pulse(b, me, cleanScope(p.scope), p.here === true));
@@ -228,6 +231,7 @@ export default async function(req) {
 
     if (p.action === 'state') {
       if (!open) throw new UserError(CLOSED_GAME);
+      if (MAINTENANCE) return Response.json({ maintenance: true });
       const t = await current(b, settings, true);
       const now = Date.now();
       const status = statusAt(t, now);
@@ -247,6 +251,7 @@ export default async function(req) {
 
     if (p.action === 'bet' || p.action === 'remove') {
       if (!open) throw new UserError(CLOSED_GAME);
+      if (MAINTENANCE) throw new UserError('The Live Arena is on maintenance. No bets are taken until it is back.');
       const t = await current(b, settings);
       const STAY = 'Betting is closed for this fight. Wait for the next one.';
       if (!usable(t)) throw new UserError(STAY);

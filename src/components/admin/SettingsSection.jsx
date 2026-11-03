@@ -50,6 +50,7 @@ export default function SettingsSection() {
           arena_max_bet: s.arena_max_bet ?? 5000,
           arena_min_bet: s.arena_min_bet ?? 1,
           arena_bet_seconds: s.arena_bet_seconds ?? 15,
+          arena_maintenance: s.arena_maintenance === true,
           house_edge_pct: s.house_edge_pct,
           award_cap_per_day: s.award_cap_per_day,
           daily_wheel_prizes: Array.isArray(s.daily_wheel_prizes) ? s.daily_wheel_prizes : String(s.daily_wheel_prizes).split(","),
@@ -176,6 +177,21 @@ export default function SettingsSection() {
           >
             {s.chat_enabled === false ? "Chat is off" : "Chat is on"}
           </button>
+
+          <p className="label mt-4">Live Arena</p>
+          <button
+            type="button"
+            data-on={s.arena_maintenance === true}
+            aria-pressed={s.arena_maintenance === true}
+            onClick={() => set("arena_maintenance", s.arena_maintenance !== true)}
+            className="btn-bronze h-9 px-3 text-sm"
+          >
+            {s.arena_maintenance === true ? "On maintenance" : "Open, fights are running"}
+          </button>
+          <p className="mt-1 text-xs text-mist/80">
+            Maintenance shows members a notice instead of the live fights, and no bets are taken. The fights and every
+            balance are kept, and bets already placed are paid as usual. Save settings to apply it.
+          </p>
         </fieldset>
 
         {msg && <p role="status" className="text-sm text-jade">{msg}</p>}

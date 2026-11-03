@@ -92,6 +92,11 @@
       "default": 30,
       "description": "Betting time before each Live Arena fight (10-300 seconds)"
     },
+    "arena_maintenance": {
+      "type": "boolean",
+      "default": false,
+      "description": "6.55: true puts the Live Arena on maintenance: members see a notice instead of the fights and no bets are taken. The fights and every balance are kept."
+    },
     "discord_invite_url": {
       "type": "string",
       "description": "Invite link shown to people who aren't in the server yet"
@@ -132,13 +137,34 @@
       "type": "string",
       "description": "6.49: the app_download_url the app_* facts below were read from (read from the file itself)"
     },
-    "app_package": { "type": "string", "description": "6.49: package name inside the linked APK" },
-    "app_version_code": { "type": "integer", "description": "6.49: build number inside the linked APK" },
-    "app_version_name": { "type": "string", "description": "6.49: version inside the linked APK" },
-    "app_sha256": { "type": "string", "description": "6.49: SHA-256 of the linked APK" },
-    "app_size": { "type": "integer", "description": "6.49: size of the linked APK in bytes" },
-    "app_meta_error": { "type": "string", "description": "6.49: why the linked file could not be read (empty when it was)" },
-    "app_meta_at": { "type": "string", "description": "6.49: when the linked file was last read" },
+    "app_package": {
+      "type": "string",
+      "description": "6.49: package name inside the linked APK"
+    },
+    "app_version_code": {
+      "type": "integer",
+      "description": "6.49: build number inside the linked APK"
+    },
+    "app_version_name": {
+      "type": "string",
+      "description": "6.49: version inside the linked APK"
+    },
+    "app_sha256": {
+      "type": "string",
+      "description": "6.49: SHA-256 of the linked APK"
+    },
+    "app_size": {
+      "type": "integer",
+      "description": "6.49: size of the linked APK in bytes"
+    },
+    "app_meta_error": {
+      "type": "string",
+      "description": "6.49: why the linked file could not be read (empty when it was)"
+    },
+    "app_meta_at": {
+      "type": "string",
+      "description": "6.49: when the linked file was last read"
+    },
     "member_role_id": {
       "type": "string",
       "description": "Discord role required to use the site. Empty = anyone in the server."

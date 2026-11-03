@@ -18,6 +18,7 @@ export default function LiveArena({ balance }) {
   const { now: sn, sync, serverNow } = useServerClock();
   const [state, setState] = useState(null);
   const [loadError, setLoadError] = useState("");
+  const [maint, setMaint] = useState(false);   // 6.55: the Guild Leader put the Arena on maintenance
   const tableRef = useRef(null), lastPoll = useRef(0), inFlight = useRef(false), changedAt = useRef(0), loaded = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -44,8 +45,10 @@ export default function LiveArena({ balance }) {
     try {
       const res = await base44.functions.invoke("arenaAction", { action: "state", crowd: true, ...(wantHere() ? { here: true } : {}) });   // 6.23: the crowd comes with the table
       const d = res.data;
+      // 6.55: the Arena is on maintenance: the fights are paused and no bets are taken
+      if (d && d.maintenance) { setMaint(true); setLoadError(""); return; }
       if (d && d.table && asked < changedAt.current) return;
-      if (d && d.table) { sync(d.table.server_now, asked); tableRef.current = d.table; loaded.current = true; setState(d); setLoadError(""); }
+      if (d && d.table) { sync(d.table.server_now, asked); tableRef.current = d.table; loaded.current = true; setState(d); setLoadError(""); setMaint(false); }
     } catch (e) {
       if (!loaded.current && !(e && e.rateLimited)) setLoadError(errorText(e, "Couldn't reach the arena."));
     } finally { inFlight.current = false; }
@@ -56,6 +59,8 @@ export default function LiveArena({ balance }) {
     refresh();
     const poll = setInterval(() => {
       if (document.hidden) return; // 6.16: a hidden tab makes no calls; it catches up when shown
+      // 6.55: on maintenance there is nothing to watch: ask every 8 s, just to notice when it is back
+      if (maint) { if (Date.now() - lastPoll.current >= 8000) refresh(); return; }
       const t = tableRef.current, sn = serverNow();
       let wait = 3000;
       if (t) {
@@ -75,7 +80,7 @@ export default function LiveArena({ balance }) {
     const onShow = () => { if (!document.hidden) refresh(); };
     document.addEventListener("visibilitychange", onShow);
     return () => { clearInterval(poll); document.removeEventListener("visibilitychange", onShow); };
-  }, [refresh, serverNow]);
+  }, [refresh, serverNow, maint]);
 
   const table = state && state.table;
   const owed = !!(state && state.owed);
@@ -118,6 +123,20 @@ export default function LiveArena({ balance }) {
   }, [replay]);
   const crowd = useArenaCrowd("live", true, state && state.crowd ? state.crowd : null);
   const wide = useWide();
+
+  if (maint) {
+    return (
+      <Panel title="Live Arena">
+        <div className="py-8 text-center">
+          <p className="font-heading text-lg font-extrabold text-gold">The Arena is on maintenance</p>
+          <p className="mx-auto mt-2 max-w-[32rem] text-sm text-mist">
+            The Guild Leader has paused the live fights for a moment. Every bet already placed is safe and is paid as
+            usual. This page reopens by itself as soon as maintenance is over.
+          </p>
+        </div>
+      </Panel>
+    );
+  }
 
   if (!table) {
     return (
