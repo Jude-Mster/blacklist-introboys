@@ -1,8 +1,8 @@
 {
-  "versionCode": 80,
-  "versionName": "1.6.30",
+  "versionCode": 81,
+  "versionName": "1.6.31",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "aed9e50744af6c70dc37c265c5855488a06b11434dc692ebe78776af81b327a6",
-  "size": 46469694,
-  "notes": "Den: walks straight from the teleport to the boss on the PC's recorded way, no test steps. Targets the boss at every boss spot and whenever the HP bar is lost."
+  "sha256": "8a91a7d4664af3ed3662f29b5d74143272dc3ce63c2a917a9504cfcc1fde48bb",
+  "size": 46473790,
+  "notes": "Den: every drop picked up, also when the boss respawns. Walks straight from the teleport to the boss. Targets the boss at every boss spot."
 }
