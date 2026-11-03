@@ -1,8 +1,8 @@
 {
-  "versionCode": 81,
-  "versionName": "1.6.31",
+  "versionCode": 82,
+  "versionName": "1.6.32",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "8a91a7d4664af3ed3662f29b5d74143272dc3ce63c2a917a9504cfcc1fde48bb",
-  "size": 46473790,
-  "notes": "Den: every drop picked up, also when the boss respawns. Walks straight from the teleport to the boss. Targets the boss at every boss spot."
+  "sha256": "934b7457698ed8a08cfdbdc37359ebc4ca0769e515cb505f2e0059e80a3b98e3",
+  "size": 46486078,
+  "notes": "Den: fights the LOD boss until it is really dead, then loots until the ground is clear. Walks straight from the teleport to the boss."
 }
