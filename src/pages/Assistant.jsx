@@ -85,7 +85,7 @@ export default function Assistant() {
     <div className="mx-auto max-w-[44rem] space-y-4">
       <header className="text-center">
         <h1 className="font-heading text-3xl font-extrabold gilt-text">IntroBoys Assistant</h1>
-        <p className="mx-auto mt-1 max-w-[34rem] text-sm text-mist">The helper for your PC, and auto attack on your phone. Buy days in the guild shop, sign the app in with a code, and it runs for as long as your days last.</p>
+        <p className="mx-auto mt-1 max-w-[34rem] text-sm text-mist">The helper for your PC, and auto attack on your phone. Buy days in the guild shop, sign the app in with a code, and it runs for as long as your days last Contact Juts for access.</p>
       </header>
 
       <AreaTabs areas={AREAS} value={area} onChange={pick} />
