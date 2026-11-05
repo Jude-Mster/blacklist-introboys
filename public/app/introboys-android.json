@@ -1,8 +1,8 @@
 {
-  "versionCode": 88,
-  "versionName": "1.6.38",
+  "versionCode": 89,
+  "versionName": "1.6.39",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "ac63392458e9c03894ac3ce2a54139b6896548555e0a27607255848ecb1e7815",
-  "size": 46551614,
-  "notes": "Looting: auto loot and tapping the items on the ground in turns, so drops a few steps away are picked up too. War pop-up cancelled within a second."
+  "sha256": "4424b561a5964e1ac1ecc8474c5ef2fc23eb8fe40b521c7cd491f80a537f6b26",
+  "size": 46559806,
+  "notes": "War pop-up: the attack stops, the pop-up is cancelled, then the attack goes on. Looting by auto loot and by tapping the items on the ground."
 }
