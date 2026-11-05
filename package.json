@@ -14,8 +14,8 @@
     "test:backend": "sh tests/run-backend.sh"
   },
   "dependencies": {
-    "@base44/sdk": "^0.8.57",
-    "@base44/vite-plugin": "^1.0.50",
+    "@base44/sdk": "^0.8.59",
+    "@base44/vite-plugin": "^1.0.52",
     "@fontsource/oswald": "^5.3.0",
     "@fontsource/permanent-marker": "^5.3.0",
     "@hello-pangea/dnd": "^17.0.0",
