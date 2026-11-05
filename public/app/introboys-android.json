@@ -1,8 +1,8 @@
 {
-  "versionCode": 85,
-  "versionName": "1.6.35",
+  "versionCode": 86,
+  "versionName": "1.6.36",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "64e499b8ef566c25b45b00f51e6c151bed9f8ff3851ba1024dcace989ed8cba2",
-  "size": 46514750,
-  "notes": "Den and every kill: when items still lie on the ground after a kill, the character walks up to them and loots again until the ground is clear."
+  "sha256": "849e2c3674cd7cb801fec5d6264418e15608696ffe91d9d192406403609465ad",
+  "size": 46527038,
+  "notes": "When a boss dies the attack stops at once and the loot starts: no more swinging at a dead boss. Walks up to the loot after a kill."
 }
