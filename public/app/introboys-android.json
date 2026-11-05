@@ -1,8 +1,8 @@
 {
-  "versionCode": 84,
-  "versionName": "1.6.34",
+  "versionCode": 85,
+  "versionName": "1.6.35",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "5d21088fbf0aeba710a5e5dbbd059fe2b1b0376187d530a275a7bf7451dd36e5",
-  "size": 46481982,
-  "notes": "Every kill (bosses, the Den boss and its respawn, monsters): stops and loots everything at once before targeting the next. Den: fights the LOD boss to the end, never walks off after a kick."
+  "sha256": "64e499b8ef566c25b45b00f51e6c151bed9f8ff3851ba1024dcace989ed8cba2",
+  "size": 46514750,
+  "notes": "Den and every kill: when items still lie on the ground after a kill, the character walks up to them and loots again until the ground is clear."
 }
