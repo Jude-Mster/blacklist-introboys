@@ -213,6 +213,13 @@ export default async function(req) {
   try {
     const b = resilient(createClientFromRequest(req));
     let p; try { p = await req.json(); } catch { p = {}; }
+
+    // 6.56: while the site is on maintenance no sign-in is finished and no session is made.
+    try {
+      const st0 = await getSettings(b);
+      if (st0.site_maintenance === true) return Response.json({ error: 'maintenance' }, { status: 503 });
+    } catch { /* a settings read that failed never blocks a real sign-in */ }
+
     const code = String(p.code || '').trim();
     const state = String(p.state || '').trim();
     const nonce = typeof p.nonce === 'string' ? p.nonce.trim() : '';

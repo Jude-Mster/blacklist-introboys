@@ -21,6 +21,14 @@ export default async function(req) {
     const b = resilient(createClientFromRequest(req));
     let p; try { p = await req.json(); } catch { p = {}; }
 
+    // 6.56: while the site is on maintenance nobody may sign in at all, so no session can be made.
+    try {
+      const s = await getSettings(b);
+      if (s.site_maintenance === true) {
+        return Response.json({ error: 'The site is on maintenance. Please check back later.' }, { status: 503 });
+      }
+    } catch { /* a settings read that failed never blocks a real sign-in */ }
+
     const clientId = secret('DISCORD_CLIENT_ID');
     const redirectUri = secret('DISCORD_REDIRECT_URI');
     const missing = [!clientId && 'DISCORD_CLIENT_ID', !redirectUri && 'DISCORD_REDIRECT_URI'].filter(Boolean);
