@@ -97,6 +97,15 @@
       "default": false,
       "description": "6.55: true puts the Live Arena on maintenance: members see a notice instead of the fights and no bets are taken. The fights and every balance are kept."
     },
+    "site_maintenance": {
+      "type": "boolean",
+      "default": false,
+      "description": "6.56: true puts the WHOLE site on maintenance: every page shows the maintenance note instead (only the Guild Leader and Vice Guild Members still get in). Nothing is lost; false opens it again."
+    },
+    "maintenance_note": {
+      "type": "string",
+      "description": "6.56: the big text on the maintenance screen, e.g. TAPOS NA YUNG INTRO, SALAMAT"
+    },
     "discord_invite_url": {
       "type": "string",
       "description": "Invite link shown to people who aren't in the server yet"
@@ -199,5 +208,6 @@
     "create": false,
     "update": false,
     "delete": false
-  }
+  },
+  "required": []
 }

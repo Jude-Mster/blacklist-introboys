@@ -20,6 +20,7 @@ import LanternSpinner from '@/components/LanternSpinner';
 import { PAGE_LOADERS, deferred } from '@/lib/routes';
 import { getSessionToken } from '@/lib/session';
 import { holdLink } from '@/lib/assistantLink';
+import MaintenanceGate from '@/components/MaintenanceGate';
 // 6.24: every page but the sign-in, the landing page and the guild hall is downloaded when it is first
 // needed (see lib/routes.js, which also fetches the likely next ones ahead). The Derby and the Arena carry
 // their 3D scenes.
@@ -58,6 +59,7 @@ const LinkApp = () => {
 
 const AuthenticatedApp = () => {
   return (
+    <MaintenanceGate>
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/link-app" element={<LinkApp />} />
@@ -93,6 +95,7 @@ const AuthenticatedApp = () => {
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
+    </MaintenanceGate>
   );
 };
 

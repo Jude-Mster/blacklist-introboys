@@ -51,6 +51,8 @@ export default function SettingsSection() {
           arena_min_bet: s.arena_min_bet ?? 1,
           arena_bet_seconds: s.arena_bet_seconds ?? 15,
           arena_maintenance: s.arena_maintenance === true,
+          site_maintenance: s.site_maintenance === true,
+          maintenance_note: s.maintenance_note || "",
           house_edge_pct: s.house_edge_pct,
           award_cap_per_day: s.award_cap_per_day,
           daily_wheel_prizes: Array.isArray(s.daily_wheel_prizes) ? s.daily_wheel_prizes : String(s.daily_wheel_prizes).split(","),
@@ -74,6 +76,33 @@ export default function SettingsSection() {
   return (
     <Panel title="Guild settings">
       <form onSubmit={save} className="space-y-6">
+        <fieldset className="space-y-4">
+          <legend className="mb-2 font-heading font-bold text-gold">Site</legend>
+          <div>
+            <button
+              type="button"
+              data-on={s.site_maintenance === true}
+              aria-pressed={s.site_maintenance === true}
+              onClick={() => set("site_maintenance", s.site_maintenance !== true)}
+              className="btn-bronze h-9 px-3 text-sm"
+            >
+              {s.site_maintenance === true ? "Whole site on maintenance" : "Site is open"}
+            </button>
+            <p className="mt-1 text-xs text-mist/80">
+              Maintenance shows everyone a notice instead of the site. The Guild Leader and Vice Guild Members still
+              see the site, so it can be switched back off here. Save settings to apply it.
+            </p>
+          </div>
+          <Field
+            id="maintenance_note"
+            label="Maintenance note"
+            hint="The big text on the maintenance screen."
+            value={s.maintenance_note || ""}
+            onChange={(v) => set("maintenance_note", v)}
+            placeholder="TAPOS NA YUNG INTRO, SALAMAT"
+          />
+        </fieldset>
+
         <fieldset className="space-y-4">
           <legend className="mb-2 font-heading font-bold text-gold">Discord</legend>
           <Field

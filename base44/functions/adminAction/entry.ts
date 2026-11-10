@@ -86,6 +86,9 @@ export default async function(req) {
       if ('arena_bet_seconds' in p) update.arena_bet_seconds = int(p.arena_bet_seconds, { min: 10, max: 300, name: 'Arena betting time' });
       // 6.55: the Live Arena on maintenance: no fights are shown and no bets are taken, everything is kept
       if ('arena_maintenance' in p) update.arena_maintenance = p.arena_maintenance === true;
+      // 6.56: the whole site on maintenance: every page shows the note instead
+      if ('site_maintenance' in p) update.site_maintenance = p.site_maintenance === true;
+      if ('maintenance_note' in p) update.maintenance_note = String(p.maintenance_note ?? '').trim().slice(0, 200);
       if ('house_edge_pct' in p) update.house_edge_pct = int(p.house_edge_pct, { min: 0, max: 20, name: 'House edge' });
       if ('award_cap_per_day' in p) update.award_cap_per_day = int(p.award_cap_per_day, { min: 0, name: 'Officer award cap' });
       if ('daily_wheel_prizes' in p) {
