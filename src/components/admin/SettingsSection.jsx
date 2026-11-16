@@ -57,7 +57,8 @@ export default function SettingsSection() {
           award_cap_per_day: s.award_cap_per_day,
           daily_wheel_prizes: Array.isArray(s.daily_wheel_prizes) ? s.daily_wheel_prizes : String(s.daily_wheel_prizes).split(","),
           games_enabled: s.games_enabled || [],
-          chat_enabled: s.chat_enabled !== false
+          chat_enabled: s.chat_enabled !== false,
+          daily_enabled: s.daily_enabled !== false
         }
       });
       setForm(null);
@@ -89,8 +90,8 @@ export default function SettingsSection() {
               {s.site_maintenance === true ? "Whole site on maintenance" : "Site is open"}
             </button>
             <p className="mt-1 text-xs text-mist/80">
-              Maintenance shows everyone a notice instead of the site. The Guild Leader and Vice Guild Members still
-              see the site, so it can be switched back off here. Save settings to apply it.
+              Maintenance shows everyone a notice instead of the site and no sign-in can be made. Nothing is lost and
+              every balance is kept. Ask the builder to switch it back off. Save settings to apply it.
             </p>
           </div>
           <Field
@@ -196,6 +197,21 @@ export default function SettingsSection() {
               );
             })}
           </div>
+          <p className="label mt-4">Daily fortune</p>
+          <button
+            type="button"
+            data-on={s.daily_enabled !== false}
+            aria-pressed={s.daily_enabled !== false}
+            onClick={() => set("daily_enabled", s.daily_enabled === false)}
+            className="btn-bronze h-9 px-3 text-sm"
+          >
+            {s.daily_enabled === false ? "Daily wheel is closed" : "Daily wheel is open"}
+          </button>
+          <p className="mt-1 mb-4 text-xs text-mist/80">
+            Closed hides the daily fortune card and refuses every spin. Balances and claim times are kept. Save settings
+            to apply it.
+          </p>
+
           <p className="label mt-4">Chat</p>
           <button
             type="button"

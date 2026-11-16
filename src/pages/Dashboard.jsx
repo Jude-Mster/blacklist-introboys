@@ -58,7 +58,7 @@ export default function Dashboard() {
       <TournamentBanner />
 
       <div className="grid gap-5 md:grid-cols-2">
-        <DailyWheel member={m} settings={settings} />
+        {settings && settings.daily_enabled !== false && <DailyWheel member={m} settings={settings} />}
         <Panel title="Games">
           <ul className="space-y-2">
             {GAMES.filter((g) => !settings || (settings.games_enabled || []).includes(g.id)).map((g) => (

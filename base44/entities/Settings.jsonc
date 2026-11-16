@@ -38,6 +38,11 @@
         1000
       ]
     },
+    "daily_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "6.58: false closes the daily fortune wheel: nobody can spin or claim it, and the card is hidden. Every balance is kept"
+    },
     "award_cap_per_day": {
       "type": "integer",
       "default": 10000
@@ -100,7 +105,7 @@
     "site_maintenance": {
       "type": "boolean",
       "default": false,
-      "description": "6.56: true puts the WHOLE site on maintenance: every page shows the maintenance note instead (only the Guild Leader and Vice Guild Members still get in). Nothing is lost; false opens it again."
+      "description": "6.56: true puts the WHOLE site on maintenance: every page shows the maintenance note instead and no sign-in can be made. Nothing is lost; false opens it again."
     },
     "maintenance_note": {
       "type": "string",

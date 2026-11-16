@@ -14,6 +14,8 @@ export default async function(req) {
     if (!found) throw new UserError('Link your Discord first.');
 
     const settings = await getSettings(b);
+    // 6.58: the daily wheel can be closed by the Guild Leader; nothing is awarded while it is.
+    if (settings.daily_enabled === false) throw new UserError('The daily wheel is closed right now. Watch the announcements for when it comes back.', 403);
     const prizes = Array.isArray(settings.daily_wheel_prizes) && settings.daily_wheel_prizes.length
       ? settings.daily_wheel_prizes.map((n) => Math.floor(Number(n))).filter((n) => n > 0)
       : [100];

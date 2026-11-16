@@ -97,6 +97,7 @@ export default async function(req) {
         if (prizes.length < 2 || prizes.length > 12) throw new UserError('Daily wheel needs 2 to 12 prizes.');
         update.daily_wheel_prizes = prizes;
       }
+      if ('daily_enabled' in p) update.daily_enabled = p.daily_enabled !== false;
       if ('chat_enabled' in p) update.chat_enabled = p.chat_enabled !== false;
       if ('games_enabled' in p) {
         update.games_enabled = (Array.isArray(p.games_enabled) ? p.games_enabled : []).filter((g) => ALL_GAMES.includes(g));
