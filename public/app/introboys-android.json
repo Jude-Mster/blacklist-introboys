@@ -1,8 +1,8 @@
 {
-  "versionCode": 90,
-  "versionName": "1.6.40",
+  "versionCode": 98,
+  "versionName": "1.6.43",
   "url": "https://blacklistintroboys.com/app/introboys.apk",
-  "sha256": "a4a17b3493c7e0c75132e07b0249ecd97d63318adcf554ba72e19095023178e5",
-  "size": 46572094,
-  "notes": "Faster, smarter looting (stops as soon as the ground is clear, never taps things that aren't loot). The war pop-up pauses the attack and can no longer fake a boss kill."
+  "sha256": "d155c62f60f0ae7fd90253b3cc6deb07e2b9459af0f8fae4c58feca1928d8532",
+  "size": 46580286,
+  "notes": "Return scroll works again (the war pop-up check no longer cancels it). Den: no camera turn, straight up the corridor. Labyrinth: steadier gate turn. War pop-up pauses the attack. Faster looting."
 }
